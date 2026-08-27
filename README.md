@@ -70,11 +70,6 @@ Gemischt: BSD, MIT, GPL-2.0 und GPL-3.0 — je nachdem, worauf die Portierung
 aufsetzt. Jedes Projekt hat seine eigene Lizenzdatei, die Übersicht steht in
 [`docs/LIZENZEN.md`](docs/LIZENZEN.md).
 
-Bei den GPL-Projekten (`stransball2`, `tyrian`, `doom`, `jumpnbump`,
-`micropolis`) muss beim Weitergeben der Firmware der Quelltext mitgeliefert
-oder angeboten werden. Das ist der praktische Unterschied zu den MIT-Projekten
-daneben.
-
 ## Hardware-Referenz
 
 [`docs/HARDWARE.md`](docs/HARDWARE.md) sammelt, was beim Portieren auf dieses
