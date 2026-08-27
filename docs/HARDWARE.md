@@ -318,9 +318,12 @@ Das Gerät muss dafür im **BOOTSEL-Modus** hängen: BOOTSEL gedrückt halten,
 währenddessen USB einstecken, dann loslassen. Es meldet sich als Laufwerk
 `RPI-RP2` und ist damit für `picotool` sichtbar.
 
+Am einfachsten geht es ganz ohne Werkzeug: die `.uf2` auf das Laufwerk ziehen,
+fertig. `picotool` ist die Alternative, wenn man mehrere Dateien nacheinander
+schreiben oder Adressen kontrollieren will:
+
 ```bash
 picotool info -a                  # prueft Verbindung und meldet rp2350-arm-s
-picotool erase -a                 # PFLICHT, wenn vorher MicroPython o.ä. drauf war
 picotool load firmware.uf2
 picotool load daten.uf2
 picotool reboot
@@ -338,11 +341,15 @@ picotool reboot
   Kabel oder Firmware verdächtigt.
 * Läuft gerade ein D+/D−- oder CDC-Link, gehört der Port dem Link — dann ist
   kein Flashen möglich, BOOTSEL bleibt davon aber unberührt.
-* Reines Drag&Drop überschreibt nur die UF2-Blöcke; Reste bleiben oben im Flash
-  und das Display zeigt nach Soft-Reset das alte Bild — sieht aus, als liefe die
-  alte Firmware.
-* `erase -a` dauert bei 16 MB > 2 min. Abgebrochen → zusätzlich
+* **Den Flash zu löschen ist nicht nötig.** Drag&Drop überschreibt nur die
+  eigenen Blöcke, und weiter oben bleiben Reste des Vorgängers liegen — die
+  richten aber nichts an, weil der Bootrom nur den Anfang des Flash startet.
+  Wer sie trotzdem loswerden will: `picotool erase -a`, dauert bei 16 MB über
+  zwei Minuten. Bricht es ab, zusätzlich
   `picotool erase -r 0x10600000 0x11000000`.
+* Zeigt das Display nach dem Aufspielen noch das alte Bild, war es nur ein
+  Soft-Reset. **Einmal stromlos machen** — USB abziehen, kurz warten, wieder
+  einstecken — dann startet auch der Displaycontroller sauber neu.
 * Bewährte Flash-Aufteilung: Firmware ab `0x10000000`, Daten ab `0x10100000`,
   Spielstände kurz vor Ende, **`0x10FFFF00` muss frei bleiben** — die SDK-UF2
   schreibt dort einen Zusatzblock.

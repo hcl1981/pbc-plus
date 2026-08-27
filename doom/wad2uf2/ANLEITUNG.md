@@ -115,30 +115,40 @@ Laufwerk, also für die zweite wieder BOOTSEL halten und neu einstecken.
 
 Später reicht es, nur die WAD-Datei zu tauschen — die Firmware bleibt liegen.
 
-### Beim allerersten Mal: Flash komplett löschen
+### Wenn vorher etwas anderes drauf war
 
-**Wenn vorher MicroPython oder ein anderes Programm auf dem Gerät war, genügt
-das Hinüberziehen nicht.** Es überschreibt nur die eigenen Blöcke, alte Reste
-bleiben weiter oben im Flash stehen. Doom startet dann zwar, aber bei einem
-Neustart zeigt das Display noch das alte Bild — es sieht aus, als liefe das
-alte Programm weiter.
+Kam das Gerät gerade von MicroPython oder einem anderen Programm, zeigt das
+Display nach dem Aufspielen unter Umständen noch das alte Bild — es sieht aus,
+als liefe das alte Programm weiter.
 
-Einmalig hilft `picotool`, das Gerät dafür im BOOTSEL-Modus anschließen:
+**Einmal wirklich stromlos machen genügt:** USB abziehen, kurz warten, wieder
+einstecken. Der automatische Neustart nach dem Hinüberziehen ist nur ein
+Soft-Reset; erst beim Trennen von der Stromversorgung startet auch der
+Displaycontroller sauber neu.
+
+Den Flash zu löschen ist dafür **nicht nötig**. Die neue Firmware liegt am
+Anfang des Flash, und der Bootrom startet genau die — was weiter oben noch
+herumliegt, wird gar nicht ausgeführt und stört nicht.
+
+### Alternative: picotool
+
+Hinüberziehen genügt völlig. Wer trotzdem lieber von der Kommandozeile
+arbeitet — etwa um mehrere Dateien nacheinander zu schreiben, ohne jedes Mal
+neu in den BOOTSEL-Modus zu gehen:
 
 ```bash
-picotool erase -a                 # ganzen Flash löschen
+picotool info -a                  # meldet das Geraet als rp2350-arm-s
 picotool load doom-usb-mp.uf2     # das Spiel
-picotool load DOOM.uf2            # die Level
+picotool load freedoom1.uf2       # die Level
 picotool reboot
 ```
 
-Danach einmal **wirklich stromlos machen**: USB abziehen, kurz warten, wieder
-einstecken. Ab dann startet das Gerät normal ins Spiel, und für alle weiteren
-Male genügt wieder das Hinüberziehen.
+Unter Linux braucht `picotool` ohne passende udev-Regel Root-Rechte, sonst
+meldet es „no accessible RP2350 devices".
 
-> `picotool erase -a` kann bei 16 MB über zwei Minuten dauern. Bricht es ab,
-> zusätzlich den oberen Bereich löschen:
-> `picotool erase -r 0x10600000 0x11000000`
+Wer die Reste des Vorgängers wirklich weghaben will: `picotool erase -a`. Das
+dauert bei 16 MB über zwei Minuten und ist für den Betrieb nicht erforderlich.
+Bricht es ab, hilft zusätzlich `picotool erase -r 0x10600000 0x11000000`.
 
 ---
 
@@ -155,8 +165,11 @@ unangetastet. Kein erneutes Löschen nötig.
 
 ## Wenn es klemmt
 
-**Das Display bleibt schwarz.** Meist wurde der Flash beim ersten Mal nicht
-vollständig gelöscht — siehe oben. Sonst prüft `picotool info -a`, ob das
+**Das Display zeigt noch das alte Bild.** Einmal stromlos machen — siehe oben.
+Der automatische Neustart nach dem Aufspielen reicht dafür nicht.
+
+**Das Display bleibt schwarz.** Prüfen, ob beide Dateien draufgekommen sind:
+ohne Spieldaten zeigt Doom nichts an. `picotool info -a` sagt außerdem, ob das
 Gerät überhaupt als `rp2350-arm-s` gemeldet wird.
 
 **Das Laufwerk erscheint nicht.** Dann wurde BOOTSEL zu früh losgelassen. Kabel

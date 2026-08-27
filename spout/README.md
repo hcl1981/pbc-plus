@@ -61,13 +61,16 @@ Optional:
 BOOTSEL gedrückt halten, USB einstecken, loslassen; das Gerät meldet sich
 als `RPI-RP2`.
 
+Dann die `.uf2` einfach auf das Laufwerk ziehen. Wer lieber `picotool` nimmt:
+
 ```bash
 picotool info -a                 # muss rp2350-arm-s melden
-picotool erase -a                # Pflicht, wenn vorher MicroPython o.ä. drauf war
 picotool load -x build/spout.uf2
 ```
 
-Danach einmal wirklich stromlos machen.
+Danach einmal wirklich stromlos machen — USB abziehen, kurz warten, wieder
+einstecken. Sonst zeigt das Display nach dem Soft-Reset unter Umständen noch
+das alte Bild.
 
 ## Prüfen ohne Gerät
 

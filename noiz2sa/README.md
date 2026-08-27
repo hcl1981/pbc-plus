@@ -60,11 +60,15 @@ und baut neu. Ein XML-Parser läuft **nicht** auf dem Gerät.
 
 BOOTSEL halten, USB einstecken, loslassen.
 
+Dann die `.uf2` einfach auf das Laufwerk ziehen. Wer lieber `picotool` nimmt:
+
 ```bash
 picotool info -a                 # muss rp2350-arm-s melden
-picotool erase -a
 picotool load -x build/noiz2sa.uf2
 ```
+
+Danach einmal stromlos machen, sonst steht auf dem Display womöglich noch das
+Bild des Vorgängers.
 
 ## Prüfen ohne Gerät
 
