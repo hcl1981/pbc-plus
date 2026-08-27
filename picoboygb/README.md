@@ -17,7 +17,7 @@ Arduino-Kern hing:
 | **FatFSUSB** aus arduino-pico | **TinyUSB**-Massenspeicher (`src/usb_*.c`) |
 
 Alles andere — `peanut_gb.h`, `st7789_picoboy.h`, `minigb_apu`, `audio_pwm.h`,
-`gbcolors.h`, `splash.h` … — ist unverändert übernommen.
+`gbcolors.h` … — ist unverändert übernommen.
 
 **Gepflegt wird diese Fassung.** Der Arduino-Sketch liegt nur noch zum
 Nachschlagen daneben.

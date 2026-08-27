@@ -130,7 +130,6 @@ static bool g_audio_enabled = false;
 #include "st7789_picoboy.h"
 
 // Boot-Splash-Bilddaten (240x280 RGB565, const -> liegt im Flash).
-#include "splash.h"
 
 #define AUDIO_PWM_IMPL
 #include "audio_pwm.h"
@@ -1182,29 +1181,27 @@ static void run_usb_stick_mode() {
 
 // ===========================================================================
 // Boot-Splash zeichnen (nur zeichnen - kein delay, kein Clear).
-// ---------------------------------------------------------------------------
-// splash_pixels ist 4 bpp (2 Pixel/Byte) mit 16er-Palette. Wir dekodieren
-// eine Zeile (240 Pixel) in einen kleinen RAM-Puffer und streamen sie ins
-// Display-RAM. Das Fenster wird einmal gesetzt, danach fuellen die
-// aufeinanderfolgenden write_pixels-Aufrufe das RAM fortlaufend.
-//
-// Warte-Zeit und das anschliessende Schwarz-Loeschen macht der Aufrufer -
-// so kann waehrend das Bild steht im Hintergrund schon FatFS gemountet und
-// gescannt werden (keine schwarze Pause vor dem Menue).
 // ===========================================================================
 static void draw_boot_splash(void) {
-    static uint16_t linebuf[SPLASH_W];
-    const uint8_t *p = splash_pixels;
+    // Neutraler Startbildschirm, im Code erzeugt statt aus einer Bilddatei.
+    // Frueher stand hier ein vollflaechiges 240x280-Bild als 4-bpp-Array
+    // (rund 33 KB im Flash); das war ein persoenliches Motiv und ist raus.
+    // Der Ablauf drumherum ist unveraendert: Bild sofort zeichnen, stehen
+    // lassen, waehrenddessen im Hintergrund FatFS mounten und scannen.
+    const uint16_t bg  = st7789_color565(15, 56, 15);    // Game-Boy-Gruen, dunkel
+    const uint16_t mid = st7789_color565(48, 98, 48);
+    const uint16_t fg  = st7789_color565(155, 188, 15);  // die helle Stufe
 
-    st7789_set_window(0, 0, SPLASH_W, SPLASH_H);
-    for (int y = 0; y < SPLASH_H; ++y) {
-        for (int x = 0; x < SPLASH_W; x += 2) {
-            uint8_t b = *p++;
-            linebuf[x]     = splash_palette[b >> 4];    // linkes Pixel
-            linebuf[x + 1] = splash_palette[b & 0x0F];  // rechtes Pixel
-        }
-        st7789_write_pixels(linebuf, SPLASH_W);
-    }
+    st7789_fill(bg);
+
+    // Ein Rahmen in der mittleren Gruenstufe, angelehnt an die vier
+    // Helligkeiten des DMG-Displays.
+    st7789_fill_rect(0, PB_DISP_H / 2 - 34, PB_DISP_W, 2, mid);
+    st7789_fill_rect(0, PB_DISP_H / 2 + 32, PB_DISP_W, 2, mid);
+
+    st7789_draw_text(48, PB_DISP_H / 2 - 16, "PicoBoyGB", fg, bg, 3);
+    st7789_draw_text(52, PB_DISP_H / 2 + 12, "Game Boy Emulator", mid, bg, 1);
+
     gpio_put(PB_PIN_DISP_CS, 1);
 }
 

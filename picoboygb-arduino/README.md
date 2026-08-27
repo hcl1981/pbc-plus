@@ -19,7 +19,7 @@ hier die Vorlage.
 | FatFSUSB aus arduino-pico | TinyUSB-Massenspeicher |
 
 Alles andere — `peanut_gb.h`, `st7789_picoboy.h`, `minigb_apu`, `audio_pwm.h`,
-`gbcolors.h`, `splash.h` — ist unverändert dasselbe.
+`gbcolors.h` — ist unverändert dasselbe.
 
 **Gepflegt wird die SDK-Fassung.** Wer den Emulator benutzen oder verändern
 will, nimmt die.
