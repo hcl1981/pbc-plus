@@ -147,8 +147,7 @@ sind. Eine RP2040-UF2 führt zum Fehler statt zu einer stillen Fehlfunktion.
 Die Firmware allein spielt nichts. Die Level kommen aus einer WAD-Datei, die
 als **zweite** UF2 an eine eigene Flash-Adresse geht (0x10048000). Das Werkzeug
 dafür liegt bei seinem Projekt in `doom/wad2uf2/` und noch einmal in
-`dist/wad2uf2/`, für alle, die nur flashen wollen. Die Anleitung liegt
-jeweils daneben als `ANLEITUNG.md`:
+`dist/doom/`, wo es zusammen mit der Firmware und der Anleitung liegt:
 
 ```bash
 doom/wad2uf2/bin/whd_gen-linux-x86_64  DOOM.WAD     # -> DOOM.uf2
@@ -156,7 +155,7 @@ doom/wad2uf2/bin/whd_gen-linux-x86_64  DOOM.WAD     # -> DOOM.uf2
 
 Unter Windows die `.exe` doppelklicken oder die WAD daraufziehen. Der genaue
 Ablauf und die Flash-Adressen stehen in
-[`dist/wad2uf2/ANLEITUNG.md`](../dist/wad2uf2/ANLEITUNG.md).
+[`dist/doom/ANLEITUNG.md`](../dist/doom/ANLEITUNG.md).
 
 Die WADs selbst sind kommerzielle Daten von id Software. Sie liegen diesem
 Repo **nicht** bei und dürfen nicht weitergegeben werden — jede und jeder

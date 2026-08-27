@@ -66,9 +66,9 @@ if [ "${CLEAN}" = 1 ]; then
     # Abräumen genügt das Löschen, und es passiert der Reihe nach — sonst
     # räumen noch laufende Jobs einem gerade startenden Bau die Ordner weg.
     pbc_info "Alle Bauordner und die gebauten Abbilder löschen"
-    # dist/wad2uf2/ bleibt stehen: mitgelieferte Werkzeuge, kein Bauergebnis.
+    # dist/doom/ bleibt stehen: die Werkzeuge dort sind kein Bauergebnis.
     # Beim nächsten Lauf wird es ohnehin aus doom/wad2uf2/ aufgefrischt.
-    rm -f "${ROOT}"/dist/*.uf2 "${ROOT}/dist/INHALT.txt"
+    rm -f "${ROOT}"/dist/*.uf2 "${ROOT}/dist/INHALT.txt" "${ROOT}"/dist/doom/*.uf2
     for p in "${ALL[@]}"; do
         rm -rf "${ROOT}/${p}/build" "${ROOT}/${p}/.pio"
     done
@@ -107,11 +107,18 @@ pbc_head "dist/ beschriften"
         printf '%-38s %10s  %s\n' "$(basename "$f")" "$(du -h "$f" | cut -f1)" "$(sha256sum "$f" | cut -c1-16)"
     done
     echo
-    echo "Doom braucht zusätzlich eine WAD an eigener Flash-Adresse."
-    echo "Das Werkzeug dafür liegt hier in wad2uf2/ — die Anleitung dazu"
-    echo "in wad2uf2/ANLEITUNG.md. Die WADs selbst sind kommerzielle Daten"
-    echo "von id Software, liegen nicht bei und dürfen nicht weitergegeben"
-    echo "werden."
+    if [ -d "${ROOT}/dist/doom" ]; then
+        echo; echo "doom/ — Firmware, Werkzeuge und Anleitung fuer Doom"
+        for f in "${ROOT}"/dist/doom/*.uf2; do [ -e "$f" ] || continue
+            printf '%-38s %10s  %s\n' "doom/$(basename "$f")" "$(du -h "$f" | cut -f1)" "$(sha256sum "$f" | cut -c1-16)"
+        done
+        echo
+        echo "Doom braucht zusaetzlich eine WAD an eigener Flash-Adresse."
+        echo "Wie man sie aus der eigenen WAD erzeugt und aufspielt, steht"
+        echo "Schritt fuer Schritt in doom/ANLEITUNG.md. Die WADs selbst sind"
+        echo "kommerzielle Daten von id Software, liegen nicht bei und duerfen"
+        echo "nicht weitergegeben werden."
+    fi
     echo
     echo "PicoBoyGB braucht ROMs: Mitte halten, RESET drücken, dann meldet"
     echo "sich das Gerät als USB-Stick zum Draufkopieren."
@@ -124,9 +131,12 @@ pbc_ok "dist/INHALT.txt geschrieben"
 # auseinanderlaufen, wird die dist-Fassung hier bei jedem Lauf aus der
 # Projektfassung aufgefrischt — maßgeblich ist doom/wad2uf2/.
 if [ -d "${ROOT}/doom/wad2uf2" ]; then
-    rm -rf "${ROOT}/dist/wad2uf2"
-    cp -a "${ROOT}/doom/wad2uf2" "${ROOT}/dist/wad2uf2"
-    pbc_ok "dist/wad2uf2 — WAD-Werkzeuge aus doom/wad2uf2 aufgefrischt"
+    mkdir -p "${ROOT}/dist/doom"
+    for f in bin wad2uf2.py build-whd_gen.sh whd_gen_compat.h ANLEITUNG.md; do
+        rm -rf "${ROOT}/dist/doom/${f}"
+        cp -a "${ROOT}/doom/wad2uf2/${f}" "${ROOT}/dist/doom/${f}"
+    done
+    pbc_ok "dist/doom — Werkzeuge und Anleitung aus doom/wad2uf2 aufgefrischt"
 fi
 
 # ---------------------------------------------------------------------------

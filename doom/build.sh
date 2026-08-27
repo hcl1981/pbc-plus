@@ -21,7 +21,7 @@
 # WICHTIG: Die Firmware allein spielt nichts. Die Level kommen aus einer
 # WAD-Datei, die als zweite UF2 an eine eigene Flash-Adresse geht. Das
 # Werkzeug dafür liegt in wad2uf2/ — siehe dessen ANLEITUNG.md. Dieselben
-# Dateien liegen noch einmal in ../dist/wad2uf2/, für alle, die nur flashen.
+# Dateien liegen noch einmal in ../dist/doom/, zusammen mit der Firmware.
 #
 # Aufruf:   ./build.sh          bauen
 #           ./build.sh clean    Bauordner löschen und neu bauen
@@ -51,7 +51,7 @@ if [ -z "${UF2}" ]; then
     exit 1
 fi
 
-pbc_collect "${UF2}" "doom-usb-mp.uf2" || exit 1
+pbc_collect "${UF2}" "doom-usb-mp.uf2" doom || exit 1
 pbc_verify_dist doom-usb-mp.uf2 || exit 1
 
 cat <<'EOF'

@@ -49,12 +49,12 @@ nicht durch das Kabel.
 
 **Doom braucht eine WAD.** Die Firmware allein spielt nichts — die Level kommen
 aus einer WAD-Datei, die als zweite UF2 an eine eigene Flash-Adresse geht.
-[`dist/wad2uf2/`](dist/wad2uf2/) enthält `whd_gen` für Linux und Windows: eigene
-WAD hineingeben, flashfertige UF2 kommt heraus; unter Windows reicht ein
-Doppelklick. Die Schritt-für-Schritt-Anleitung steht daneben in
-[`ANLEITUNG.md`](dist/wad2uf2/ANLEITUNG.md). Dieselben Dateien liegen auch bei
-ihrem Projekt in [`doom/wad2uf2/`](doom/wad2uf2/) — in `dist/` findet sie, wer
-den Quellbaum gar nicht erst durchsucht. Die WADs selbst sind kommerzielle
+[`dist/doom/`](dist/doom/) enthält alles dafür an einer Stelle: die Firmware,
+`whd_gen` für Linux und Windows und eine Schritt-für-Schritt-Anleitung
+([`ANLEITUNG.md`](dist/doom/ANLEITUNG.md)) vom Umwandeln bis zum Aufspielen.
+Eigene WAD hineingeben, flashfertige UF2 kommt heraus; unter Windows reicht ein
+Doppelklick. Die Werkzeuge liegen zusätzlich bei ihrem Projekt in
+[`doom/wad2uf2/`](doom/wad2uf2/). Die WADs selbst sind kommerzielle
 Daten von id Software und dürfen nicht weitergegeben werden.
 
 **PicoBoyGB braucht ROMs.** Nach dem Flashen **Mitte** halten und **RESET**

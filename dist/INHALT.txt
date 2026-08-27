@@ -7,22 +7,25 @@ Flashen: BOOTSEL gedrückt halten, USB anstecken, die gewünschte
 Es passt immer nur EINE Firmware aufs Gerät.
 
 DATEI                                     GRÖSSE  SHA256 (Anfang)
-doom-usb-mp.uf2                              504K  f4eeffe29d44de53
 i2collection.uf2                             352K  06caddf8420545ef
 jumpnbump.uf2                                1.1M  2e4f57597cf0168f
 micropolis.uf2                               2.0M  d817994650e66e23
 micropython-PBC_PLUS.uf2                     740K  b1851d49712bb523
 noiz2sa.uf2                                  120K  597e5833290d22a1
-picoboygb.uf2                                196K  7d5b6ec4cd7d0460
+picoboygb.uf2                                128K  93672907ee58848e
 spout.uf2                                    120K  71881f01a486539b
 stransball2.uf2                              740K  3b9b4dc1f52a9561
 tyrian-komplett.uf2                           19M  00dc75202432fbdc
 
-Doom braucht zusätzlich eine WAD an eigener Flash-Adresse.
-Das Werkzeug dafür liegt hier in wad2uf2/ — die Anleitung dazu
-in wad2uf2/ANLEITUNG.md. Die WADs selbst sind kommerzielle Daten
-von id Software, liegen nicht bei und dürfen nicht weitergegeben
-werden.
+
+doom/ — Firmware, Werkzeuge und Anleitung fuer Doom
+doom/doom-usb-mp.uf2                         504K  f4eeffe29d44de53
+
+Doom braucht zusaetzlich eine WAD an eigener Flash-Adresse.
+Wie man sie aus der eigenen WAD erzeugt und aufspielt, steht
+Schritt fuer Schritt in doom/ANLEITUNG.md. Die WADs selbst sind
+kommerzielle Daten von id Software, liegen nicht bei und duerfen
+nicht weitergegeben werden.
 
 PicoBoyGB braucht ROMs: Mitte halten, RESET drücken, dann meldet
 sich das Gerät als USB-Stick zum Draufkopieren.
