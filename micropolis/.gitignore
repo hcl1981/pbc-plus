@@ -1,0 +1,19 @@
+# Build output
+build/
+*.uf2
+*.elf
+*.bin
+*.dis
+*.map
+
+# Locally fetched Pico SDK (when PICO_SDK_PATH is not set)
+pico-sdk/
+
+# PlatformIO (if ever used)
+.pio/
+
+# Editor / OS
+.vscode/
+.cache/
+compile_commands.json
+.DS_Store

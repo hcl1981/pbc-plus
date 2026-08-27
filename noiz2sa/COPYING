@@ -1,0 +1,50 @@
+Noiz2sa fuer den PicoBoy Color Plus
+Portierung von noiz2sa 0.52 (C) Kenta Cho.
+
+Die Vorlage steht unter der folgenden Lizenz; sie verlangt, dass dieser
+Hinweis mitgeliefert wird:
+
+Copyright 2002 Kenta Cho. All rights reserved. 
+
+Redistribution and use in source and binary forms, 
+with or without modification, are permitted provided that 
+the following conditions are met: 
+
+ 1. Redistributions of source code must retain the above copyright notice, 
+    this list of conditions and the following disclaimer. 
+
+ 2. Redistributions in binary form must reproduce the above copyright notice, 
+    this list of conditions and the following disclaimer in the documentation 
+    and/or other materials provided with the distribution. 
+
+THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, 
+INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND 
+FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL 
+THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, 
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; 
+OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
+WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR 
+OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF 
+ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+---
+
+Portierung auf den PicoBoy Color Plus (RP2350, Pico SDK), 2026.
+Diese Portierung steht unter denselben Bedingungen.
+
+Aus noiz2sa 0.52 uebernommen und angepasst: die Spiellogik (src/game.c) sowie
+die Sperrfeuermuster in data_bml_src/, die tools/mkbml.py nach src/bml_data.c
+uebersetzt.
+
+Neu geschrieben und nicht aus der Vorlage uebernommen: der BulletML-Uebersetzer
+(tools/mkbml.py) und die zugehoerige Ausfuehrung (src/bml.c) -- die Vorlage
+benutzt dafuer libBulletML von Shinichiro Hamaji, das hier nicht mehr gebraucht
+wird --, der Renderer (src/render.c), die Farbzuordnung (src/palette.h,
+src/color565.h), die Textausgabe (src/font.c) und die gesamte Geraeteanbindung
+(src/pbc/) samt Testrahmen (tools/host_test.c, tools/bml_test.c, selftest/).
+
+Die Schriftdaten in src/font_data.c sind von tools/mkfont.py aus DejaVu Sans
+gerastert.  DejaVu steht unter der Bitstream-Vera-Lizenz, die Weitergabe und
+Aenderung erlaubt und verlangt, dass ihr Text beiliegt: siehe
+doc/LICENSE.DejaVu.

@@ -1,0 +1,51 @@
+# Bauordner — entstehen neu über build_all.sh bzw. das build.sh eines Projekts
+build/
+build-picoboy/
+build-out/
+build-PBC_PLUS/
+.pio/
+
+# Protokolle der Bauläufe
+*.log
+
+# jumpnbump legt über tools/copy_uf2.py nach jedem Bau eine zweite Kopie der
+# Firmware in seine Projektwurzel. Die maßgebliche Fassung liegt in dist/;
+# zwei Stände derselben Datei im Repo stiften nur Verwirrung.
+jumpnbump/jumpnbump.uf2
+
+# Python
+__pycache__/
+*.pyc
+
+# Editoren und Systeme
+.vscode/
+.idea/
+.DS_Store
+*~
+*.swp
+
+# Sicherheitsnetz: falls jemand ein SDK versehentlich in einen Projektordner
+# klont, soll es nicht im Repo landen. Regulär liegt es in ~/.cache/pbcp-sdks.
+pico-sdk/
+pico-extras/
+
+# Werkzeugketten und Zwischenstände, die nicht ins Repo gehören
+.claude/
+.sconsign*
+
+# Hinweis: dist/ wird BEWUSST mitversioniert. Wer nur flashen will, soll die
+# fertigen .uf2 herunterladen können, ohne erst eine Werkzeugkette einzurichten.
+
+# WAD-Dateien von id Software sind kommerzielle Daten und dürfen nicht
+# weitergegeben werden. Der Ausschluss steht hier, damit sie auch dann nicht
+# versehentlich im Repo landen, wenn jemand seine eigene Kopie zum Testen
+# neben die Firmware legt.
+*.WAD
+*.wad
+*-wad.uf2
+*-wad_*.uf2
+DOOM*.uf2
+
+# Ebenso Game-Boy-ROMs für PicoBoyGB.
+*.gb
+*.gbc

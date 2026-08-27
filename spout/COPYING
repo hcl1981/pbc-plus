@@ -1,0 +1,34 @@
+Copyright (c) 2002-2006 Kuni, 2010 Nick White
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to
+deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+IN THE SOFTWARE.
+
+---
+
+Portierung auf den PicoBoy Color Plus (RP2350, Pico SDK), 2026.
+Diese Portierung steht unter denselben Bedingungen.  Neu geschrieben und
+nicht aus der Vorlage uebernommen sind: die Sinustabelle (tools/mksin.py),
+der Renderer (src/render.c), die Farbzuordnung (src/palette.h und
+src/color565.h), die Textausgabe (src/font.c), die gesamte Geraeteanbindung
+(src/pbc/) sowie die Testrahmen (tools/host_test.c, selftest/).  Aus
+spout-1.4 uebernommen und angepasst ist die Spiellogik in src/game.c.
+
+Die Schriftdaten in src/font_data.c sind von tools/mkfont.py aus DejaVu Sans
+gerastert.  DejaVu steht unter der Bitstream-Vera-Lizenz, die Weitergabe und
+Aenderung ausdruecklich erlaubt und verlangt, dass ihr Text beiliegt: siehe
+doc/LICENSE.DejaVu.

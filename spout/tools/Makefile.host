@@ -1,0 +1,11 @@
+# Host-Test: baut den Spielkern fuer den Buildrechner, nicht fuer das Geraet.
+CC      ?= gcc
+CFLAGS  ?= -O1 -g -std=c99 -Wall -Wextra -Wno-unused-parameter \
+           -fsanitize=address,undefined -fno-omit-frame-pointer
+SRC      = ../src/game.c ../src/render.c ../src/font.c ../src/font_data.c host_test.c
+all: host_test
+host_test: $(SRC) ../src/game.h ../src/render.h ../src/palette.h ../src/font.h ../src/sintable.h
+	$(CC) $(CFLAGS) -I../src -o $@ $(SRC)
+clean:
+	rm -f host_test
+.PHONY: all clean

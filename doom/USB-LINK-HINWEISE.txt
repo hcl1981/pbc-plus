@@ -1,0 +1,138 @@
+HINWEISE ZU SPORADISCHEN VERBINDUNGSABBRUECHEN
+(USB-Link zwischen zwei RP2350 / PicoBoy Color Plus, Vorlage: USBCollection)
+
+Erfahrungen aus der Doom-Portierung auf demselben Aufbau. Nach Wahrscheinlich-
+keit sortiert. Punkte 1-3 betreffen den TinyUSB-Weg der Sammlung, Punkte 4-8
+gelten unabhaengig vom Transport.
+
+
+1. TINYUSB-KORREKTUREN PRUEFEN  (haeufigste Ursache)
+
+Problem: Ohne die Patches haelt EIN einzelner Uebertragungsfehler den gesamten
+Mikrocontroller an (Bild eingefroren, USB tot, Hauptschleife nie wieder
+erreicht). Sieht von aussen aus wie "seltener Verbindungsabbruch, Reset noetig".
+
+Zu tun:
+- tools/patch_tinyusb.py auf GENAU die SDK-Kopie anwenden, mit der das Projekt
+  baut (nicht auf eine andere lokale SDK-Installation).
+- Danach den Build-Ordner LOESCHEN und neu erzeugen, sonst uebersetzt CMake
+  TinyUSB nicht neu und das Skript bleibt wirkungslos.
+- Zwingend: panic("Data Seq Error"), panic("Unhandled IRQ"),
+  panic("hcd_clear_stall"), panic("ep already available"),
+  panic("Can't continue xfer"), panic("Unhandled buffer"),
+  panic("Invalid speed"), fehlende RESUME-Quittung (sonst
+  Interrupt-Dauersturm), Control-Transfer-Timeout in usbh.c.
+  Fast alles davon betrifft die HOST-Rolle.
+- Ohne SDK-Eingriff als Notloesung: -Wl,--wrap=panic mit eigenem
+  __wrap_panic(), das watchdog_reboot() aufruft (panic ist noreturn, das
+  Ersatz-panic darf NICHT zurueckkehren). Deckt RESUME-Quittung und
+  Warteschleifen nicht ab.
+
+
+2. WIEDERHERSTELLUNG NACHBAUEN
+
+Problem: Die Bibliothek USBLink kann sich NICHT selbst erholen. Sie bietet nur
+usb_link_peer_alive(timeout_ms) zum Abfragen. Die Erholung steckt in der
+Spielesammlung, nicht in der Bibliothek. Wer die Bibliothek uebernimmt, aber
+diesen Teil nicht, hat einen Link ohne Selbstheilung.
+
+Zu tun:
+- 3 s ohne Empfang -> USB-Neustart. Zweimal sanft, dann Hardware-Reset des
+  USB-Blocks per reset_unreset_block_num_wait_blocking(RESET_USBCTRL).
+- Danach ist die Verbindung typisch nach wenigen Sekunden wieder da.
+
+
+3. BLOCKADEN BESEITIGEN
+
+Problem: Schon 60-240 ms ohne usb_link_task() koennen die Verbindung
+festfahren. Kritisch ist die DEVICE-Rolle: ohne tud_task() antwortet das Geraet
+nicht mehr auf Control-Transfers, der Host wirft es raus, es braucht eine
+Neu-Enumeration.
+
+Zu tun:
+- Kein reguläres delay()/sleep_ms() im laufenden Betrieb. Stattdessen ein
+  linkDelay(ms), das waehrend der Wartezeit usb_link_task() weiter aufruft.
+- usb_link_task() auch in Ladevorgaenge, Levelwechsel, Siegesbildschirme,
+  Pausen und jede eigene Warteschleife streuen.
+- Nur EIN usb_link_send() je Task-Durchlauf: passt ein Frame nicht in den
+  Sendepuffer, wird er STILLSCHWEIGEND verworfen (Device sofort, Host nach bis
+  zu 20 ms Warten).
+
+Falls die Rolle zur Laufzeit gewaehlt wird (Menue HOST/JOIN):
+- Beim Booten tud_disconnect() aufrufen, BEVOR die Rolle feststeht. Sonst sieht
+  ein zuerst gestarteter Host das Boot-USB-Geraet der Gegenseite in einem
+  Zwischenzustand und mountet dessen CDC nie sauber.
+- Nach dem Verbinden ca. 400 ms warten, bevor Nutzdaten fliessen.
+- Robuster waere: Rolle vor der ersten USB-Initialisierung festlegen und nach
+  der Menuewahl neu starten.
+
+
+4. EIGENE BLINDHEIT NICHT DER GEGENSTELLE ANLASTEN
+
+Problem: "Seit X ms nichts empfangen" wird gemessen, ohne zu beruecksichtigen,
+dass das eigene Programm selbst mehrere Sekunden nicht hingeschaut hat
+(Levelladen, langer Frame). Fuehrt zum Abbruch genau beim Spielstart.
+
+Zu tun:
+- Zeit zwischen zwei eigenen Poll-Durchlaeufen messen. War sie laenger als
+  ~100 ms, diese Spanne der Verbindung gutschreiben statt anrechnen.
+- Die Uhr fuer "letzter Empfang" beim Spielstart neu stellen.
+
+
+5. ZEITGRENZEN GROSSZUEGIG WAEHLEN
+
+Problem: Zu kurze Schwellen reissen bei jeder normalen Fehlerserie ab.
+
+Zu tun:
+- "Verbindung tot" fruehestens nach 3-10 s.
+- Kurze Schwellen (0,5 s) nur fuer ANZEIGEN verwenden, nie fuer
+  Abbruchentscheidungen.
+
+
+6. ABBRUCH DARF DAS SPIEL NIE EINFRIEREN
+
+Problem: Faellt die Verbindung weg, wartet das Spiel auf Daten, die nicht mehr
+kommen. Der Spieler greift zum Reset, und die Ursache bleibt unbekannt.
+
+Zu tun:
+- Wachhund: kommt N Sekunden lang kein Spielfortschritt zustande, Verbindung
+  aufloesen und allein weiterspielen.
+- Zustand sichtbar machen ("WARTE AUF MITSPIELER 3s", "VERBINDUNG WEG").
+
+
+7. VERLORENE PAKETE EINPLANEN
+
+Problem: Einmalige Ereignisse gehen verloren und werden nie wiederholt.
+
+Zu tun:
+- Wiederkehrender Zustand (Positionen, Punktestand je Tick) ist unkritisch, der
+  naechste Tick ersetzt ihn.
+- Einmalige Ereignisse (Rundenstart, Tod, Levelwechsel) mehrfach senden -- die
+  Sammlung schickt sie fuenfmal ueber 200 ms.
+- Alternativ quittieren und bis zur Quittung wiederholen.
+
+
+8. DIAGNOSE STATT VERMUTUNG
+
+Problem: Ohne Messwerte sind alle Theorien gleich plausibel. Bei Doom wurden
+tagelang Taktraten und Kabel verdaechtigt; die Ursache war eine falsche
+Handshake-Bedingung.
+
+Zu tun:
+- Auf dem Bildschirm anzeigen: Zaehler fuer erfolgreiche Uebertragungen, je
+  einen Zaehler pro Fehlerursache, die zuletzt aufgetretene Ursache und -- wo
+  moeglich -- an welcher Stelle/Byteposition ein Austausch abgebrochen ist.
+- A/B-Vergleich unter Last: Der Link lief in einem Testprogramm einwandfrei und
+  im Spiel nicht, weil dort der zweite Kern permanent Bilder ueber SPI schob.
+  Ohne diesen Vergleich war das nicht einzugrenzen.
+- Immer nur EINE Aenderung pro Testlauf. Drei gleichzeitig, und ein Rueckschritt
+  ist nicht mehr zuzuordnen.
+
+
+9. ALLGEMEINE FALLE
+
+Freigeben ist nicht dasselbe wie "auf definiertem Pegel". Bei Doom wurde eine
+Datenleitung freigegeben und der noch anliegende Rest des EIGENEN Signals als
+Antwort der Gegenstelle gelesen -- Fehlerrate 65-80 %, unabhaengig von der
+Taktrate. Ueberall dort, wo ein Zustandswechsel als Signal dient, pruefen:
+sehe ich gerade die Gegenstelle oder mich selbst?

@@ -1,0 +1,13 @@
+CC      ?= gcc
+CFLAGS  ?= -O1 -g -std=c99 -Wall -Wextra -Wno-unused-parameter \
+           -fsanitize=address,undefined -fno-omit-frame-pointer
+SRC      = ../src/game.c ../src/render.c ../src/segfont.c \
+           ../src/bml.c ../src/bml_data.c host_test.c
+all: host_test bml_test
+host_test: $(SRC)
+	$(CC) $(CFLAGS) -I../src -o $@ $(SRC)
+bml_test: bml_test.c ../src/bml.c ../src/bml_data.c
+	$(CC) $(CFLAGS) -I../src -o $@ bml_test.c ../src/bml.c ../src/bml_data.c
+clean:
+	rm -f host_test bml_test
+.PHONY: all clean

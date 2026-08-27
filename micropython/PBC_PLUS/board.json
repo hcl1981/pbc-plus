@@ -1,0 +1,20 @@
+{
+    "deploy": ["deploy.md"],
+    "docs": "",
+    "features": [
+        "External Flash",
+        "USB",
+        "ST7789 Display",
+        "Buttons",
+        "Joystick",
+        "Accelerometer"
+    ],
+    "id": "pbc_plus",
+    "images": [],
+    "mcu": "rp2350",
+    "product": "PicoBoy Color Plus",
+    "thumbnail": "",
+    "url": "https://picoboy.de/",
+    "vendor": "PicoBoy",
+    "variants": {}
+}
