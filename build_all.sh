@@ -136,7 +136,9 @@ pbc_ok "dist/INHALT.txt geschrieben"
 # Projektfassung aufgefrischt — maßgeblich ist doom/wad2uf2/.
 if [ -d "${ROOT}/doom/wad2uf2" ]; then
     mkdir -p "${ROOT}/dist/doom"
-    for f in bin wad2uf2.py build-whd_gen.sh whd_gen_compat.h ANLEITUNG.md; do
+    # Nur was ein Endverbraucher braucht. Das Bauwerkzeug (build-whd_gen.sh,
+    # whd_gen_compat.h) und der optionale Python-Aufsatz bleiben beim Projekt.
+    for f in bin ANLEITUNG.md; do
         rm -rf "${ROOT}/dist/doom/${f}"
         cp -a "${ROOT}/doom/wad2uf2/${f}" "${ROOT}/dist/doom/${f}"
     done

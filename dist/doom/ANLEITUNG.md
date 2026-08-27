@@ -77,11 +77,8 @@ chmod +x bin/whd_gen-linux-x86_64
 ### macOS
 
 Für macOS liegt **kein fertiges Programm bei** — es muss auf einem Mac gebaut
-werden, das geht auf einem anderen System nicht:
-
-```bash
-./build-whd_gen.sh
-```
+werden, das geht auf einem anderen System nicht. Das Bauskript dafür liegt im
+Repo unter `doom/wad2uf2/build-whd_gen.sh`.
 
 ### Eigener Ausgabename
 
@@ -223,8 +220,7 @@ Im Spiel schaltet **A** zur nächsten Waffe weiter.
 | `freedoom-LIZENZ.txt` | die BSD-Lizenz von Freedoom — gehört zur Weitergabe dazu |
 | `freedoom-CREDITS.txt` | die Mitwirkenden an Freedoom |
 | `bin/` | `whd_gen` für Linux und Windows |
-| `wad2uf2.py` | optionaler Python-Aufsatz mit Dateidialog — **nicht nötig** |
-| `build-whd_gen.sh` | baut das Werkzeug selbst, etwa für macOS |
-| `whd_gen_compat.h` | wird nur beim Selberbauen gebraucht |
 
-Der Quelltext der Portierung liegt im Repo unter `doom/`.
+Hier liegt nur, was zum Spielen gebraucht wird. Wer `whd_gen` selbst bauen
+will — etwa für macOS —, findet Quelltext und Bauskript im Repo unter
+`doom/wad2uf2/`, die Portierung selbst unter `doom/`.
