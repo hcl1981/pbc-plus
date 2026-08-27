@@ -4,9 +4,8 @@ Portierung von [OpenTyrian](https://github.com/opentyrian/opentyrian) auf den
 PicoBoy Color Plus (RP2350, 512 KB RAM, 16 MB Flash, ST7789 240×280, Piezo).
 Einzelspieler und Zweispieler über ein USB-C-Kabel zwischen zwei Geräten.
 
-**Stand: baut vollständig, `tyrian.uf2` liegt vor.** 229 KB Firmware, 468 KB
-statisches RAM von 512 KB, rund 41 KB Heap. **Auf Hardware gelaufen ist noch
-nichts** — was als Nächstes zu prüfen ist, steht unten.
+**Stand: läuft auf dem Gerät.** 229 KB Firmware, 468 KB statisches RAM von
+512 KB, rund 41 KB Heap.
 
 ---
 
@@ -182,20 +181,16 @@ deshalb ein Zeiger, kein Lesevorgang — es wird nichts ins RAM kopiert.
 
 ---
 
-## Was noch offen ist
+## Wenn etwas klemmt
 
-Alles baut. Was fehlt, ist der erste Lauf auf echter Hardware — und der wird
-Dinge zeigen, die sich ohne Gerät nicht klären lassen.
+Die Portierung läuft. Falls nach einer Änderung doch etwas nicht stimmt, sind
+das die Stellen, an denen es erfahrungsgemäß hängt:
 
-### Zuerst prüfen
-
-1. **Bild überhaupt da?** Wenn der Schirm schwarz bleibt, zuerst das
-   Hintergrundlicht verdächtigen (GP26, muss per PWM an) und dann die
-   SPI-Pins — beides sind die Stellen, an denen die Doom-Portierung auf
-   derselben Hardware hängengeblieben ist.
-2. **Farben richtig herum?** MADCTL steht auf `0xC8` (BGR, 180° gedreht) und
-   der Panelversatz auf 20 Zeilen. Beides aus der laufenden Doom-Portierung
-   übernommen, aber ungeprüft für diesen Bildausschnitt.
+1. **Bild bleibt schwarz.** Zuerst das Hintergrundlicht verdächtigen (GP26,
+   muss per PWM an), dann die SPI-Pins — an beidem ist die Doom-Portierung
+   auf derselben Hardware schon hängengeblieben.
+2. **Farben verdreht.** MADCTL steht auf `0xC8` (BGR, 180° gedreht), der
+   Panelversatz auf 20 Zeilen. Beides aus der Doom-Portierung übernommen.
 3. **Bildrate.** Das Spielfeld sind 240×184 in RGB565, also 88 KB über SPI je
    Bild — rechnerisch 11 ms bei 62,5 MHz, dazu die Umrechnung. Die
    Anzeigeleiste wird nur geschoben, wenn sie sich geändert hat. Reicht es

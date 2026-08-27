@@ -103,9 +103,13 @@ WAD bei 0x10040000). Passend dazu wandelt `whd_gen` die WAD mit
 `-no-super-tiny` ins WHD-Format um — die super-tiny-Variante kann die
 größeren Level der Vollversion nicht packen.
 
-**Der Ton ist aus.** Der PWM/DMA-Audiopfad blockiert beim Start, deshalb wird
-die Sound- und OPL-Musik-Init auf dem PicoBoy übersprungen. Ohne diesen
-Schritt bleibt das Gerät beim Booten hängen — kein Bild, keine Beleuchtung.
+**Die Musik ist aus, die Klangeffekte laufen.** Schüsse, Türen und Gegner sind
+zu hören; nur die OPL-Musik ist abgeklemmt. `I_OPL_InitMusic()` meldet auf dem
+PicoBoy schlicht „keine Musik" und lässt `music_module` auf `NULL`, womit jeder
+spätere Musikaufruf ins Leere läuft. Zwei Gründe: Der Piezo kann die
+OPL-Klänge ohnehin nicht sinnvoll wiedergeben, und der echte Init-Pfad würde
+GENMIDI aus der WAD laden und I2S-Audiotreiber einrichten, die es hier nicht
+gibt.
 
 **Die Targets `doom_tiny_usb` und `doom_tiny_nost_usb` werden nicht gebaut.**
 Ihr `USB_SUPPORT` ist die USB-**Tastatur**unterstützung aus rp2040-doom und

@@ -8,10 +8,9 @@ Color Plus. Einzelspieler und Zweispieler über ein USB-C-Kabel.
 ./build.sh          # -> ../dist/tyrian-komplett.uf2
 ```
 
-> **Stand:** Baut vollständig und passt ins Gerät (229 KB Firmware, 468 KB von
-> 512 KB statischem RAM, rund 41 KB Heap). **Auf Hardware gelaufen ist es noch
-> nicht.** Was zuerst zu prüfen wäre, steht in
-> [`pbc-tyrian/README.md`](pbc-tyrian/README.md).
+> **Stand:** Läuft auf dem Gerät. 229 KB Firmware, 468 KB von 512 KB
+> statischem RAM, rund 41 KB Heap. Was beim Portieren anzupassen war und wo
+> noch Luft ist, steht in [`pbc-tyrian/README.md`](pbc-tyrian/README.md).
 
 ## Aufbau
 

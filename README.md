@@ -75,21 +75,6 @@ Bei den GPL-Projekten (`stransball2`, `tyrian`, `doom`, `jumpnbump`,
 oder angeboten werden. Das ist der praktische Unterschied zu den MIT-Projekten
 daneben.
 
-## Bekannte Baustellen
-
-Ehrlich gesagt, damit niemand danach sucht:
-
-* **`tyrian`** baut vollständig, ist aber **noch nie auf Hardware gelaufen**.
-* **`doom`: der Ton ist aus.** Der PWM/DMA-Audiopfad blockiert beim Start,
-  deshalb wird die Sound-Init auf dem PicoBoy übersprungen. Details in
-  [`doom/README.md`](doom/README.md).
-* **`doom`: die vier Änderungen an der Bildausgabe** sollen die vollen 35 Tics
-  je Sekunde halten. Die erwartete Wirkung ist beschrieben, aber **auf Hardware
-  noch nicht gemessen** — siehe `doom/picoboy-doom/TEMPO.md`.
-* **`micropolis`**: die Display-Pins SCK/MOSI wurden aus dem Vorgängerprojekt
-  MicroCityPBC nie notiert. `src/config.h` nimmt spi0, SCK=GP18, MOSI=GP19 an.
-  Bleibt der Schirm dunkel, ist das die erste Stelle zum Nachsehen.
-
 ## Hardware-Referenz
 
 [`docs/HARDWARE.md`](docs/HARDWARE.md) sammelt, was beim Portieren auf dieses
