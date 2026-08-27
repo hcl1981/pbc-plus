@@ -18,17 +18,11 @@ spout.uf2                                    120K  71881f01a486539b
 stransball2.uf2                              740K  3b9b4dc1f52a9561
 tyrian-komplett.uf2                           19M  00dc75202432fbdc
 
-selbsttest/ — Prüffirmware für Display, Tasten, Ton und Bildzeit,
-dazu Tyrian ohne die Spieldaten (nur die Firmware).
-noiz2sa_selftest.uf2                         124K  ec7ad54bdf5188c6
-spout_selftest.uf2                           120K  3fd12a3cb87536ec
-stransball2_selftest.uf2                     744K  682633bbc0496936
-tyrian-nur-firmware.uf2                      540K  79869cfe523b9570
-
 Doom braucht zusätzlich eine WAD an eigener Flash-Adresse.
-Das Werkzeug dafür liegt im Repo unter doom/wad2uf2/. Die WADs selbst
-sind kommerzielle Daten von id Software, liegen nicht bei und
-dürfen nicht weitergegeben werden.
+Das Werkzeug dafür liegt hier in wad2uf2/ — die Anleitung dazu
+in wad2uf2/ANLEITUNG.md. Die WADs selbst sind kommerzielle Daten
+von id Software, liegen nicht bei und dürfen nicht weitergegeben
+werden.
 
 PicoBoyGB braucht ROMs: Mitte halten, RESET drücken, dann meldet
 sich das Gerät als USB-Stick zum Draufkopieren.

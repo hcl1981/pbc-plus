@@ -65,8 +65,10 @@ if [ "${CLEAN}" = 1 ]; then
     # `clean` löscht den Bauordner und baut anschließend gleich weiter. Zum
     # Abräumen genügt das Löschen, und es passiert der Reihe nach — sonst
     # räumen noch laufende Jobs einem gerade startenden Bau die Ordner weg.
-    pbc_info "Alle Bauordner und dist/ löschen"
-    rm -rf "${ROOT}/dist"
+    pbc_info "Alle Bauordner und die gebauten Abbilder löschen"
+    # dist/wad2uf2/ bleibt stehen: mitgelieferte Werkzeuge, kein Bauergebnis.
+    # Beim nächsten Lauf wird es ohnehin aus doom/wad2uf2/ aufgefrischt.
+    rm -f "${ROOT}"/dist/*.uf2 "${ROOT}/dist/INHALT.txt"
     for p in "${ALL[@]}"; do
         rm -rf "${ROOT}/${p}/build" "${ROOT}/${p}/.pio"
     done
@@ -104,27 +106,28 @@ pbc_head "dist/ beschriften"
     for f in "${ROOT}"/dist/*.uf2; do [ -e "$f" ] || continue
         printf '%-38s %10s  %s\n' "$(basename "$f")" "$(du -h "$f" | cut -f1)" "$(sha256sum "$f" | cut -c1-16)"
     done
-    if compgen -G "${ROOT}/dist/selbsttest/*.uf2" >/dev/null; then
-        echo; echo "selbsttest/ — Prüffirmware für Display, Tasten, Ton und Bildzeit,"
-        echo "dazu Tyrian ohne die Spieldaten (nur die Firmware)."
-        for f in "${ROOT}"/dist/selbsttest/*.uf2; do
-            printf '%-38s %10s  %s\n' "$(basename "$f")" "$(du -h "$f" | cut -f1)" "$(sha256sum "$f" | cut -c1-16)"
-        done
-    fi
     echo
     echo "Doom braucht zusätzlich eine WAD an eigener Flash-Adresse."
-    echo "Das Werkzeug dafür liegt im Repo unter doom/wad2uf2/. Die WADs selbst"
-    echo "sind kommerzielle Daten von id Software, liegen nicht bei und"
-    echo "dürfen nicht weitergegeben werden."
+    echo "Das Werkzeug dafür liegt hier in wad2uf2/ — die Anleitung dazu"
+    echo "in wad2uf2/ANLEITUNG.md. Die WADs selbst sind kommerzielle Daten"
+    echo "von id Software, liegen nicht bei und dürfen nicht weitergegeben"
+    echo "werden."
     echo
     echo "PicoBoyGB braucht ROMs: Mitte halten, RESET drücken, dann meldet"
     echo "sich das Gerät als USB-Stick zum Draufkopieren."
 } > "${ROOT}/dist/INHALT.txt"
 pbc_ok "dist/INHALT.txt geschrieben"
 
-# Die WAD-Werkzeuge werden nicht nach dist/ kopiert, sondern liegen als
-# doom/wad2uf2/ im Repo — sie sind Quelltext plus Binaries und ändern sich
-# nicht beim Bauen. dist/INHALT.txt verweist darauf.
+# Die WAD-Werkzeuge liegen bewusst doppelt: bei ihrem Projekt in doom/wad2uf2/
+# und noch einmal in dist/, damit sie findet, wer nur flashen und spielen will
+# und den Quellbaum gar nicht erst durchsucht. Damit die beiden nicht
+# auseinanderlaufen, wird die dist-Fassung hier bei jedem Lauf aus der
+# Projektfassung aufgefrischt — maßgeblich ist doom/wad2uf2/.
+if [ -d "${ROOT}/doom/wad2uf2" ]; then
+    rm -rf "${ROOT}/dist/wad2uf2"
+    cp -a "${ROOT}/doom/wad2uf2" "${ROOT}/dist/wad2uf2"
+    pbc_ok "dist/wad2uf2 — WAD-Werkzeuge aus doom/wad2uf2 aufgefrischt"
+fi
 
 # ---------------------------------------------------------------------------
 pbc_head "Ergebnis"

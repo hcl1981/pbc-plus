@@ -10,10 +10,11 @@
 # Aufruf:   ./build.sh          bauen
 #           ./build.sh clean    Bauordner löschen und neu bauen
 #
-# Ergebnis: ../dist/tyrian-komplett.uf2      Firmware + Daten, das Übliche
-#           ../dist/selbsttest/tyrian-nur-firmware.uf2
-#               nur die Firmware. Praktisch beim Entwickeln: das Datenarchiv
-#               liegt woanders im Flash und bleibt beim Flashen unangetastet.
+# Ergebnis: ../dist/tyrian-komplett.uf2   Firmware + Daten in einer Datei
+#
+# Wer nur an der Firmware arbeitet, flasht stattdessen das unverschmolzene
+# pbc-tyrian/build/tyrian.uf2 — das Datenarchiv liegt an einer anderen
+# Flash-Adresse und bleibt dabei unangetastet.
 #
 set -uo pipefail
 HIER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -54,7 +55,6 @@ if ! python3 "${PROJ}/tools/merge_uf2.py" "${PROJ}/build/tyrian.uf2" "${OUT}/tyr
 fi
 
 pbc_collect "${OUT}/tyrian-komplett.uf2" "tyrian-komplett.uf2" || exit 1
-pbc_collect "${PROJ}/build/tyrian.uf2" "tyrian-nur-firmware.uf2" selbsttest
 
-pbc_verify_dist "tyrian-komplett.uf2" "tyrian-nur-firmware.uf2" || exit 1
+pbc_verify_dist "tyrian-komplett.uf2" || exit 1
 pbc_hint_flash

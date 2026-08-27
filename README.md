@@ -49,10 +49,13 @@ nicht durch das Kabel.
 
 **Doom braucht eine WAD.** Die Firmware allein spielt nichts — die Level kommen
 aus einer WAD-Datei, die als zweite UF2 an eine eigene Flash-Adresse geht.
-[`doom/wad2uf2/`](doom/wad2uf2/) enthält `whd_gen` für Linux und Windows: eigene
+[`dist/wad2uf2/`](dist/wad2uf2/) enthält `whd_gen` für Linux und Windows: eigene
 WAD hineingeben, flashfertige UF2 kommt heraus; unter Windows reicht ein
-Doppelklick. Die WADs selbst sind kommerzielle Daten von id Software und dürfen
-nicht weitergegeben werden. Ablauf und Adressen: [`doom/FLASHEN.md`](doom/FLASHEN.md).
+Doppelklick. Die Schritt-für-Schritt-Anleitung steht daneben in
+[`ANLEITUNG.md`](dist/wad2uf2/ANLEITUNG.md). Dieselben Dateien liegen auch bei
+ihrem Projekt in [`doom/wad2uf2/`](doom/wad2uf2/) — in `dist/` findet sie, wer
+den Quellbaum gar nicht erst durchsucht. Die WADs selbst sind kommerzielle
+Daten von id Software und dürfen nicht weitergegeben werden.
 
 **PicoBoyGB braucht ROMs.** Nach dem Flashen **Mitte** halten und **RESET**
 drücken: das Gerät meldet sich als USB-Stick `PICOBOYGB`. Dort `.gb`-Dateien
@@ -79,7 +82,7 @@ Ehrlich gesagt, damit niemand danach sucht:
 * **`tyrian`** baut vollständig, ist aber **noch nie auf Hardware gelaufen**.
 * **`doom`: der Ton ist aus.** Der PWM/DMA-Audiopfad blockiert beim Start,
   deshalb wird die Sound-Init auf dem PicoBoy übersprungen. Details in
-  `doom/FLASHEN.md`.
+  [`doom/README.md`](doom/README.md).
 * **`doom`: die vier Änderungen an der Bildausgabe** sollen die vollen 35 Tics
   je Sekunde halten. Die erwartete Wirkung ist beschrieben, aber **auf Hardware
   noch nicht gemessen** — siehe `doom/picoboy-doom/TEMPO.md`.
@@ -103,7 +106,8 @@ gerechnet und nie auf Hardware geprüft wurde, steht es dabei.
 ├── build_all.sh        Schleife über alle Projekt-build.sh
 ├── tools/              gemeinsame Bausteine der Build-Skripte
 ├── docs/               Bauanleitung, Hardware-Referenz, Lizenzübersicht
-├── dist/               fertige .uf2 — mitversioniert, damit man
-│                       ohne Werkzeugkette flashen kann
+├── dist/               fertige .uf2 — mitversioniert, damit man ohne
+│                       Werkzeugkette flashen kann; dazu wad2uf2/ mit den
+│                       WAD-Werkzeugen und deren Anleitung
 └── <projekt>/          je Projekt: Quellen, README, LICENSE, build.sh
 ```

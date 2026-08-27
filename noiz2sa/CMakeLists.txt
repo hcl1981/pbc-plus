@@ -51,5 +51,3 @@ set(NOIZ_CORE
 add_executable(noiz2sa src/main.c ${NOIZ_CORE})
 pbc_target(noiz2sa)
 
-add_executable(noiz2sa_selftest selftest/selftest.c ${NOIZ_CORE})
-pbc_target(noiz2sa_selftest)

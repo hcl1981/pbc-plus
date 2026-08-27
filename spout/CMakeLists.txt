@@ -53,18 +53,3 @@ add_executable(spout
 )
 pbc_target(spout)
 
-# --- Testfirmware: zeigt Display, Tasten und Ton ohne das Spiel ---
-add_executable(spout_selftest
-    selftest/selftest.c
-    src/pbc/display.c
-    src/pbc/input.c
-    src/pbc/audio.c
-    src/pbc/store.c
-    src/pbc/leds.c
-    src/pbc/fatal.c
-    src/game.c
-    src/render.c
-    src/font.c
-    src/font_data.c
-)
-pbc_target(spout_selftest)

@@ -300,8 +300,7 @@ PY
 # Am Ende eines Projekt-build.sh aufrufen: prüft, was gerade eingesammelt wurde.
 pbc_verify_dist() {
     local files=(); local f
-    for f in "$@"; do [ -f "${PBC_DIST}/${f}" ] && files+=("${PBC_DIST}/${f}")
-                      [ -f "${PBC_DIST}/selbsttest/${f}" ] && files+=("${PBC_DIST}/selbsttest/${f}"); done
+    for f in "$@"; do [ -f "${PBC_DIST}/${f}" ] && files+=("${PBC_DIST}/${f}"); done
     [ ${#files[@]} -eq 0 ] && return 0
     pbc_check_uf2 "${files[@]}"
 }

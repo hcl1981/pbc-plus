@@ -21,9 +21,6 @@ pbc_sdk || exit 1
 pbc_cmake_build "${HIER}" "${HIER}/build"  || exit 1
 pbc_collect "${HIER}/build/spout.uf2" "spout.uf2" || exit 1
 
-# Testfirmware für Display, Tasten, Ton und Bildzeit — hilft, wenn das Gerät
-# schwarz bleibt und man erst die Hardware ausschließen will.
-[ -f "${HIER}/build/spout_selftest.uf2" ] && pbc_collect "${HIER}/build/spout_selftest.uf2" "spout_selftest.uf2" selbsttest
 
-pbc_verify_dist "spout.uf2" spout_selftest.uf2 || exit 1
+pbc_verify_dist "spout.uf2" || exit 1
 pbc_hint_flash

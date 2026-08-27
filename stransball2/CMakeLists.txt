@@ -52,5 +52,3 @@ set(STB_CORE
 add_executable(stransball2 src/main.c ${STB_CORE})
 pbc_target(stransball2)
 
-add_executable(stransball2_selftest selftest/selftest.c ${STB_CORE})
-pbc_target(stransball2_selftest)

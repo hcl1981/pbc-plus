@@ -34,7 +34,8 @@ und Archiv zu einer einzigen Datei — es ist also nur ein Flash-Vorgang nötig.
 0x10FFFF00  SDK-Zusatzblock 256 B   <- muss frei bleiben
 ```
 
-Wer an der Firmware arbeitet, flasht `../dist/selbsttest/tyrian-nur-firmware.uf2`.
+Wer an der Firmware arbeitet, flasht `pbc-tyrian/build/tyrian.uf2` — die
+unverschmolzene Firmware aus dem Bauordner.
 Das Datenarchiv liegt an einer anderen Adresse und bleibt dabei liegen — das
 spart bei jedem Durchlauf das Übertragen von fast 9 MB.
 

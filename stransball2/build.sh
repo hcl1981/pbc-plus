@@ -21,9 +21,6 @@ pbc_sdk || exit 1
 pbc_cmake_build "${HIER}" "${HIER}/build"  || exit 1
 pbc_collect "${HIER}/build/stransball2.uf2" "stransball2.uf2" || exit 1
 
-# Testfirmware für Display, Tasten, Ton und Bildzeit — hilft, wenn das Gerät
-# schwarz bleibt und man erst die Hardware ausschließen will.
-[ -f "${HIER}/build/stransball2_selftest.uf2" ] && pbc_collect "${HIER}/build/stransball2_selftest.uf2" "stransball2_selftest.uf2" selbsttest
 
-pbc_verify_dist "stransball2.uf2" stransball2_selftest.uf2 || exit 1
+pbc_verify_dist "stransball2.uf2" || exit 1
 pbc_hint_flash

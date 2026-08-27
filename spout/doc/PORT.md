@@ -152,4 +152,5 @@ also anhäufen kann, genau wie in der Vorlage.
 
 **Nicht geprüft, weil dafür das Gerät nötig ist:** ST7789-Init, Y-Versatz,
 BGR-Bit, Backlight, tatsächliche Bildzeit über SPI, Tastenentprellung,
-Tonpfad, Flash-Schreibvorgang. Genau dafür ist `spout_selftest.uf2` da.
+Tonpfad, Flash-Schreibvorgang. Dafür gab es während der Portierung eine
+eigene Testfirmware ohne Spiel; sie wird nicht mehr mitgeliefert.

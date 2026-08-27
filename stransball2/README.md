@@ -53,7 +53,7 @@ cmake --build build -j
 > `PICOTOOL_FETCH_FROM_GIT_PATH=~/.cache/pbc_plus_picotool` — dann baut das
 > SDK sich picotool einmalig selbst. Genau das macht `build.sh`.
 
-Erzeugt `build/stransball2.uf2` und `build/stransball2_selftest.uf2`.
+Erzeugt `build/stransball2.uf2`.
 
 Die Spieldaten liegen als Originaldateien in `data_src/` (Kacheln als PCX,
 Level als Text). Nach Änderungen daran:

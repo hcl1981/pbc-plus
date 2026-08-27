@@ -46,9 +46,9 @@ wad2uf2/bin/whd_gen-linux-x86_64  DOOM.WAD      # -> DOOM.uf2
 ```
 
 Unter Windows die `.exe` doppelklicken oder die WAD daraufziehen. Einzelheiten
-in [`wad2uf2/LIESMICH.md`](wad2uf2/LIESMICH.md), der genaue Flash-Ablauf in
-[`FLASHEN.md`](FLASHEN.md) — dort steht auch, warum reines Drag&Drop nicht
-reicht, wenn vorher MicroPython auf dem Gerät war.
+in [`wad2uf2/ANLEITUNG.md`](wad2uf2/ANLEITUNG.md), der genaue Flash-Ablauf ebenfalls —
+dort steht auch, warum reines Drag&Drop beim ersten Mal nicht reicht, wenn
+vorher MicroPython auf dem Gerät war.
 
 Die WADs selbst sind kommerzielle Daten von id Software. Sie liegen diesem
 Repo nicht bei und dürfen nicht weitergegeben werden — nur das Werkzeug darf
@@ -85,10 +85,23 @@ Taste gedrückt halten, während das Gerät startet — gilt für die ganze Sitz
 | **B** | `idkfa` — alle Waffen, volle Munition, alle Schlüssel, Rüstung 200 |
 | **A + B** | beides |
 
+## Waffenwechsel
+
+Knopf **A** schaltet im Spiel zur nächsten Waffe weiter. Die Logik
+(`G_NextWeapon`) läuft alle Waffen durch, die man *besitzt*. In der Shareware
+blieben Plasmagewehr (6) und BFG9000 (7) außen vor, weil die Engine dort
+`gamemode == shareware` erkennt. Mit einer Vollversions-WAD ist der Modus
+„registered" — Plasma und BFG sind dann automatisch im Wechsel dabei, ganz
+ohne Änderung am Code. Einen Super-Shotgun gibt es nur in Doom 2, deshalb
+bleibt es bei sieben Waffen.
+
 ## Was anders ist als im Ursprungsprojekt
 
 **Gebaut wird `doom_tiny_nost`**, das Target für die Vollversion mit drei
-Episoden. `doom_tiny` wäre die Shareware-Variante mit kleinerem WAD-Bereich.
+Episoden. `doom_tiny` wäre die Shareware-Variante („super tiny", nur Episode 1,
+WAD bei 0x10040000). Passend dazu wandelt `whd_gen` die WAD mit
+`-no-super-tiny` ins WHD-Format um — die super-tiny-Variante kann die
+größeren Level der Vollversion nicht packen.
 
 **Der Ton ist aus.** Der PWM/DMA-Audiopfad blockiert beim Start, deshalb wird
 die Sound- und OPL-Musik-Init auf dem PicoBoy übersprungen. Ohne diesen

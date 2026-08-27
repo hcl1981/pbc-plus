@@ -45,7 +45,7 @@ cmake --build build -j
 > `PICOTOOL_FETCH_FROM_GIT_PATH=~/.cache/pbc_plus_picotool` — dann baut das
 > SDK sich picotool einmalig selbst. Genau das macht `build.sh`.
 
-Erzeugt `build/noiz2sa.uf2` und `build/noiz2sa_selftest.uf2`.
+Erzeugt `build/noiz2sa.uf2`.
 
 Die Sperrfeuermuster liegen als BulletML in `data_bml_src/`. Wer sie ändert
 oder eigene hinzufügt, ruft danach
@@ -87,7 +87,6 @@ src/bml.c           führt den Bytecode aus (ersetzt libBulletML)
 src/game.c          Spiellogik, portiert, plattformfrei
 src/render.c        Bildaufbau 240x280 RGB565, zeilenweise
 src/pbc/            Gerät: ST7789, Tasten, PWM/DMA-Ton, Flash, LEDs, Panikbild
-selftest/           geräteseitige Testfirmware
 doc/PORT.md         was gegenüber der Vorlage geändert wurde und warum
 ```
 

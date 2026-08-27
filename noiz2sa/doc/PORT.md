@@ -167,5 +167,6 @@ mit 59 Masken. Der Flashbedarf fällt von 139 KB auf 65 KB.
 **Nicht geprüft, weil dafür das Gerät nötig ist:** ST7789-Init, Y-Versatz,
 BGR-Bit, Backlight, tatsächliche Bildzeit über SPI, Tastenentprellung,
 Tonpfad, Flash-Schreibvorgang — und ob das Spiel bei diesem Feldformat noch
-gut spielbar ist. Dafür ist `noiz2sa_selftest.uf2` da; Seite 5 misst die
-Bildzeit bei laufendem Kugelvorhang.
+gut spielbar ist. Dafür gab es während der Portierung eine eigene
+Testfirmware ohne Spiel, deren fünfte Seite die Bildzeit bei laufendem
+Kugelvorhang maß; sie wird nicht mehr mitgeliefert.

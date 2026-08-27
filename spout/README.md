@@ -51,10 +51,9 @@ cmake --build build -j
 > `PICOTOOL_FETCH_FROM_GIT_PATH=~/.cache/pbc_plus_picotool` — dann baut das
 > SDK sich picotool einmalig selbst. Genau das macht `build.sh`.
 
-Erzeugt `build/spout.uf2` (Spiel) und `build/spout_selftest.uf2`
-(Testfirmware für Display, Tasten, Ton und Bildzeitmessung).
+Erzeugt `build/spout.uf2`.
 
-Optional nach der Messung auf Seite 5 der Testfirmware:
+Optional:
 `-DPBC_SPI_HZ=80000000` verkürzt die Bildzeit von ~14,8 auf ~11,5 ms.
 
 ## Flashen
@@ -91,7 +90,6 @@ src/game.c          Spiellogik, portiert aus spout-1.4, plattformfrei
 src/render.c        Bildaufbau 240x280 RGB565, zeilenweise
 src/palette.h       Zellbyte -> Farbe (eine einzige Stelle)
 src/pbc/            Gerät: ST7789, Tasten, PWM/DMA-Ton, Flash, LEDs, Panikbild
-selftest/           geräteseitige Testfirmware
 src/font*.{c,h}     Bitmapschriften, je Größe einzeln gerastert
 tools/              Host-Test und die Generatoren für Schrift und Sinustabelle
 doc/PORT.md         was gegenüber der Vorlage geändert wurde und warum

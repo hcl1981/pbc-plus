@@ -20,7 +20,8 @@
 #
 # WICHTIG: Die Firmware allein spielt nichts. Die Level kommen aus einer
 # WAD-Datei, die als zweite UF2 an eine eigene Flash-Adresse geht. Das
-# Werkzeug dafür liegt in wad2uf2/ — siehe FLASHEN.md.
+# Werkzeug dafür liegt in wad2uf2/ — siehe dessen ANLEITUNG.md. Dieselben
+# Dateien liegen noch einmal in ../dist/wad2uf2/, für alle, die nur flashen.
 #
 # Aufruf:   ./build.sh          bauen
 #           ./build.sh clean    Bauordner löschen und neu bauen
@@ -63,6 +64,6 @@ cat <<'EOF'
   (unter Windows die .exe doppelklicken oder die WAD darauf ziehen)
 
   Danach beide Dateien flashen — Reihenfolge und Adressen stehen
-  in FLASHEN.md.
+  in wad2uf2/ANLEITUNG.md.
 EOF
 pbc_hint_flash
