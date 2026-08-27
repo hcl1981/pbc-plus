@@ -2,10 +2,10 @@
  * pbc_display -- Umsetzung. Siehe pbc_display.h fuer das Warum.
  *
  * Die Init-Folge (Reset-Zeiten, MADCTL 0xC8, INVON, Y-Versatz 20, SPI-Modus
- * 0,0 bei 62,5 MHz) ist unveraendert aus der laufenden Doom-Portierung auf
- * derselben Hardware uebernommen: /home/hcl/Documents/doomusb/picoboy-doom/
- * src/pico/picoboy_display.c. Sie ist dort auf echtem Geraet verifiziert --
- * ein guter Grund, hier nichts "aufzuraeumen".
+ * 0,0 bei 62,5 MHz) ist unveraendert aus der Doom-Portierung auf derselben
+ * Hardware uebernommen -- doom/picoboy-doom/src/pico/picoboy_display.c im
+ * selben Repo. Sie ist dort auf echtem Geraet verifiziert; ein guter Grund,
+ * hier nichts "aufzuraeumen".
  *
  * GPLv2.
  */

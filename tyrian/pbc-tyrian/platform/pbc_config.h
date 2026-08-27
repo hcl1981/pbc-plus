@@ -3,8 +3,8 @@
  *
  * Die Pinbelegung ist aus zwei unabhaengigen, auf dieser Hardware laufenden
  * Projekten uebernommen und stimmt dort ueberein: der Doom-Portierung
- * (pico-sdk, /home/hcl/Documents/doomusb/picoboy-doom) und der
- * Jump-'n'-Bump-Portierung (Arduino, /home/hcl/Documents/jnb). Wo unten eine
+ * (pico-sdk, doom/picoboy-doom im selben Repo) und der
+ * Jump-'n'-Bump-Portierung (Arduino, jumpnbump/). Wo unten eine
  * Zahl steht, ist sie also nicht geraten.
  *
  * GPLv2, wie OpenTyrian.
