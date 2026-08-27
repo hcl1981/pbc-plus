@@ -49,6 +49,9 @@ nicht durch das Kabel.
 
 **Doom braucht eine WAD.** Die Firmware allein spielt nichts — die Level kommen
 aus einer WAD-Datei, die als zweite UF2 an eine eigene Flash-Adresse geht.
+**Freedoom liegt bei**, damit Doom sofort spielbar ist: freie Ersatzdaten unter
+BSD-Lizenz, fertig als `dist/doom/freedoom1.uf2`. Zwei Dateien aufs Gerät
+ziehen und los. Für das echte Doom brauchst du weiterhin eine eigene WAD —
 [`dist/doom/`](dist/doom/) enthält alles dafür an einer Stelle: die Firmware,
 `whd_gen` für Linux und Windows und eine Schritt-für-Schritt-Anleitung
 ([`ANLEITUNG.md`](dist/doom/ANLEITUNG.md)) vom Umwandeln bis zum Aufspielen.

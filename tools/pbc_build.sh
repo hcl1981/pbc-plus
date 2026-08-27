@@ -290,7 +290,13 @@ for f in sys.argv[1:]:
               f"\n         Abhilfe: -DPICO_PLATFORM=rp2350-arm-s -DPICO_BOARD=pico2 mitgeben.")
         bad += 1; continue
     if not (set(fam) & RP2350):
-        print(f"  FEHLER {name}: keine RP2350-Blöcke enthalten"); bad += 1; continue
+        # Reine Datenabbilder (Spieldaten, umgewandelte WAD) tragen nur die
+        # DATA-Family und gar keine Firmware-Bloecke. Das ist gueltig: sie
+        # werden neben eine Firmware in einen eigenen Flash-Bereich geladen.
+        if set(fam) == {DATA}:
+            print(f"  ok     {name:<38} Datenabbild, DATA×{fam[DATA]}")
+            continue
+        print(f"  FEHLER {name}: weder RP2350- noch reine Datenblöcke"); bad += 1; continue
     print(f"  ok     {name:<38} " + ", ".join(
         f"{NAMES.get(k,'?') if k else 'ohne Family'}×{v}" for k, v in sorted(fam.items(), key=lambda x: -x[1])))
 sys.exit(1 if bad else 0)

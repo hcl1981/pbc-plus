@@ -46,6 +46,11 @@ pico-extras/
 *-wad_*.uf2
 DOOM*.uf2
 
+# Ausnahme: Freedoom steht unter 3-Klausel-BSD und darf ausdrücklich
+# weitergegeben werden. Es liegt bewusst bei, damit Doom ohne eigene WAD
+# spielbar ist.
+!dist/doom/freedoom1.wad
+
 # Ebenso Game-Boy-ROMs für PicoBoyGB.
 *.gb
 *.gbc

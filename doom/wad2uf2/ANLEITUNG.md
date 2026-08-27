@@ -12,14 +12,43 @@ Werkzeug in diesem Ordner in eine flashbare `.uf2` umwandelst.
 Die beiden überschneiden sich nicht, du kannst sie also unabhängig voneinander
 aufspielen und später einzeln austauschen.
 
-Du brauchst eine eigene Kopie von `DOOM.WAD` oder `DOOM2.WAD`, etwa aus einer
-gekauften Fassung oder von Steam. **Die WADs liegen hier nicht bei und dürfen
+---
+
+## Sofort losspielen: Freedoom liegt bei
+
+**`freedoom1.uf2` ist fertig zum Aufspielen** — du brauchst nichts umzuwandeln
+und nichts zu besorgen. Zwei Dateien draufziehen, fertig:
+
+1. `doom-usb-mp.uf2`  (das Spiel)
+2. `freedoom1.uf2`    (die Level)
+
+Wie das geht, steht unten unter „Aufs Gerät schieben".
+
+[Freedoom](https://freedoom.github.io/) ist ein vollständig freier Ersatz für
+die Doom-Spieldaten: eigene Level, eigene Grafiken, eigene Gegner, aber
+dieselbe Engine. Es steht unter der **3-Klausel-BSD-Lizenz** und darf deshalb
+frei weitergegeben werden — anders als die WADs von id Software. Die
+Lizenzbedingungen stehen in `freedoom-LIZENZ.txt`, die Mitwirkenden in
+`freedoom-CREDITS.txt`; beide gehören zur Weitergabe dazu.
+
+Beigelegt ist **Freedoom Phase 1** in der Fassung 0.13.0, vier Episoden. Die
+Rohdaten liegen als `freedoom1.wad` daneben, falls du sie anderweitig
+verwenden oder selbst umwandeln willst.
+
+> Es füllt den Flash fast aus: 14,7 MB von den rund 15,7 MB, die für Spieldaten
+> zur Verfügung stehen. Es passt, aber viel Luft bleibt nicht.
+
+## Lieber das echte Doom?
+
+Dann brauchst du eine eigene Kopie von `DOOM.WAD` oder `DOOM2.WAD`, etwa aus
+einer gekauften Fassung oder von Steam. **Die liegen hier nicht bei und dürfen
 nicht weitergegeben werden** — das Werkzeug darfst du weitergeben, die
-Spieldaten nicht.
+Spieldaten nicht. Wie du daraus eine flashbare Datei machst, steht im nächsten
+Abschnitt.
 
 ---
 
-## Schritt 1: Die WAD umwandeln
+## Schritt 1: Die eigene WAD umwandeln
 
 ### Windows
 
@@ -137,9 +166,17 @@ Gerät überhaupt als `rp2350-arm-s` gemeldet wird.
 abziehen, Taste drücken und *gedrückt halten*, einstecken, erst dann loslassen.
 Und es muss ein Datenkabel sein — viele USB-C-Kabel führen nur Strom.
 
-**Die WAD ist zu groß.** Getestet ist das Werkzeug vor allem mit den
-Original-WADs von Doom 1 und Doom 2. Andere können funktionieren, sind aber
-nicht garantiert — in 16 MB Flash passt nicht jede.
+**Die WAD ist zu groß.** Für Spieldaten stehen rund 15,7 MB zur Verfügung —
+der Rest des 16-MB-Flash gehört der Firmware. Getestet ist das Werkzeug vor
+allem mit den Original-WADs von Doom 1 und Doom 2; Freedoom Phase 1 passt mit
+14,7 MB gerade noch. Bei größeren Sammlungen kann es eng werden.
+
+**Die Umwandlung bricht mit „Expected MUS track" ab.** Dann liegt die Musik
+der WAD im MIDI-Format vor, `whd_gen` erwartet aber MUS — so wie es die WADs
+von id Software mitbringen. Freedoom etwa benutzt MIDI. Da die Firmware Musik
+ohnehin nicht abspielt, genügt es, die Musikstücke vorher durch leere
+MUS-Platzhalter zu ersetzen; genau so ist die beiliegende `freedoom1.uf2`
+entstanden.
 
 **Kein Ton bei der Musik.** Das ist Absicht: Die Klangeffekte laufen, nur die
 OPL-Musik ist abgeklemmt. Der Piezo könnte sie ohnehin nicht sinnvoll
@@ -181,6 +218,10 @@ Im Spiel schaltet **A** zur nächsten Waffe weiter.
 | | |
 |---|---|
 | `doom-usb-mp.uf2` | die Firmware, fertig zum Aufspielen |
+| `freedoom1.uf2` | freie Spieldaten, fertig zum Aufspielen |
+| `freedoom1.wad` | dieselben Daten als WAD, falls du sie anderweitig brauchst |
+| `freedoom-LIZENZ.txt` | die BSD-Lizenz von Freedoom — gehört zur Weitergabe dazu |
+| `freedoom-CREDITS.txt` | die Mitwirkenden an Freedoom |
 | `bin/` | `whd_gen` für Linux und Windows |
 | `wad2uf2.py` | optionaler Python-Aufsatz mit Dateidialog — **nicht nötig** |
 | `build-whd_gen.sh` | baut das Werkzeug selbst, etwa für macOS |

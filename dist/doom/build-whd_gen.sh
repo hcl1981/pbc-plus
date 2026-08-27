@@ -15,13 +15,14 @@
 set -u
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-SRC="$ROOT/picoboy-doom/src"
+SRC="$ROOT/../picoboy-doom/src"
 OUT="$ROOT/bin"
 mkdir -p "$OUT"
 
 if [ ! -d "$SRC/whd_gen" ]; then
     echo "FEHLER: Quellen nicht gefunden unter $SRC/whd_gen" >&2
-    echo "Dieses Skript im entpackten picoboy-doom-Projekt ausfuehren." >&2
+    echo "Erwartet wird der Quellbaum unter ../picoboy-doom/ — also das" >&2
+    echo "Skript aus doom/wad2uf2/ heraus aufrufen." >&2
     exit 1
 fi
 

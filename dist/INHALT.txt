@@ -20,12 +20,16 @@ tyrian-komplett.uf2                           19M  00dc75202432fbdc
 
 doom/ — Firmware, Werkzeuge und Anleitung fuer Doom
 doom/doom-usb-mp.uf2                         504K  f4eeffe29d44de53
+doom/freedoom1.uf2                            30M  da2be83af7b897f9
 
-Doom braucht zusaetzlich eine WAD an eigener Flash-Adresse.
-Wie man sie aus der eigenen WAD erzeugt und aufspielt, steht
-Schritt fuer Schritt in doom/ANLEITUNG.md. Die WADs selbst sind
-kommerzielle Daten von id Software, liegen nicht bei und duerfen
-nicht weitergegeben werden.
+Doom braucht neben der Firmware noch Spieldaten an einer eigenen
+Flash-Adresse. Beides liegt bereit: freedoom1.uf2 einfach mit
+aufspielen, dann laeuft es sofort. Freedoom ist ein freier Ersatz
+fuer die Doom-Daten (3-Klausel-BSD, siehe freedoom-LIZENZ.txt).
+
+Wer das echte Doom will, braucht eine eigene WAD von id Software.
+Die liegt nicht bei und darf nicht weitergegeben werden; wie man
+sie umwandelt, steht in doom/ANLEITUNG.md.
 
 PicoBoyGB braucht ROMs: Mitte halten, RESET drücken, dann meldet
 sich das Gerät als USB-Stick zum Draufkopieren.

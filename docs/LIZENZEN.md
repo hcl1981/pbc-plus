@@ -39,10 +39,24 @@ Aufräumen nicht entfernen.
 
 | Daten | Lage |
 |---|---|
+| Freedoom Phase 1 (`dist/doom/`) | **3-Klausel-BSD** — liegen bei, dürfen weitergegeben und verändert werden |
 | Tyrian 2.1 (`tyrian/data/`) | **Freeware**, liegen bei und dürfen weitergegeben werden |
 | Jump'n'Bump (`jumpnbump/data-src/`) | GPL-2.0, liegen bei |
 | Doom-WADs | **kommerziell (id Software)** — liegen **nicht** bei, dürfen nicht weitergegeben werden |
 | Game-Boy-ROMs | fremdes Urheberrecht — liegen **nicht** bei |
 
 `.gitignore` schließt WADs und ROMs aus, damit eigene Kopien nicht
-versehentlich im Repo landen.
+versehentlich im Repo landen. Die beiliegende `freedoom1.wad` ist davon
+ausgenommen — sie steht unter BSD und darf weitergegeben werden.
+
+## Freedoom
+
+Damit Doom ohne eigene WAD spielbar ist, liegt **Freedoom Phase 1 0.13.0** bei:
+`dist/doom/freedoom1.uf2` als flashfertiges Abbild und `freedoom1.wad` als
+Rohdaten. Freie Ersatzdaten für die Doom-Engine — eigene Level, Grafiken und
+Gegner, dieselbe Engine.
+
+Die 3-Klausel-BSD-Lizenz verlangt, dass Urheberrechtsvermerk, Lizenztext und
+Haftungsausschluss bei der Weitergabe erhalten bleiben. Beides liegt deshalb
+mit dabei: `freedoom-LIZENZ.txt` und `freedoom-CREDITS.txt`. **Beim Aufräumen
+nicht entfernen** — ohne sie wäre die Weitergabe nicht mehr lizenzkonform.

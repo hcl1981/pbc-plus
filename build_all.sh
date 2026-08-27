@@ -66,9 +66,10 @@ if [ "${CLEAN}" = 1 ]; then
     # Abräumen genügt das Löschen, und es passiert der Reihe nach — sonst
     # räumen noch laufende Jobs einem gerade startenden Bau die Ordner weg.
     pbc_info "Alle Bauordner und die gebauten Abbilder löschen"
-    # dist/doom/ bleibt stehen: die Werkzeuge dort sind kein Bauergebnis.
+    # dist/doom/ bleibt stehen: Werkzeuge, Anleitung und die beigelegten
+    # Freedoom-Daten sind kein Bauergebnis. Nur die Firmware wird gelöscht.
     # Beim nächsten Lauf wird es ohnehin aus doom/wad2uf2/ aufgefrischt.
-    rm -f "${ROOT}"/dist/*.uf2 "${ROOT}/dist/INHALT.txt" "${ROOT}"/dist/doom/*.uf2
+    rm -f "${ROOT}"/dist/*.uf2 "${ROOT}/dist/INHALT.txt" "${ROOT}/dist/doom/doom-usb-mp.uf2"
     for p in "${ALL[@]}"; do
         rm -rf "${ROOT}/${p}/build" "${ROOT}/${p}/.pio"
     done
@@ -113,11 +114,14 @@ pbc_head "dist/ beschriften"
             printf '%-38s %10s  %s\n' "doom/$(basename "$f")" "$(du -h "$f" | cut -f1)" "$(sha256sum "$f" | cut -c1-16)"
         done
         echo
-        echo "Doom braucht zusaetzlich eine WAD an eigener Flash-Adresse."
-        echo "Wie man sie aus der eigenen WAD erzeugt und aufspielt, steht"
-        echo "Schritt fuer Schritt in doom/ANLEITUNG.md. Die WADs selbst sind"
-        echo "kommerzielle Daten von id Software, liegen nicht bei und duerfen"
-        echo "nicht weitergegeben werden."
+        echo "Doom braucht neben der Firmware noch Spieldaten an einer eigenen"
+        echo "Flash-Adresse. Beides liegt bereit: freedoom1.uf2 einfach mit"
+        echo "aufspielen, dann laeuft es sofort. Freedoom ist ein freier Ersatz"
+        echo "fuer die Doom-Daten (3-Klausel-BSD, siehe freedoom-LIZENZ.txt)."
+        echo
+        echo "Wer das echte Doom will, braucht eine eigene WAD von id Software."
+        echo "Die liegt nicht bei und darf nicht weitergegeben werden; wie man"
+        echo "sie umwandelt, steht in doom/ANLEITUNG.md."
     fi
     echo
     echo "PicoBoyGB braucht ROMs: Mitte halten, RESET drücken, dann meldet"
