@@ -1,7 +1,8 @@
 # Lizenzen
 
 Jedes Projekt hat eine eigene Lizenzdatei in seinem Ordner. Diese Übersicht
-sagt, welche das ist und woher sie kommt.
+sagt, welche das ist und woher sie kommt. Die Kurzfassung steht als
+[`LICENSE`](../LICENSE) im Wurzelverzeichnis — dort sucht GitHub sie.
 
 | Projekt | Lizenz | Datei | Herkunft |
 |---|---|---|---|

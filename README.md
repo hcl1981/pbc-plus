@@ -69,8 +69,13 @@ ablegen, auswerfen, RESET ohne Mitte — das Menü listet sie dann auf.
 
 ## Lizenzen
 
-Gemischt: BSD, MIT, GPL-2.0 und GPL-3.0 — je nachdem, worauf die Portierung
-aufsetzt. Jedes Projekt hat seine eigene Lizenzdatei, die Übersicht steht in
+**Es gibt keine einheitliche Lizenz für dieses Repository.** Jede Portierung
+erbt die Lizenz des Projekts, auf dem sie aufsetzt — gemischt BSD, MIT,
+GPL-2.0 und GPL-3.0. Maßgeblich ist immer die Lizenzdatei im jeweiligen
+Ordner.
+
+Die Übersicht, welche wo gilt, steht in [`LICENSE`](LICENSE); die
+ausführlichere Fassung mit der Herkunft jeder Portierung in
 [`docs/LIZENZEN.md`](docs/LIZENZEN.md).
 
 ## Hardware-Referenz

@@ -1,0 +1,53 @@
+PBC+ — Spiele und Firmware für den PicoBoy Color Plus
+
+Dieses Repository steht NICHT unter einer einheitlichen Lizenz.
+
+Es versammelt mehrere eigenständige Portierungen, und jede erbt die Lizenz
+des Projekts, auf dem sie aufsetzt. Maßgeblich ist deshalb immer die
+Lizenzdatei im jeweiligen Unterordner — nicht diese Datei hier. Sie dient
+nur der Übersicht.
+
+    Ordner                Lizenz      Lizenzdatei
+    ------------------------------------------------------------
+    noiz2sa               BSD-2       noiz2sa/COPYING
+    spout                 MIT         spout/COPYING
+    stransball2           GPL-2.0     stransball2/COPYING
+    micropolis            GPL-3.0     micropolis/LICENSE
+    tyrian                GPL-2.0     tyrian/LICENSE
+    doom                  GPL-2.0     doom/LICENSE
+    jumpnbump             GPL-2.0     jumpnbump/LICENSE
+    picoboygb             MIT         picoboygb/LICENSE
+    picoboygb-arduino     MIT         picoboygb-arduino/LICENSE
+    i2collection          MIT         i2collection/LICENSE
+    micropython           MIT         micropython/LICENSE
+
+    tools/, docs/         MIT         (Bauskripte und Dokumentation
+                                       dieses Repositorys)
+
+Was das praktisch bedeutet
+--------------------------
+
+Bei den GPL-Projekten muss beim Weitergeben der Firmware der Quelltext
+mitgeliefert oder angeboten werden. Bei den MIT- und BSD-Projekten genügt
+es, Urheberrechtsvermerk und Lizenztext zu erhalten. Wer einzelne Teile
+weiterverwendet, richtet sich nach der Lizenz des jeweiligen Ordners.
+
+Mitgelieferte Spieldaten
+------------------------
+
+    dist/doom/freedoom1.wad, dist/doom/freedoom1.uf2
+        Freedoom Phase 1, 3-Klausel-BSD. Lizenztext und Mitwirkende liegen
+        als dist/doom/freedoom-LIZENZ.txt und freedoom-CREDITS.txt bei;
+        beides gehört zur Weitergabe dazu.
+
+    tyrian/data/
+        Tyrian 2.1, Freeware von Jason Emery.
+
+    jumpnbump/data-src/
+        Originaldaten aus Jump 'n Bump, GPL-2.0.
+
+Die WAD-Dateien von id Software (DOOM.WAD, DOOM2.WAD) und Game-Boy-ROMs
+liegen diesem Repository NICHT bei und dürfen nicht weitergegeben werden.
+
+Eine ausführlichere Aufstellung samt Herkunft der einzelnen Portierungen
+steht in docs/LIZENZEN.md.
