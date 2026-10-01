@@ -5,7 +5,7 @@
 # In diesem Ordner liegt nur die Board-Portierung `PBC_PLUS/` — 38 Dateien.
 # MicroPython selbst ist unverändertes Upstream und wird deshalb nicht
 # mitgeliefert, sondern beim ersten Lauf geholt (rund 500 MB samt
-# Untermodulen, nach ~/.cache/pbcp-sdks/micropython). Das hält dieses Repo
+# Untermodulen, nach ~/.cache/pbcp-sdks/micropython-<Version>). Das hält dieses Repo
 # klein und macht sofort sichtbar, was an der Portierung wirklich eigen ist.
 #
 # Aufruf:   ./build.sh          bauen
@@ -17,7 +17,9 @@ set -uo pipefail
 HIER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "${HIER}/../tools/pbc_build.sh"
 
-MPY="${PBC_SDK_CACHE}/micropython"
+# Ordner trägt die Version: Nach einem Wechsel von PBC_MPY_TAG wird frisch
+# geholt, statt stillschweigend einen älteren Stand weiterzubenutzen.
+MPY="${PBC_SDK_CACHE}/micropython-${PBC_MPY_TAG}"
 RP2="${MPY}/ports/rp2"
 BOARD=PBC_PLUS
 
@@ -57,6 +59,16 @@ cp -a "${HIER}/${BOARD}" "${RP2}/boards/${BOARD}" || exit 1
 # ---------------------------------------------------------------------------
 # Bauen
 # ---------------------------------------------------------------------------
+# Das Pico SDK in MicroPython v1.29 verlangt picotool 2.3.0. Eine ältere
+# systemweite Installation (etwa 2.2.0 aus der Distribution) lässt schon das
+# Konfigurieren scheitern. Deshalb baut das SDK sich die passende Version
+# einmalig selbst und legt sie im Cache ab. Als Umgebungsvariable wird
+# PICOTOOL_FORCE_FETCH_FROM_GIT vom SDK nicht ausgewertet (es prüft
+# «ENV{…}» ohne «$»), daher als CMake-Variable — der rp2-Makefile hängt
+# seine eigenen Argumente mit «+=» an ein CMAKE_ARGS aus der Umgebung an.
+export CMAKE_ARGS="${CMAKE_ARGS:-} -DPICOTOOL_FORCE_FETCH_FROM_GIT=1"
+export PICOTOOL_FETCH_FROM_GIT_PATH="${PICOTOOL_FETCH_FROM_GIT_PATH:-${PBC_SDK_CACHE}/picotool-mpy}"
+
 pbc_info "mpy-cross bauen (der Übersetzer für vorkompilierte Python-Module)"
 if ! make -C "${MPY}/mpy-cross" -j"${PBC_JOBS}" >"${MPY}/mpy-cross.log" 2>&1; then
     pbc_err "mpy-cross ließ sich nicht bauen."

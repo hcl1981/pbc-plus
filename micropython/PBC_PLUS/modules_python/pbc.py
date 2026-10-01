@@ -346,6 +346,34 @@ class Sprite:
                 self.x + self.image.width  > WIDTH or
                 self.y + self.image.height > HEIGHT)
 
+    def on_color(self, color):
+        """True if any opaque pixel of this sprite sits over `color`
+        on the background canvas (Sprite._background). Transparent
+        sprite pixels (colour key) are ignored, so only the visible
+        shape counts. Without a background canvas this is always
+        False."""
+        bg = Sprite._background
+        if bg is None:
+            return False
+        color = int(color) & 0xFFFF
+        img = self.image
+        key = img.transparent
+        sx = int(self.x); sy = int(self.y)
+        bw = bg.width; bh = bg.height
+        for yy in range(img.height):
+            by = sy + yy
+            if by < 0 or by >= bh:
+                continue
+            for xx in range(img.width):
+                bx = sx + xx
+                if bx < 0 or bx >= bw:
+                    continue
+                if key is not None and img.pixel(xx, yy) == key:
+                    continue  # skip transparent part of the sprite
+                if bg.pixel(bx, by) == color:
+                    return True
+        return False
+
 
 # Lazily-allocated backbuffer for sprite rendering. We don't reserve
 # the 134 KB until the first sprite is actually shown, so programs
@@ -787,6 +815,8 @@ Sprite (image + position helper):
   Sprite(image, x=0, y=0)
     .draw(canvas)                   stamps with transparency
     .hits(other)                    bounding-box collision
+    .on_color(c)                    True if an opaque pixel is over
+                                    colour c on Sprite._background
 
 Buttons (UP, DOWN, LEFT, RIGHT, CENTER, A, B):
   pressed_X()                       True while held
@@ -824,6 +854,7 @@ Turtle graphics (separate module):
   t.penUp() / t.penDown() / t.setPenColor(c)
   t.speed(s)                         0=instant, 1..10+, default 5
   t.hide() / t.show() / t.clear()
+  t.on_color(c, lookahead=3)         True if the pixel ahead is colour c
 """
 
 def help():

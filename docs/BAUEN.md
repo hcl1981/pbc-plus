@@ -106,7 +106,7 @@ gesetzt sind, wird nichts nachgeladen:
 ```bash
 export PICO_SDK_PATH=/pfad/zu/pico-sdk         # Version 2.1.0
 export PICO_EXTRAS_PATH=/pfad/zu/pico-extras   # Zweig sdk-2.1.0, nur für Doom
-export MICROPYTHON_PATH=/pfad/zu/micropython   # Version v1.28.0
+export MICROPYTHON_PATH=/pfad/zu/micropython   # Version v1.29.0
 ```
 
 PlatformIO braucht beim ersten Lauf zwingend Netzzugang; danach liegt alles
@@ -130,6 +130,19 @@ error: 'uint8_t' does not name a type
 
 Die Build-Skripte tragen das fehlende `#include` im SDK-Zwischenspeicher nach.
 Betrifft nur Projekte mit PIO-Programmen, etwa `micropolis`.
+
+**picotool-Version bei MicroPython.** Das Pico SDK in MicroPython v1.29.0
+verlangt picotool 2.3.0. Ist systemweit eine ältere Version installiert (etwa
+2.2.0), bricht schon `make submodules` ab:
+
+```
+Incompatible picotool installation found: Requires version 2.3.0, you have version 2.2.0-a4
+```
+
+`micropython/build.sh` übergibt deshalb `-DPICOTOOL_FORCE_FETCH_FROM_GIT=1`
+über `CMAKE_ARGS`; das SDK baut sich picotool dann einmalig selbst nach
+`~/.cache/pbcp-sdks/picotool-mpy`. Als Umgebungsvariable wirkt der Schalter
+nicht — das SDK prüft dort `ENV{…}` ohne `$`.
 
 **Board und Plattform bei micropolis.** Als einziges Projekt setzt sein
 `CMakeLists.txt` `PICO_BOARD` erst nach dem Einbinden von

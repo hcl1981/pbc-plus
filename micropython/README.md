@@ -12,7 +12,9 @@ wenigen Zeilen etwas auf den Schirm zu bringen.
 
 In diesem Ordner steckt **nur die Board-Portierung** — 38 Dateien. MicroPython
 selbst ist unverändertes Upstream und wird deshalb nicht mitgeliefert, sondern
-beim ersten Bauen geholt (Version `v1.28.0`, nach `~/.cache/pbcp-sdks`).
+beim ersten Bauen geholt (Version `v1.29.0`, Commit
+`0fd6c573ea815774668bbb16b8e197c8822368b2`, nach
+`~/.cache/pbcp-sdks/micropython-v1.29.0`).
 
 Das hält dieses Repo klein und macht sofort sichtbar, was an der Portierung
 wirklich eigen ist. Wer MicroPython schon ausgecheckt hat, setzt
@@ -33,6 +35,12 @@ Hintergrundwiederherstellung, `load_image()`, ein Programm-Menü (`menu()`) und
 `help()`.
 
 Dazu `png.py` und `turtle.py` — Letzteres eine Turtle-Grafik zum Einstieg.
+
+**Kollisionen** — `sprite.touches(anderer)` (zwei Sprites),
+`sprite.on_color(farbe)` (Sprite steht mit einem sichtbaren Pixel auf dieser
+Farbe des Hintergrund-Canvas) und `turtle.on_color(farbe)` (die Stelle 3 px vor
+der Turtle hat diese Farbe). Vorführung: `beispiele/kollision.py` — braucht
+keine Bilddateien, einfach per `mpremote cp` aufs Gerät kopieren.
 
 ```python
 import pbc

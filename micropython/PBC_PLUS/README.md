@@ -24,7 +24,7 @@ and adds `Canvas`, `Sprite`, `load_image()`, a program menu and `help()`.
 ## Building (Linux)
 
 > If you are working inside the PBC+ repository, `../build.sh` does all of
-> this for you — it fetches MicroPython v1.28.0, mirrors this directory into
+> this for you — it fetches MicroPython v1.29.0, mirrors this directory into
 > the rp2 boards folder and builds. The steps below are the manual equivalent,
 > useful when dropping this board into an existing MicroPython checkout.
 
@@ -41,7 +41,7 @@ Then:
 ```bash
 git clone https://github.com/micropython/micropython.git
 cd micropython
-git checkout v1.28.0
+git checkout v1.29.0     # commit 0fd6c573ea815774668bbb16b8e197c8822368b2
 git submodule update --init lib/pico-sdk lib/tinyusb
 ( cd lib/pico-sdk && git submodule update --init )
 
@@ -55,6 +55,17 @@ make -C mpy-cross
 cd ports/rp2
 make BOARD=PBC_PLUS submodules
 make BOARD=PBC_PLUS
+```
+
+The pico-sdk bundled with v1.29.0 requires picotool 2.3.0. If an older
+picotool is installed system-wide, configuration fails with
+"Incompatible picotool installation found". Let the SDK build its own
+copy instead (the environment variable of the same name is not honoured,
+it must be a CMake variable; the rp2 Makefile appends to `CMAKE_ARGS`
+from the environment):
+
+```bash
+export CMAKE_ARGS="-DPICOTOOL_FORCE_FETCH_FROM_GIT=1"
 ```
 
 The resulting UF2 lives at:
@@ -80,7 +91,7 @@ Quick sanity check from the REPL:
 ```python
 import sys
 print(sys.implementation)
-# (name='micropython', version=(1, 28, 0), ...)
+# (name='micropython', version=(1, 29, 0, ''), ...)
 
 from machine import Pin
 red = Pin(14, Pin.OUT)   # status LED, red
@@ -90,6 +101,24 @@ red.off()
 
 If the LED toggles, step 1 is good and we can move on to the display
 C module.
+
+## Collision checks
+
+Three checks are available; all return `True`/`False`:
+
+```python
+hero.touches(enemy)        # two sprites: bounding boxes overlap
+hero.on_color(pbc.RED)     # an opaque sprite pixel sits over RED on
+                           # Sprite._background (False without one)
+t.on_color(pbc.RED)        # turtle: the pixel 3 px ahead is RED
+t.on_color(pbc.RED, 6)     # ... or 6 px ahead
+```
+
+`Sprite.on_color` ignores the sprite's transparent (colour-key) pixels.
+`Turtle.on_color` looks ahead so the turtle's own trail does not count;
+where the marker covers the probed pixel it reads the area saved under
+the marker. The probe is a single pixel, so walls should be thicker than
+the look-ahead distance. A demo lives in `../beispiele/kollision.py`.
 
 ## Roadmap
 

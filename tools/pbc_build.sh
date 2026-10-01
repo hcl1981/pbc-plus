@@ -23,7 +23,7 @@ PBC_JOBS="${PBC_JOBS:-$(nproc 2>/dev/null || echo 2)}"
 PBC_SDK_CACHE="${HOME}/.cache/pbcp-sdks"
 PBC_SDK_TAG="2.1.0"
 PBC_EXTRAS_BRANCH="sdk-2.1.0"
-PBC_MPY_TAG="v1.28.0"
+PBC_MPY_TAG="v1.29.0"
 
 # ---------------------------------------------------------------------------
 # Ausgabe

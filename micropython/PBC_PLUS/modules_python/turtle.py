@@ -285,6 +285,32 @@ class Turtle:
         self._draw_turtle()
         pbc.show(_canvas)
 
+    # ---- collisions ------------------------------------------------
+
+    def on_color(self, color, lookahead=3):
+        """True if the pixel `lookahead` px ahead of the turtle matches
+        `color` (a name like 'red' or an RGB565 int). Looking ahead
+        avoids reading the turtle's own trail. The marker is drawn onto
+        the same canvas, so where it covers the probed pixel we read the
+        saved area under the marker instead."""
+        color = _resolve_color(color, pbc.WHITE)
+        c = get_canvas()
+        rad = math.radians(self._angle)
+        x = int(self._x + lookahead * math.cos(rad))
+        y = int(self._y + lookahead * math.sin(rad))
+        if not (0 <= x < c.width and 0 <= y < c.height):
+            return False
+        if (self.visible and not self._first_draw and
+                self._prev_pos is not None and _backup_fb is not None):
+            n = _BACKUP_SIZE
+            half = n // 2
+            px, py = self._prev_pos
+            bx = max(0, min(px - half, pbc.WIDTH  - n))
+            by = max(0, min(py - half, pbc.HEIGHT - n))
+            if bx <= x < bx + n and by <= y < by + n:
+                return _backup_fb.pixel(x - bx, y - by) == color
+        return c.pixel(x, y) == color
+
     # ---- internal cursor rendering --------------------------------
 
     def _draw_turtle(self):
