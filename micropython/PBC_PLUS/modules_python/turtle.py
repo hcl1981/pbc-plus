@@ -182,8 +182,9 @@ class Turtle:
 
     def setDirection(self, angle):
         self._restore_backup()
-        # User 0 = up; up in screen coords = 270.
-        self._angle = (270 - angle) % 360
+        # Compass-like: user 0 = up (screen 270), 90 = right (screen 0),
+        # clockwise -- the same way right() turns.
+        self._angle = (270 + angle) % 360
         self._draw_turtle()
         pbc.show(_canvas)
 

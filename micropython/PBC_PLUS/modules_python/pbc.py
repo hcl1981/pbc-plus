@@ -68,6 +68,13 @@ def show(canvas, x=0, y=0):
     -- the pixels currently on the display under those positions stay
     untouched. Set `canvas.transparent = None` to disable and force
     an opaque blit (faster, useful for full-screen backgrounds)."""
+    # Showing the sprite background while sprites are visible repaints
+    # the whole sprite scene (as in the IDE emulator) -- a bare blit
+    # would hide the sprites until their next move.
+    if (x == 0 and y == 0 and canvas is Sprite._background and
+            Sprite._visible):
+        _redraw_sprites()
+        return
     key = getattr(canvas, 'transparent', None)
     if key is None:
         _screen.blit(canvas.buf, x, y, canvas.width, canvas.height)
@@ -454,6 +461,7 @@ def leds_off():
 
 tone     = _hw.tone
 tone_off = _hw.tone_off
+no_tone  = tone_off     # alias, used by older examples and the IDE help
 
 # ---- Battery ---------------------------------------------------------
 
@@ -514,6 +522,11 @@ def wait_for_button():
         time.sleep_ms(10)
     while any_pressed():
         time.sleep_ms(10)
+    # Consume the press we just waited for, so a later was_pressed_x()
+    # doesn't report it again (same behaviour as the IDE emulator).
+    for f in (was_pressed_up, was_pressed_down, was_pressed_left, was_pressed_right,
+              was_pressed_center, was_pressed_a, was_pressed_b):
+        f()
 
 # ---- RGB LED + accelerometer -----------------------------------------
 
