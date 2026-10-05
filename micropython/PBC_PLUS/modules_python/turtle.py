@@ -61,8 +61,6 @@ _CX = pbc.WIDTH  // 2
 _CY = pbc.HEIGHT // 2
 
 _canvas = None
-_backup_buf = None
-_backup_fb  = None
 _BACKUP_SIZE = 28      # big enough for the asymmetric marker (tip at 11)
 
 
@@ -78,14 +76,6 @@ def get_canvas():
     """Return the shared turtle canvas (allocate if needed)."""
     _ensure_canvas()
     return _canvas
-
-
-def _ensure_backup():
-    global _backup_buf, _backup_fb
-    if _backup_buf is None:
-        n = _BACKUP_SIZE
-        _backup_buf = bytearray(n * n * 2)
-        _backup_fb  = framebuf.FrameBuffer(_backup_buf, n, n, framebuf.RGB565)
 
 
 # ----------------------------------------------------------------------
@@ -121,6 +111,10 @@ class Turtle:
         self._angle = 270.0
         self._prev_pos   = None
         self._first_draw = True
+        # Each turtle keeps its own copy of the area under its marker;
+        # with one shared buffer a second visible turtle would overwrite
+        # it and leave marker remains in the drawing.
+        self._bk_fb = None
         self._draw_turtle()
         pbc.show(_canvas)
 
@@ -270,6 +264,7 @@ class Turtle:
         self._angle = math.degrees(math.atan2(dy, dx)) % 360
         distance = math.sqrt(dx * dx + dy * dy)
         self.forward(distance)
+        self._restore_backup()
         self._angle = saved
         self._draw_turtle()
         pbc.show(_canvas)
@@ -302,14 +297,14 @@ class Turtle:
         if not (0 <= x < c.width and 0 <= y < c.height):
             return False
         if (self.visible and not self._first_draw and
-                self._prev_pos is not None and _backup_fb is not None):
+                self._prev_pos is not None and self._bk_fb is not None):
             n = _BACKUP_SIZE
             half = n // 2
             px, py = self._prev_pos
             bx = max(0, min(px - half, pbc.WIDTH  - n))
             by = max(0, min(py - half, pbc.HEIGHT - n))
             if bx <= x < bx + n and by <= y < by + n:
-                return _backup_fb.pixel(x - bx, y - by) == color
+                return self._bk_fb.pixel(x - bx, y - by) == color
         return c.pixel(x, y) == color
 
     # ---- internal cursor rendering --------------------------------
@@ -318,14 +313,15 @@ class Turtle:
         """Save the area under the cursor and draw the marker triangle."""
         if not self.visible:
             return
-        _ensure_backup()
         n = _BACKUP_SIZE
         half = n // 2
+        if self._bk_fb is None:
+            self._bk_fb = framebuf.FrameBuffer(bytearray(n * n * 2), n, n, framebuf.RGB565)
         x = int(self._x); y = int(self._y)
         bx = max(0, min(x - half, pbc.WIDTH  - n))
         by = max(0, min(y - half, pbc.HEIGHT - n))
         # Save what's under the cursor area (so we can erase later).
-        _backup_fb.blit(_canvas, -bx, -by)
+        self._bk_fb.blit(_canvas, -bx, -by)
         # Draw the marker on top.
         self._draw_triangle(x, y, self._angle)
         self._prev_pos   = (x, y)
@@ -335,14 +331,14 @@ class Turtle:
         """Paint the saved area back over the cursor."""
         if self._first_draw or self._prev_pos is None or not self.visible:
             return
-        if _backup_fb is None:
+        if self._bk_fb is None:
             return
         n = _BACKUP_SIZE
         half = n // 2
         px, py = self._prev_pos
         rx = max(0, min(px - half, pbc.WIDTH  - n))
         ry = max(0, min(py - half, pbc.HEIGHT - n))
-        _canvas.blit(_backup_fb, rx, ry)
+        _canvas.blit(self._bk_fb, rx, ry)
 
     def _draw_triangle(self, x, y, heading):
         """Filled, asymmetric arrow marker so the heading is obvious."""
