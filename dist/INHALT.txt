@@ -8,7 +8,7 @@ Es passt immer nur EINE Firmware aufs Gerät.
 
 DATEI                                     GRÖSSE  SHA256 (Anfang)
 i2collection.uf2                             352K  06caddf8420545ef
-jumpnbump.uf2                                1.1M  2e4f57597cf0168f
+jumpnbump.uf2                                1.1M  d8f26ad7455a2dac
 micropolis.uf2                               2.0M  d817994650e66e23
 micropython-PBC_PLUS.uf2                     744K  0821784e66a86bcc
 noiz2sa.uf2                                  120K  597e5833290d22a1
