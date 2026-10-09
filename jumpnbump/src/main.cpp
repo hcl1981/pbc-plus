@@ -352,7 +352,9 @@ private:
       case 0: _st = (b == LINK_SYNC0) ? 1 : 0; break;
       case 1: _st = (b == LINK_SYNC1) ? 2 : ((b == LINK_SYNC0) ? 1 : 0); break;
       case 2: _ptype = b; _st = 3; break;
-      case 3: _plen = b; _pcnt = 0; _st = (b == 0) ? 5 : 4; break;
+      // Laengen ueber LINK_MAXPL kann es nur durch Leitungsfehler geben; sie
+      // wuerden ueber _pbuf hinausschreiben (250 Byte Puffer, Feld bis 255).
+      case 3: _plen = b; _pcnt = 0; _st = (b > LINK_MAXPL) ? 0 : ((b == 0) ? 5 : 4); break;
       case 4: _pbuf[_pcnt++] = b; if (_pcnt >= _plen) _st = 5; break;
       case 5:
         if (crc8(_ptype, _plen, _pbuf, _plen) == b) deliver(_ptype, _pbuf, _plen);
@@ -553,8 +555,8 @@ static void applyState(const uint8_t *b, uint8_t n) {
     uint8_t fl = b[o++];
     uint8_t deaths = b[o++];
     player[i].enabled = 1;
-    player[i].x = (int)px << 16;
-    player[i].y = (int)py << 16;
+    player[i].x = (int)px * 65536;   // statt << 16: Schieben negativer Werte ist in C++ undefiniert
+    player[i].y = (int)py * 65536;
     player[i].image = img;
     player[i].dead_flag = (fl & 1) ? 1 : 0;
     player[i].in_water = (fl & 2) ? 1 : 0;
