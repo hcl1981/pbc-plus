@@ -117,8 +117,10 @@ t.on_color(pbc.RED, 6)     # ... or 6 px ahead
 `Sprite.on_color` ignores the sprite's transparent (colour-key) pixels.
 `Turtle.on_color` looks ahead so the turtle's own trail does not count;
 where the marker covers the probed pixel it reads the area saved under
-the marker. The probe is a single pixel, so walls should be thicker than
-the look-ahead distance. A demo lives in `../beispiele/kollision.py`.
+the marker. On a slanted heading the two pixels next to the probe on the
+turtle's side count too, so a 1-px diagonal line can't be crossed through
+the gap between its pixels. Walls should still be thicker than the
+look-ahead distance. A demo lives in `../beispiele/kollision.py`.
 
 ## Roadmap
 

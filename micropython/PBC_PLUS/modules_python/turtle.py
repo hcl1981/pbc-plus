@@ -284,16 +284,29 @@ class Turtle:
     # ---- collisions ------------------------------------------------
 
     def on_color(self, color, lookahead=3):
-        """True if the pixel `lookahead` px ahead of the turtle matches
+        """True if the point `lookahead` px ahead of the turtle matches
         `color` (a name like 'red' or an RGB565 int). Looking ahead
-        avoids reading the turtle's own trail. The marker is drawn onto
-        the same canvas, so where it covers the probed pixel we read the
-        saved area under the marker instead."""
+        avoids reading the turtle's own trail. On a slanted heading the
+        two pixels next to that point towards the turtle count too:
+        two 1-px diagonal lines can cross without sharing a pixel, and
+        a check of one point alone would slip through the gap."""
         color = _resolve_color(color, pbc.WHITE)
-        c = get_canvas()
         rad = math.radians(self._angle)
-        x = int(self._x + lookahead * math.cos(rad))
-        y = int(self._y + lookahead * math.sin(rad))
+        dx, dy = math.cos(rad), math.sin(rad)
+        x = int(self._x + lookahead * dx)
+        y = int(self._y + lookahead * dy)
+        sx = (dx > 1e-6) - (dx < -1e-6)
+        sy = (dy > 1e-6) - (dy < -1e-6)
+        if self._pixel_is(x, y, color):
+            return True
+        if sx and sy:
+            return self._pixel_is(x - sx, y, color) or self._pixel_is(x, y - sy, color)
+        return False
+
+    def _pixel_is(self, x, y, color):
+        """Canvas pixel test; where the marker covers (x, y) we read the
+        saved area under the marker instead."""
+        c = get_canvas()
         if not (0 <= x < c.width and 0 <= y < c.height):
             return False
         if (self.visible and not self._first_draw and

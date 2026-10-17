@@ -39,7 +39,8 @@ Dazu `png.py` und `turtle.py` — Letzteres eine Turtle-Grafik zum Einstieg.
 **Kollisionen** — `sprite.touches(anderer)` (zwei Sprites),
 `sprite.on_color(farbe)` (Sprite steht mit einem sichtbaren Pixel auf dieser
 Farbe des Hintergrund-Canvas) und `turtle.on_color(farbe)` (die Stelle 3 px vor
-der Turtle hat diese Farbe). Vorführung: `beispiele/kollision.py` — braucht
+der Turtle hat diese Farbe; bei schräger Fahrt zählen auch ihre zwei
+Nachbarn zur Turtle hin, damit keine dünne schräge Linie durchrutscht). Vorführung: `beispiele/kollision.py` — braucht
 keine Bilddateien, einfach per `mpremote cp` aufs Gerät kopieren.
 
 ```python
