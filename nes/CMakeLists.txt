@@ -96,6 +96,11 @@ target_include_directories(pbc_nes PRIVATE
 target_compile_definitions(pbc_nes PRIVATE
     PICO_FLASH_SIZE_BYTES=16777216
     PICO_STACK_SIZE=0x1000
+    # SDK 2.2 moves clk_peri to the fixed 48 MHz USB clock whenever the
+    # system clock is changed; the display SPI could then never exceed
+    # 24 MHz (measured: 23 fps instead of 60 on the NES). Keep clk_peri on
+    # the system clock as SDK 2.1 did.
+    PICO_CLOCK_ADJUST_PERI_CLOCK_WITH_SYS_CLOCK=1
     PICO_USE_STACK_GUARDS=1
     CPU_MHZ=${CPU_MHZ}
     CPU_VREG=${CPU_VREG}
