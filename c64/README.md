@@ -17,9 +17,9 @@ dort. Das Drumherum ist dasselbe wie bei [`../nes`](../nes/) und
 | F9 tauscht die Joystick-Ports | **Joystick-Port pro Spiel** in den Optionen, gespeichert |
 | Diskettenwahl, Cartridges, Bandlaufwerk | entfallen |
 
-**Stand:** läuft auf dem Gerät, Kern 0 unter 30 % Last bei 300 MHz – daher jetzt 200 MHz.
-Der Ton stürzte nach kurzer Zeit ab; sein Timer läuft deshalb jetzt auf Kern 1
-(noch nicht auf dem Gerät geprüft) und ist per Vorgabe aus.
+**Stand:** läuft auf dem Gerät, auf dem Gerät geprüft: Ton, Spielstände auf
+Diskette (speichern, RESET, wieder laden), Dateiauswahl, USB-Eintrag. Kern 0 lag
+bei 300 MHz unter 30 % Last, daher läuft der C64 mit 200 MHz.
 
 Die Oberfläche auf dem Gerät ist englisch (Menüs, Optionen, Meldungen, Hilfedatei auf dem Laufwerk).
 
@@ -101,9 +101,10 @@ SID über den Lautsprecher an GP15, nach dem Verfahren aus `../nes`: Ein Timer
 holt alle 45 µs einen Sample aus einem Ringpuffer und schreibt ihn in den
 PWM-Wert. Anders als beim NES läuft dieser Timer auf **Kern 1**: Beim C64
 reicht die Aufrufkette auf Kern 0 tief (CPU → Laufwerk → FatFs), und ein
-Interrupt 22 000-mal pro Sekunde könnte dort den 4-KB-Stack sprengen. Mit Ton
-an stürzte die erste Fassung reproduzierbar nach kurzer Zeit ab, daher ist der
-Ton per Vorgabe aus.
+Interrupt 22 000-mal pro Sekunde könnte dort den 4-KB-Stack sprengen. Die
+erste Fassung mit dem Timer auf Kern 0 stürzte mit Ton reproduzierbar nach
+kurzer Zeit ab; mit dem Timer auf Kern 1 läuft der Ton stabil. Er ist per
+Vorgabe trotzdem aus.
 
 ## Absturzanzeige
 

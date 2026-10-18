@@ -143,7 +143,6 @@ damit QuickNES fehlenden Speicher selbst melden kann.
 
 ## Offene Punkte
 
-* **Nicht auf Hardware geprüft.**
 * **Keine Batteriespeicher.** Spiele mit Speicherfunktion (Zelda u. a.) verlieren
   ihren Stand beim Ausschalten. QuickNES hält das Cartridge-RAM, es müsste nur
   beim Verlassen in den Flash geschrieben werden.
