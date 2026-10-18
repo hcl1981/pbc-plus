@@ -8,7 +8,7 @@
  *     (from PicoBoyGB), the chosen game is copied into a flash region and
  *     QuickNES reads it from there in place
  *   - 240x240 1:1 on the ST7789, sent by core 1 (video.c)
- *   - no sound output: the APU still runs, its samples are discarded
+ *   - sound on the PWM speaker (audio_pwm.c), volume on CENTER + up/down
  *
  * Boot:
  *   A or B held  -> USB stick mode, eject restarts
@@ -35,6 +35,7 @@
 #include "menu.h"
 #include "rom_store.h"
 #include "video.h"
+#include "audio_pwm.h"
 #include "quicknes.h"
 
 /* ---- build-time configuration (see CMakeLists.txt) ---------------------- */
@@ -50,8 +51,7 @@
 #ifndef SHOW_FPS
 #define SHOW_FPS 1
 #endif
-/* QuickNES always synthesises sound; a low rate keeps that cheap. */
-#define SAMPLE_RATE 11025
+#define VOLUME_DEFAULT 8
 /* Holding SELECT (CENTER + A) this long leaves the game. */
 #define SELECT_HOLD_US 1000000u
 
@@ -100,6 +100,15 @@ static void fs_write_readme(void)
     f_close(&f);
 }
 
+/* megadrive and nes share one drive. Whichever formatted it first used to
+ * name it after itself; give it the common name in either case. */
+static void fs_ensure_label(void)
+{
+    char label[24];
+    if (f_getlabel("", label, NULL) == FR_OK && strcmp(label, "PBC-ROMS") != 0)
+        f_setlabel("PBC-ROMS");
+}
+
 /* One diagnostic line per step: the panel is the only console. */
 static int diag_y;
 
@@ -130,6 +139,7 @@ static void __attribute__((noreturn)) usb_stick_mode(void)
         diag("FEHLER: Laufwerk unbrauchbar", PBC_RED);
         for (;;) tight_loop_contents();
     }
+    fs_ensure_label();
     fs_write_readme();
     fs_unmount();               /* the host owns the medium from now on */
 
@@ -205,6 +215,11 @@ static void emulation_loop(void)
     uint64_t select_since = 0;
     const uint8_t *prev_pixels = NULL, *last_pixels = NULL;
 
+    int volume = VOLUME_DEFAULT;
+    uint32_t prev_raw = 0;
+    uint64_t status_hold_until = 0;     /* keep the volume note visible */
+    audio_pwm_set_volume(volume);
+
     uint64_t stat_t0 = time_us_64(), stat_busy_us = 0;
     uint32_t stat_drawn = 0, stat_emulated = 0;
 
@@ -219,6 +234,23 @@ static void emulation_loop(void)
             select_since = 0;
         }
 
+        /* CENTER + up/down: volume, 0 = off */
+        uint32_t raw = input_raw(), pressed = raw & ~prev_raw;
+        prev_raw = raw;
+        if ((raw & IN_CENTER) && (pressed & (IN_UP | IN_DOWN))) {
+            volume += (pressed & IN_UP) ? 1 : -1;
+            if (volume < 0) volume = 0;
+            if (volume > AUDIO_VOL_MAX) volume = AUDIO_VOL_MAX;
+            audio_pwm_set_volume(volume);
+            char s[24];
+            if (volume)
+                snprintf(s, sizeof s, "Lautstaerke %d/%d", volume, AUDIO_VOL_MAX);
+            else
+                snprintf(s, sizeof s, "Ton aus");
+            video_set_status(s);
+            status_hold_until = time_us_64() + 1500000;
+        }
+
         /* QuickNES draws this frame into the buffer of two frames ago.
          * If core 1 is still sending that one, let it finish. */
         while (prev_pixels && video_busy_with(prev_pixels))
@@ -227,8 +259,9 @@ static void emulation_loop(void)
         uint64_t frame_start = time_us_64();
         qnes_emulate_frame(joy, 0);
 
-        static int16_t discard[1024];
-        qnes_read_samples(discard, 1024);   /* the APU output must be drained */
+        static int16_t samples[1024];
+        long n = qnes_read_samples(samples, 1024);   /* must be drained anyway */
+        audio_pwm_push(samples, (int)n);
 
         int pal_size = 0;
         const int16_t *pal = qnes_get_palette(&pal_size);
@@ -255,7 +288,8 @@ static void emulation_loop(void)
                      (unsigned long)stat_drawn,
                      (unsigned long)(stat_emulated * 100 / 60),
                      (unsigned long)(stat_busy_us * 100 / (now - stat_t0)));
-            video_set_status(s);
+            if (now >= status_hold_until)
+                video_set_status(s);
             stat_t0 = now;
             stat_drawn = stat_emulated = 0;
             stat_busy_us = 0;
@@ -321,7 +355,8 @@ int main(void)
     overclock();
 
     qnes_set_region(QNES_REGION_NTSC);
-    if (qnes_init(SAMPLE_RATE) != 0)
+    audio_pwm_init();
+    if (qnes_init(AUDIO_RATE) != 0)
         fatal("Emulator-Start", "fehlgeschlagen");
     if (qnes_load_rom_inplace(rom_store_data(), (long)rom_store_size()) != 0)
         fatal("Spiel nicht ladbar:", "Mapper oder Speicher");

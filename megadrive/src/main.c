@@ -13,7 +13,7 @@
  *     still runs and the YM2612 timers still tick so games behave
  *
  * Boot:
- *   A or B held  -> USB stick mode (drive "PBC-MD"), eject restarts
+ *   A or B held  -> USB stick mode (drive "PBC-ROMS"), eject restarts
  *   otherwise    -> ROM list, then the game
  */
 #include <stdio.h>
@@ -114,7 +114,7 @@ static bool fs_format(void)
     if (f_mkfs("", &opt, work, sizeof work) != FR_OK)
         return false;
     if (fs_mount()) {
-        f_setlabel("PBC-MD");
+        f_setlabel("PBC-ROMS");
         fs_unmount();
     }
     return true;
@@ -146,6 +146,15 @@ static void fs_write_readme(void)
     f_close(&f);
 }
 
+/* megadrive and nes share one drive. Whichever formatted it first used to
+ * name it after itself; give it the common name in either case. */
+static void fs_ensure_label(void)
+{
+    char label[24];
+    if (f_getlabel("", label, NULL) == FR_OK && strcmp(label, "PBC-ROMS") != 0)
+        f_setlabel("PBC-ROMS");
+}
+
 /* One diagnostic line per step: the panel is the only console this board
  * has, and a hang between two steps is then visible at a glance. */
 static int diag_y;
@@ -160,7 +169,7 @@ static void __attribute__((noreturn)) usb_stick_mode(void)
 {
     menu_message("USB-STICK-MODUS",
                  "ROMs auf das Laufwerk",
-                 "PBC-MD kopieren und dann",
+                 "PBC-ROMS kopieren und dann",
                  "auswerfen. Startet neu.");
     diag_y = 168;
 
@@ -178,6 +187,7 @@ static void __attribute__((noreturn)) usb_stick_mode(void)
         for (;;) tight_loop_contents();
     }
     diag("LIESMICH.TXT...", PBC_GREY);
+    fs_ensure_label();
     fs_write_readme();
     fs_unmount();               /* the host owns the medium from now on */
 

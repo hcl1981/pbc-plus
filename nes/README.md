@@ -12,17 +12,17 @@ wie bei [`../megadrive`](../megadrive/):
 | ROM von SD-Karte, in PSRAM | ROM im **Flash**, QuickNES liest PRG direkt per XIP |
 | SD-Karten-Browser | **USB-Stick-Modus** in eine FatFs-Partition im Flash (aus [PicoBoyGB](../picoboygb/)) |
 | HDMI/VGA/TV | **ST7789**: 240×240 Pixel **1:1**, auf Kern 1 per DMA gesendet |
-| Ton über HDMI/I2S/PWM | **kein Ton**: die APU läuft mit niedriger Rate mit, die Samples werden verworfen |
+| Ton über HDMI/I2S/PWM | Ton über den **PWM-Lautsprecher** (GP15), 22 222 Hz, Lautstärke mit Mitte + Hoch/Runter |
 | Einstellungen, Spielstände, Game Genie, USB-HID | entfallen |
 
-**Stand: gebaut, noch nicht auf dem Gerät getestet.**
+**Stand:** Bild auf dem Gerät getestet (nach der SPI-Korrektur noch nicht neu gemessen). Ton ist neu und noch nicht gehört.
 
 ## Benutzung
 
 1. [`../dist/nes.uf2`](../dist/nes.uf2) flashen: BOOTSEL halten, USB anstecken,
    Datei auf das Laufwerk `RPI-RP2` kopieren.
 2. **ROMs aufspielen:** beim Einschalten **A oder B** gedrückt halten. Das Gerät
-   meldet sich als USB-Stick. `.nes`-Dateien draufkopieren und das Laufwerk
+   meldet sich als USB-Stick `PBC-ROMS`. `.nes`-Dateien draufkopieren und das Laufwerk
    **auswerfen** – der PicoBoy startet von selbst neu. Beim allerersten Start
    (leeres Laufwerk) landet man automatisch in diesem Modus.
 3. Ohne gedrückte Taste einschalten: Spieleliste. Hoch/Runter wählt,
@@ -42,8 +42,10 @@ wird das erste gestartete Spiel einmal neu in den ROM-Bereich geschrieben.
 | B | B |
 | START | Mitte + B |
 | SELECT | Mitte + A (1 s halten = zurück zur Spieleliste) |
+| – | Mitte + Hoch/Runter: Lautstärke (0 = Ton aus, 1–12, Vorgabe 8) |
 
-Mitte allein tut nichts, wie bei PicoBoyGB. Unter dem Bild stehen gezeichnete
+Mitte allein tut nichts, wie bei PicoBoyGB. Solange Mitte gehalten wird, geht
+der Joystick nicht ans Spiel. Unter dem Bild stehen gezeichnete
 Bilder pro Sekunde, Emulationstempo und die Auslastung von Kern 0.
 
 ## Bild
@@ -56,6 +58,20 @@ QuickNES zeichnet abwechselnd in zwei Pixelpuffer. Kern 0 übergibt ein fertiges
 Bild samt Palette an Kern 1. Der rechnet es Zeile für Zeile in BGR565 um und
 schickt es per DMA, während Kern 0 schon das nächste Bild in den anderen Puffer
 emuliert. Bei 250 MHz läuft der SPI mit 62,5 MHz; ein Bild braucht rund 15 ms.
+
+## Ton
+
+Wie in PicoBoyGB, das auf diesem Gerät erprobt ist: Ein Timer holt alle 45 µs
+einen Sample aus einem Ringpuffer und schreibt ihn in den PWM-Wert von GP15
+(10 Bit, Träger ~244 kHz). QuickNES erzeugt genau diese Rate (22 222 Hz). Weil
+Bildtakt und Sample-Timer zwei getrennte Uhren sind, wird der Füllstand bei
+jedem Bild geprüft und um einen Sample korrigiert. Laute Spitzen werden weich
+begrenzt. Bei Lautstärke 0 steht der Timer, und der Lautsprecher-Pin liegt
+auf Low (kein Ruhestrom).
+
+Beim Mega Drive lief ein Tonversuch mit DMA-Endlosmodus instabil. Hier ist
+bewusst der erprobte, einfachere Weg gewählt; die NES-Tonerzeugung kostet
+ohnehin wenig.
 
 ## Speicher
 
@@ -102,6 +118,7 @@ Anzeige wenig CPU-Last, lohnt ein niedrigerer Takt für die Batterie.
 ```
 src/main.c        Startablauf, USB-Stick-Modus, Takt, Emulationsschleife
 src/video.c       Palette, Ausgabe 240x240 auf Kern 1
+src/audio_pwm.c   Ton: Ringpuffer, Timer, PWM auf GP15
 src/input.c       Tastenbelegung (Mitte als Modifier)
 src/display.c, menu.c, rom_store.c   aus ../megadrive (rom_store ohne Byte-Tausch)
 src/flash_fs.*, usb_*.c, tusb_config.h, fatfs/   aus ../picoboygb
@@ -118,7 +135,7 @@ damit QuickNES fehlenden Speicher selbst melden kann.
 * **Keine Batteriespeicher.** Spiele mit Speicherfunktion (Zelda u. a.) verlieren
   ihren Stand beim Ausschalten. QuickNES hält das Cartridge-RAM, es müsste nur
   beim Verlassen in den Flash geschrieben werden.
-* Kein Ton, nur NTSC-Takt, kein zweiter Spieler.
+* Nur NTSC-Takt, kein zweiter Spieler.
 
 ## Lizenzen
 

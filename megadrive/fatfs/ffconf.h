@@ -22,7 +22,7 @@
 #define FF_USE_FASTSEEK	0
 #define FF_USE_EXPAND	0
 #define FF_USE_CHMOD	0
-#define FF_USE_LABEL	1	/* volume label ("PBC-MD"). */
+#define FF_USE_LABEL	1	/* volume label ("PBC-ROMS"). */
 #define FF_USE_FORWARD	0
 #define FF_USE_STRFUNC	1	/* f_puts / f_printf for the README file. */
 #define FF_PRINT_LLI	0

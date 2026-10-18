@@ -5,9 +5,10 @@
  *   B             -> B
  *   CENTER + B    -> START
  *   CENTER + A    -> SELECT (held 1 s: back to the ROM list)
+ *   CENTER + up/down -> volume (handled in main.c, not sent to the game)
  *
  * CENTER on its own does nothing; it only turns A and B into START and
- * SELECT, the same as in PicoBoyGB.
+ * SELECT, the same as in PicoBoyGB, and the joystick into a volume control.
  */
 #ifndef PBC_INPUT_H
 #define PBC_INPUT_H

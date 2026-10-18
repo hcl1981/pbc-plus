@@ -44,6 +44,7 @@ add_executable(pbc_nes
     src/main.c
     src/display.c
     src/video.c
+    src/audio_pwm.c
     src/input.c
     src/menu.c
     src/rom_store.c

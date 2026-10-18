@@ -2,7 +2,7 @@
  * usb_descriptors.c -- USB descriptors for the PBC Mega Drive mass-storage device.
  *
  * A single MSC (bulk-only) interface exposing the on-board FatFs partition as
- * a USB stick called "PBC-MD". Self-contained (no TinyUSB BSP board layer):
+ * a USB stick (drive label "PBC-ROMS"). Self-contained (no TinyUSB BSP board layer):
  * the serial string is derived from the RP2350 unique flash id.
  */
 

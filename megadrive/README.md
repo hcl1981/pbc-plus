@@ -25,7 +25,7 @@ wurde wieder entfernt.
 1. [`../dist/megadrive.uf2`](../dist/megadrive.uf2) flashen: BOOTSEL halten, USB anstecken, Datei auf
    das Laufwerk `RPI-RP2` kopieren.
 2. **ROMs aufspielen:** beim Einschalten **A oder B** gedrückt halten. Das Gerät
-   meldet sich als USB-Stick `PBC-MD`. ROMs (`.md`, `.bin`, `.gen`, `.smd`, bis
+   meldet sich als USB-Stick `PBC-ROMS`. ROMs (`.md`, `.bin`, `.gen`, `.smd`, bis
    5 MB) draufkopieren und das Laufwerk **auswerfen** – der PicoBoy startet von
    selbst neu. Beim allerersten Start (leeres Laufwerk) landet man automatisch
    in diesem Modus.
