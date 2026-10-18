@@ -12,6 +12,7 @@ jumpnbump.uf2                                1.1M  d8f26ad7455a2dac
 megadrive.uf2                                1.3M  e24eedcdea046b52
 micropolis.uf2                               2.0M  d817994650e66e23
 micropython-PBC_PLUS.uf2                     744K  0821784e66a86bcc
+nes.uf2                                      348K  2c4434d7ac0fadd5
 noiz2sa.uf2                                  120K  597e5833290d22a1
 picoboygb.uf2                                128K  93672907ee58848e
 spout.uf2                                    120K  71881f01a486539b
@@ -35,5 +36,5 @@ sie umwandelt, steht in doom/ANLEITUNG.md.
 PicoBoyGB braucht ROMs: Mitte halten, RESET drücken, dann meldet
 sich das Gerät als USB-Stick zum Draufkopieren.
 
-Mega Drive braucht ROMs: beim Einschalten A oder B halten, dann
-meldet sich das Gerät als USB-Stick zum Draufkopieren.
+Mega Drive und NES brauchen ROMs: beim Einschalten A oder B halten,
+dann meldet sich das Gerät als USB-Stick zum Draufkopieren.

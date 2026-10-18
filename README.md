@@ -24,6 +24,7 @@ cd spout && ./build.sh      # oder ein einzelnes Projekt
 | [`micropolis`](micropolis/) | Micropolis — der quelloffene Kern von SimCity 1. | `micropolis.uf2` |
 | [`tyrian`](tyrian/) | OpenTyrian. Firmware plus 8,9 MB Spieldaten in einer Datei. | `tyrian-komplett.uf2` |
 | [`picoboygb`](picoboygb/) | Game-Boy-Emulator. ROMs kommen per USB-Stick-Modus aufs Gerät. | `picoboygb.uf2` |
+| [`nes`](nes/) | NES-Emulator (QuickNES-Kern aus frank-nes), 240×240 Pixel 1:1. ROMs per USB-Stick-Modus, ohne Ton. | `nes.uf2` |
 | [`megadrive`](megadrive/) | Sega-Genesis-/Mega-Drive-Emulator (Kern aus frank-genesis), ROM läuft direkt aus dem Flash. ROMs per USB-Stick-Modus, ohne Ton. | `megadrive.uf2` |
 | [`doom`](doom/) | Doom mit Mehrspieler über ein USB-C-Kabel. | `doom-usb-mp.uf2` |
 | [`jumpnbump`](jumpnbump/) | Jump 'n Bump für zwei gekoppelte Geräte. | `jumpnbump.uf2` |
@@ -69,6 +70,10 @@ ablegen, auswerfen, RESET ohne Mitte — das Menü listet sie dann auf.
 halten: das Gerät meldet sich als USB-Stick `PBC-MD`. Dort `.md`-, `.bin`-,
 `.gen`- oder `.smd`-Dateien ablegen und auswerfen — der PicoBoy startet von
 selbst neu und zeigt die Spieleliste.
+
+**NES braucht ROMs.** Genauso: beim Einschalten **A** oder **B** halten,
+`.nes`-Dateien auf das Laufwerk kopieren, auswerfen. NES und Mega Drive teilen
+sich das Laufwerk; jede Firmware listet nur ihre eigenen ROMs.
 
 **Tyrian-Daten liegen bei.** Die sind Freeware und stecken schon in
 `tyrian-komplett.uf2`.
