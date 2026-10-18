@@ -1,0 +1,563 @@
+/*
+ * PBC Mega Drive -- Sega Genesis / Mega Drive emulator for the
+ * PicoBoy Color Plus (RP2350A, 520 KB SRAM, 16 MB flash, ST7789 240x280).
+ *
+ * Emulator core: frank-genesis (Gwenesis based) by rh1tech, AGPL-3.0.
+ * What changed for this device:
+ *   - no PSRAM: the ROM is executed in place from flash (rom_store.c)
+ *   - no SD card: ROMs come over USB mass storage into a flash FatFs
+ *     partition, taken from PicoBoyGB (flash_fs.c, usb_msc.c)
+ *   - no HDMI: the frame is scaled to 240 px wide and streamed to the
+ *     ST7789 while it is being drawn (video.c)
+ *   - no audio: sound synthesis is compiled out (PBC_NO_AUDIO), the Z80
+ *     still runs and the YM2612 timers still tick so games behave
+ *
+ * Boot:
+ *   A or B held  -> USB stick mode (drive "PBC-MD"), eject restarts
+ *   otherwise    -> ROM list, then the game
+ */
+#include <stdio.h>
+#include <string.h>
+#include "pico/stdlib.h"
+#include "pico/multicore.h"
+#include "hardware/clocks.h"
+#include "hardware/vreg.h"
+#include "hardware/spi.h"
+#include "hardware/watchdog.h"
+#include "hardware/sync.h"
+#include "hardware/structs/qmi.h"
+
+#include "ff.h"
+#include "tusb.h"
+
+#include "board.h"
+#include "color565.h"
+#include "display.h"
+#include "input.h"
+#include "menu.h"
+#include "rom_store.h"
+#include "video.h"
+#include "HDMI.h"
+
+#include "bus/gwenesis_bus.h"
+#include "io/gwenesis_io.h"
+#include "vdp/gwenesis_vdp.h"
+#include "cpus/M68K/m68k.h"
+#include "sound/z80inst.h"
+#include "sound/ym2612.h"
+#include "sound/gwenesis_sn76489.h"
+#include "sound/sound_backend.h"
+
+/* ---- build-time configuration (see CMakeLists.txt) ---------------------- */
+#ifndef CPU_MHZ
+#define CPU_MHZ 300
+#endif
+#ifndef CPU_VREG
+#define CPU_VREG VREG_VOLTAGE_1_30
+#endif
+#ifndef FLASH_MAX_FREQ_MHZ
+#define FLASH_MAX_FREQ_MHZ 88
+#endif
+#ifndef SHOW_FPS
+#define SHOW_FPS 1
+#endif
+#ifndef Z80_SLICE_LINES
+#define Z80_SLICE_LINES 16
+#endif
+/* Never skip more than this many frames in a row, however slow we are. */
+#define MAX_SKIP 3
+/* Holding SELECT (CENTER + A) this long leaves the game. */
+#define SELECT_HOLD_US 1000000u
+
+/* ---- globals the emulator core expects (frank-genesis kept them in main.c) */
+extern unsigned char *ROM_DATA;
+extern unsigned char M68K_RAM[];
+extern unsigned char ZRAM[];
+extern unsigned char gwenesis_vdp_regs[];
+extern unsigned short gwenesis_vdp_status;
+extern int hint_pending;
+extern int screen_width;
+extern int screen_height;
+extern unsigned char button_state[];
+
+int system_clock;
+unsigned int lines_per_frame = LINES_PER_FRAME_NTSC;
+int scan_line;
+unsigned int frame_counter;
+
+bool audio_enabled   = false;
+bool sn76489_enabled = false;
+bool ym2612_enabled  = false;
+bool z80_enabled     = true;
+
+int16_t *gwenesis_sn76489_buffer;          /* unused with PBC_NO_AUDIO */
+int16_t *gwenesis_ym2612_buffer;
+volatile int sn76489_index, sn76489_clock;
+volatile int ym2612_index, ym2612_clock;
+
+/* Input is sampled once per frame in the main loop; the core asks for it on
+ * every pad read, so this has to stay cheap. */
+void gwenesis_io_get_buttons(void) { }
+
+/* ---- FatFs volume -------------------------------------------------------- */
+static FATFS g_fs;
+extern volatile bool usb_msc_ejected;
+
+static bool fs_mount(void)   { return f_mount(&g_fs, "", 1) == FR_OK; }
+static void fs_unmount(void) { f_mount(NULL, "", 0); }
+
+static bool fs_format(void)
+{
+    static BYTE work[FF_MAX_SS];
+    /* FM_SFD: no partition table, one FAT volume filling the region. */
+    MKFS_PARM opt = { FM_FAT | FM_SFD, 0, 0, 0, 0 };
+    if (f_mkfs("", &opt, work, sizeof work) != FR_OK)
+        return false;
+    if (fs_mount()) {
+        f_setlabel("PBC-MD");
+        fs_unmount();
+    }
+    return true;
+}
+
+static void fs_write_readme(void)
+{
+    /* static: a FIL carries a 4 KB sector buffer, the stack is only 4 KB */
+    static FILINFO fi;
+    static FIL f;
+    if (f_stat("/LIESMICH.TXT", &fi) == FR_OK)
+        return;
+    if (f_open(&f, "/LIESMICH.TXT", FA_WRITE | FA_CREATE_ALWAYS) != FR_OK)
+        return;
+    f_puts("PBC Mega Drive - Genesis/Mega-Drive-Emulator fuer den PicoBoy Color Plus\r\n"
+           "\r\n"
+           "ROMs (.md .bin .gen .smd, bis 5 MB) hierher kopieren, dann das\r\n"
+           "Laufwerk AUSWERFEN. Der PicoBoy startet danach von selbst neu und\r\n"
+           "zeigt die Spieleliste.\r\n"
+           "\r\n"
+           "Zurueck in diesen Modus: beim Einschalten A oder B gedrueckt halten.\r\n"
+           "\r\n"
+           "Steuerung im Spiel:\r\n"
+           "  Joystick       Steuerkreuz\r\n"
+           "  A / B          A / B\r\n"
+           "  Mitte          C\r\n"
+           "  Mitte + B      START\r\n"
+           "  Mitte + A      SELECT (1 s halten = zurueck zur Spieleliste)\r\n", &f);
+    f_close(&f);
+}
+
+/* One diagnostic line per step: the panel is the only console this board
+ * has, and a hang between two steps is then visible at a glance. */
+static int diag_y;
+
+static void diag(const char *s, uint16_t colour)
+{
+    pbc_display_text(8, diag_y, s, colour, PBC_BLACK, 1);
+    diag_y += 11;
+}
+
+static void __attribute__((noreturn)) usb_stick_mode(void)
+{
+    menu_message("USB-STICK-MODUS",
+                 "ROMs auf das Laufwerk",
+                 "PBC-MD kopieren und dann",
+                 "auswerfen. Startet neu.");
+    diag_y = 168;
+
+    diag("Laufwerk pruefen...", PBC_GREY);
+    FRESULT fr = f_mount(&g_fs, "", 1);
+    if (fr != FR_OK) {
+        char m[32];
+        snprintf(m, sizeof m, "leer (%d), formatiere...", (int)fr);
+        diag(m, PBC_YELLOW);
+        if (fs_format() && fs_mount())
+            fr = FR_OK;
+    }
+    if (fr != FR_OK) {
+        diag("FEHLER: Laufwerk unbrauchbar", PBC_RED);
+        for (;;) tight_loop_contents();
+    }
+    diag("LIESMICH.TXT...", PBC_GREY);
+    fs_write_readme();
+    fs_unmount();               /* the host owns the medium from now on */
+
+    diag("USB starten...", PBC_GREY);
+    tud_init(BOARD_TUD_RHPORT);
+    diag("USB gestartet", PBC_GREY);
+
+    int status_y = diag_y;
+    uint32_t loops = 0;
+    uint64_t next_draw = 0;
+    for (;;) {
+        tud_task();
+        loops++;
+        if (time_us_64() >= next_draw) {
+            next_draw = time_us_64() + 500000;
+            int state = tud_mounted() ? 2 : tud_connected() ? 1 : 0;
+            static const char *const names[] = {
+                "PC: keine Verbindung", "PC: verbunden", "PC: Laufwerk aktiv" };
+            char m[40];
+            snprintf(m, sizeof m, "%-22s %5lu", names[state], (unsigned long)(loops % 100000));
+            pbc_display_text(8, status_y, m, state == 2 ? PBC_YELLOW : PBC_WHITE, PBC_BLACK, 1);
+        }
+        if (usb_msc_ejected) {
+            uint64_t t = time_us_64() + 300000;
+            while (time_us_64() < t)
+                tud_task();     /* let the host see the eject complete */
+            watchdog_reboot(0, 0, 10);
+            for (;;) tight_loop_contents();
+        }
+    }
+}
+
+/* ---- clocks -------------------------------------------------------------- */
+
+/* From frank-genesis: keep the flash (and therefore XIP, which now also
+ * serves the ROM) under FLASH_MAX_FREQ_MHZ whatever the system clock. Must
+ * run from RAM while the QMI timing changes. */
+static void __no_inline_not_in_flash_func(set_flash_timings)(int cpu_mhz)
+{
+    const int clock_hz = cpu_mhz * 1000000;
+    const int max_flash_freq = FLASH_MAX_FREQ_MHZ * 1000000;
+
+    int divisor = (clock_hz + max_flash_freq - (max_flash_freq >> 4) - 1) / max_flash_freq;
+    if (divisor == 1 && clock_hz >= 166000000)
+        divisor = 2;
+
+    int rxdelay = divisor;
+    if (clock_hz / divisor > 100000000 && clock_hz >= 166000000)
+        rxdelay += 1;
+
+    qmi_hw->m[0].timing = 0x60007000 |
+                          rxdelay << QMI_M0_TIMING_RXDELAY_LSB |
+                          divisor << QMI_M0_TIMING_CLKDIV_LSB;
+}
+
+/* Raised only after all flash writing (USB, ROM programming) is done, so
+ * those always run at the stock clock and flash timing. */
+static void overclock(void)
+{
+    if (CPU_MHZ > 150) {
+        if (CPU_VREG > VREG_VOLTAGE_1_30)
+            vreg_disable_voltage_limit();
+        vreg_set_voltage(CPU_VREG);
+        sleep_ms(10);
+        set_flash_timings(CPU_MHZ);
+        if (!set_sys_clock_khz(CPU_MHZ * 1000, false)) {
+            set_flash_timings(250);
+            set_sys_clock_khz(250000, true);
+        }
+    }
+    /* clk_peri follows clk_sys: re-derive the SPI divider. */
+    spi_set_baudrate(PBC_SPI, PBC_SPI_HZ);
+}
+
+/* ---- parallel line rendering (from frank-genesis, VDP_RASTER_RENDER) ----
+ *
+ * Core 1 draws line N while core 0 emulates line N+1. If core 1 is busy
+ * (pushing pixels to the panel), core 0 reclaims the line and draws it
+ * itself, which is exactly the single-core behaviour. Either way the line
+ * is reported to the scaler right after it is drawn. */
+static volatile int  vdp_job_line;
+static volatile bool vdp_job_done;
+static volatile bool vdp_job_busy;
+static volatile int  vdp_job_claim;
+
+static inline bool vdp_job_take(void)
+{
+    return __atomic_exchange_n(&vdp_job_claim, 0, __ATOMIC_ACQUIRE) == 1;
+}
+
+static inline void render_line(int line)
+{
+    gwenesis_vdp_render_line(line);
+    video_line_done(line);
+}
+
+static void vdp_pipeline_sync(void)
+{
+    if (!vdp_job_busy)
+        return;
+    if (vdp_job_take()) {
+        render_line(vdp_job_line);          /* core 1 never took it */
+    } else {
+        while (!vdp_job_done)
+            tight_loop_contents();
+    }
+    vdp_job_done = false;
+    vdp_job_busy = false;
+}
+
+static inline void vdp_pipeline_post(int line)
+{
+    vdp_pipeline_sync();
+    vdp_job_line = line;
+    vdp_job_busy = true;
+    __atomic_store_n(&vdp_job_claim, 1, __ATOMIC_RELEASE);
+}
+
+static void core1_main(void)
+{
+    for (;;) {
+        if (vdp_job_take()) {
+            render_line(vdp_job_line);
+            __dmb();
+            vdp_job_done = true;
+        }
+        video_service();
+    }
+}
+
+/* ---- emulator ------------------------------------------------------------ */
+
+static void genesis_init(void)
+{
+    memset(M68K_RAM, 0, MAX_RAM_SIZE);
+    memset(ZRAM, 0, MAX_Z80_RAM_SIZE);
+
+    z80_set_memory(ZRAM);
+    z80_start();
+    z80_pulse_reset();
+
+    m68k_init();
+    m68k_pulse_reset();
+
+    /* The FM synthesis is compiled out, but the chip state (timers, status)
+     * still has to be correct. */
+    YM2612Init();
+    YM2612ResetChip();
+    YM2612Config(YM2612_DISCRETE);
+    gwenesis_SN76489_Init(3579545, 888 * 60, AUDIO_FREQ_DIVISOR, PSG_INTEGRATED);
+    gwenesis_SN76489_Reset();
+
+    hdmi_line_lut_reset();
+    for (int i = 0; i < 256; i++)
+        pbc_palette[i] = PBC_BLACK;
+    gwenesis_vdp_reset();
+    gwenesis_vdp_set_buffer(&video_screen[0][0]);
+    memset(video_screen, 0, sizeof video_screen);
+}
+
+static void emulation_loop(void)
+{
+    int last_w = 0, last_h = 0;
+    uint64_t next_frame = time_us_64();
+    uint32_t skipped_in_row = 0;
+    uint64_t select_since = 0;
+
+    /* FPS statistics */
+    uint64_t stat_t0 = time_us_64();
+    uint32_t stat_drawn = 0, stat_emulated = 0;
+    uint64_t stat_busy_us = 0;          /* core 0 time not spent sleeping */
+
+    screen_width = 320;
+    screen_height = 224;
+    gwenesis_vdp_set_buffer(&video_screen[0][0]);
+    gwenesis_vdp_render_config();
+
+    for (;;) {
+        /* ---- input ---- */
+        genesis_input_t in = input_poll_genesis();
+        button_state[0] = in.pad;
+        button_state[1] = 0xFF;
+        button_state[2] = 0xFF;
+        if (in.select) {
+            if (select_since == 0)
+                select_since = time_us_64();
+            else if (time_us_64() - select_since >= SELECT_HOLD_US)
+                return;
+        } else {
+            select_since = 0;
+        }
+        uint64_t frame_start = time_us_64();
+
+        /* ---- frame geometry ---- */
+        int hint_counter = gwenesis_vdp_regs[10];
+        bool is_pal = REG1_PAL;
+        screen_width = REG12_MODE_H40 ? 320 : 256;
+        screen_height = is_pal ? 240 : 224;
+        lines_per_frame = is_pal ? LINES_PER_FRAME_PAL : LINES_PER_FRAME_NTSC;
+        uint32_t period = is_pal ? 20000u : 16667u;
+
+        bool force_render = false;
+        if (screen_width != last_w || screen_height != last_h) {
+            gwenesis_vdp_render_config();
+            last_w = screen_width;
+            last_h = screen_height;
+            force_render = true;
+        }
+
+        /* ---- skip drawing when more than a frame behind ---- */
+        uint64_t now = time_us_64();
+        bool render = force_render || skipped_in_row >= MAX_SKIP || now <= next_frame + period;
+        if (render) {
+            video_frame_begin(screen_width, screen_height);
+            skipped_in_row = 0;
+        } else {
+            skipped_in_row++;
+        }
+
+        system_clock = 0;
+        scan_line = 0;
+        vdp_palette_frame_begin();
+
+        extern volatile int zclk;
+        zclk = 0;
+        sn76489_clock = sn76489_index = 0;
+        ym2612_clock = ym2612_index = 0;
+
+        while (scan_line < (int)lines_per_frame) {
+            m68k_run(system_clock + VDP_CYCLES_PER_LINE);
+
+            /* Z80 in slices; always on the VBlank IRQ edges so the sound
+             * driver sees its interrupt (games wait on it). */
+            bool z80_due =
+                ((scan_line % Z80_SLICE_LINES) == (Z80_SLICE_LINES - 1)) ||
+                (scan_line == (int)lines_per_frame - 1) ||
+                (scan_line == screen_height - 1) ||
+                (scan_line == screen_height);
+            if (z80_due)
+                sound_z80_run(system_clock + VDP_CYCLES_PER_LINE);
+
+            if (scan_line == 0 || scan_line > screen_height)
+                hint_counter = gwenesis_vdp_regs[10];
+            if (--hint_counter < 0) {
+                if (REG0_LINE_INTERRUPT != 0 && scan_line <= screen_height) {
+                    hint_pending = 1;
+                    if ((gwenesis_vdp_status & STATUS_VIRQPENDING) == 0)
+                        m68k_update_irq(4);
+                }
+                hint_counter = gwenesis_vdp_regs[10];
+            }
+
+            if (render && scan_line < screen_height) {
+                /* Palette in force for this line, before the next line's
+                 * emulation can split it. */
+                hdmi_line_lut[scan_line] = vdp_palette_current_lut();
+                vdp_pipeline_post(scan_line);
+            }
+            scan_line++;
+
+            if (scan_line == screen_height) {
+                if (REG1_VBLANK_INTERRUPT != 0) {
+                    gwenesis_vdp_status |= STATUS_VIRQPENDING;
+                    m68k_set_irq(6);
+                }
+                sound_z80_irq(1);
+            }
+            if (scan_line == screen_height + 1)
+                sound_z80_irq(0);
+
+            system_clock += VDP_CYCLES_PER_LINE;
+        }
+        sound_frame_end(888 * AUDIO_FREQ_DIVISOR);
+
+        if (render)
+            vdp_pipeline_sync();            /* retire the last line in flight */
+
+        frame_counter++;
+        m68k.cycles -= system_clock;
+
+        /* ---- pacing: never faster than the real console ---- */
+        next_frame += period;
+        now = time_us_64();
+        stat_busy_us += now - frame_start;
+        if (now < next_frame) {
+            sleep_until(from_us_since_boot(next_frame));   /* WFE: saves battery */
+        } else if (now > next_frame + 4 * period) {
+            next_frame = now;               /* hopelessly behind: stop catching up */
+        }
+
+        stat_emulated++;
+        if (render)
+            stat_drawn++;
+#if SHOW_FPS
+        now = time_us_64();
+        if (now - stat_t0 >= 1000000) {
+            char s[32];
+            uint32_t full = is_pal ? 50 : 60;
+            /* CPU: share of real time core 0 was working rather than
+             * waiting for the next frame. Near 100 % means no headroom. */
+            snprintf(s, sizeof s, "%lufps %lu%% CPU%lu%%",
+                     (unsigned long)stat_drawn,
+                     (unsigned long)(stat_emulated * 100 / full),
+                     (unsigned long)(stat_busy_us * 100 / (now - stat_t0)));
+            video_set_status(s);
+            stat_t0 = now;
+            stat_drawn = stat_emulated = 0;
+            stat_busy_us = 0;
+        }
+#endif
+    }
+}
+
+/* ---- main ---------------------------------------------------------------- */
+
+/* Restart into the ROM list. Waits for every button to be released first:
+ * A or B still held at boot would land in USB stick mode instead. */
+static void __attribute__((noreturn)) reboot_to_menu(void)
+{
+    menu_wait_release();
+    watchdog_reboot(0, 0, 10);
+    for (;;) tight_loop_contents();
+}
+
+static uint8_t *scratch(void)
+{
+    /* Loading happens before the emulator runs, so the framebuffer is free
+     * to serve as the 32 KB copy buffer. */
+    return &video_screen[0][0];
+}
+
+int main(void)
+{
+    input_init();
+    pbc_display_init();
+    pbc_display_backlight(200);
+
+    if (input_raw() & (IN_A | IN_B))
+        usb_stick_mode();
+
+    if (!fs_mount()) {
+        /* Fresh device: nothing on the stick yet. */
+        usb_stick_mode();
+    }
+
+    static char rom[ROM_NAME_MAX];
+    if (!menu_pick_rom(rom, sizeof rom)) {
+        fs_unmount();
+        usb_stick_mode();
+    }
+
+    if (!rom_store_matches(rom)) {
+        menu_progress_begin(rom);
+        const char *err = rom_store_program(rom, scratch(), menu_progress);
+        if (err) {
+            menu_message("FEHLER", err, rom, "Taste: zurueck");
+            menu_wait_release();
+            while (!input_raw())
+                sleep_ms(20);
+            reboot_to_menu();
+        }
+    }
+    fs_unmount();
+
+    ROM_DATA = (unsigned char *)rom_store_data();
+
+    pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
+    menu_wait_release();
+
+    overclock();
+    genesis_init();
+    multicore_launch_core1(core1_main);
+
+    emulation_loop();
+
+    /* SELECT held: back to the ROM list. Stop core 1 so the panel is ours
+     * again, then reboot -- the simplest way to put every piece of hardware
+     * and emulator state back to a clean start. */
+    multicore_reset_core1();
+    pbc_display_end();
+    menu_message("PBC MEGA DRIVE", "Zurueck zur Spieleliste...", NULL, "Tasten loslassen");
+    reboot_to_menu();
+}

@@ -17,6 +17,7 @@ nur der Übersicht.
     doom                  GPL-2.0     doom/LICENSE
     jumpnbump             GPL-2.0     jumpnbump/LICENSE
     picoboygb             MIT         picoboygb/LICENSE
+    megadrive             AGPL-3.0    megadrive/LICENSE
     picoboygb-arduino     MIT         picoboygb-arduino/LICENSE
     i2collection          MIT         i2collection/LICENSE
     micropython           MIT         micropython/LICENSE
@@ -46,7 +47,7 @@ Mitgelieferte Spieldaten
     jumpnbump/data-src/
         Originaldaten aus Jump 'n Bump, GPL-2.0.
 
-Die WAD-Dateien von id Software (DOOM.WAD, DOOM2.WAD) und Game-Boy-ROMs
+Die WAD-Dateien von id Software (DOOM.WAD, DOOM2.WAD), Game-Boy- und Genesis-ROMs
 liegen diesem Repository NICHT bei und dürfen nicht weitergegeben werden.
 
 Eine ausführlichere Aufstellung samt Herkunft der einzelnen Portierungen

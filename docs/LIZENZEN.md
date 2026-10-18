@@ -15,6 +15,7 @@ sagt, welche das ist und woher sie kommt. Die Kurzfassung steht als
 | `jumpnbump` | GPL-2.0 | `jumpnbump/LICENSE` | Jump 'n Bump, Brainchild Design 1998 |
 | `picoboygb` | MIT | `picoboygb/LICENSE` | Peanut-GB → RP2040-GB → Pico-GB, siehe `picoboygb/HERKUNFT.md` |
 | `picoboygb-arduino` | MIT | `picoboygb-arduino/LICENSE` | dieselbe Kette, Arduino-Fassung |
+| `megadrive` | AGPL-3.0 | `megadrive/LICENSE` | Gwenesis → frank-genesis (rh1tech); Flash-Laufwerk und USB-Stick aus `picoboygb` (MIT, `megadrive/LICENSE.picoboygb`) |
 | `i2collection` | MIT | `i2collection/LICENSE` | Eigenentwicklung |
 | `micropython` | MIT | Upstream | MicroPython, hier nur die Board-Portierung |
 
@@ -32,6 +33,13 @@ richtige Wahl. Die vollständige Herleitung samt der mitgelieferten
 Fremdbestandteile (ChaN FatFs, Hedley, TinyUSB) steht in
 `picoboygb/HERKUNFT.md`.
 
+**Mega Drive steht unter AGPL-3.0.** Der Emulatorkern stammt aus
+frank-genesis, und das steht unter der GNU Affero GPL 3.0. Für die Weitergabe
+der Firmware gilt dasselbe wie bei der GPL: Quelltext mitliefern oder
+anbieten. Die aus PicoBoyGB übernommenen Dateien (Flash-Laufwerk,
+USB-Massenspeicher) bleiben MIT; ihr Lizenztext liegt als
+`megadrive/LICENSE.picoboygb` bei.
+
 **Urheberrechtsvermerke müssen erhalten bleiben.** Sowohl MIT als auch die
 FatFs-Lizenz verlangen das. Die Vermerke stehen in den Quelldateien — beim
 Aufräumen nicht entfernen.
@@ -45,6 +53,7 @@ Aufräumen nicht entfernen.
 | Jump'n'Bump (`jumpnbump/data-src/`) | GPL-2.0, liegen bei |
 | Doom-WADs | **kommerziell (id Software)** — liegen **nicht** bei, dürfen nicht weitergegeben werden |
 | Game-Boy-ROMs | fremdes Urheberrecht — liegen **nicht** bei |
+| Genesis-/Mega-Drive-ROMs | fremdes Urheberrecht — liegen **nicht** bei |
 
 `.gitignore` schließt WADs und ROMs aus, damit eigene Kopien nicht
 versehentlich im Repo landen. Die beiliegende `freedoom1.wad` ist davon

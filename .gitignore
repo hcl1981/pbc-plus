@@ -54,3 +54,8 @@ DOOM*.uf2
 # Ebenso Game-Boy-ROMs für PicoBoyGB.
 *.gb
 *.gbc
+
+# Und Genesis-ROMs für megadrive. Nicht .md (das sind die READMEs) und nicht
+# .bin (Tyrian-Daten) -- diese beiden Endungen bitte selbst im Blick behalten.
+*.gen
+*.smd
