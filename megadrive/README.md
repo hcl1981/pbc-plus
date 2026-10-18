@@ -38,6 +38,9 @@ geprüft. Startet man dasselbe Spiel wieder, entfällt das.
 
 ### Steuerung im Spiel
 
+Vor jedem Spielstart zeigt ein Kasten zwei Sekunden lang diese Belegung, wie
+bei PicoBoyGB.
+
 | Genesis | PicoBoy |
 |---|---|
 | Steuerkreuz | Joystick |

@@ -38,6 +38,9 @@ wird das erste gestartete Spiel einmal neu in den ROM-Bereich geschrieben.
 
 ### Steuerung im Spiel
 
+Vor jedem Spielstart zeigt ein Kasten zwei Sekunden lang diese Belegung, wie
+bei PicoBoyGB.
+
 | NES | PicoBoy |
 |---|---|
 | Steuerkreuz | Joystick |

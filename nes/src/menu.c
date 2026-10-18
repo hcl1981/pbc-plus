@@ -30,6 +30,25 @@
 static char (*rom_names)[ROM_NAME_MAX];
 static int  rom_count;
 
+void menu_controls(const menu_control_t *c, int n)
+{
+    const int box_x = 12, box_w = PBC_LCD_W - 24;
+    const int box_h = 52 + n * 16;
+    const int box_y = (PBC_LCD_H - box_h) / 2;
+
+    pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, COL_BG);
+    pbc_display_fill(box_x, box_y, box_w, box_h, COL_TITLE);              /* frame */
+    pbc_display_fill(box_x + 2, box_y + 2, box_w - 4, box_h - 4, COL_BAR);
+    pbc_display_text_centered(box_y + 14, "STEUERUNG", COL_TITLE, COL_BAR, 1);
+
+    int y = box_y + 40;
+    for (int i = 0; i < n; i++, y += 16) {
+        pbc_display_text(box_x + 14, y, c[i].button, COL_TEXT, COL_BAR, 1);
+        pbc_display_text(box_x + 14 + 8 * 8, y, c[i].key, COL_TEXT, COL_BAR, 1);
+    }
+    sleep_ms(2000);
+}
+
 void menu_wait_release(void)
 {
     while (input_raw())

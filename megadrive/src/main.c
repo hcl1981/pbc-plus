@@ -554,6 +554,16 @@ int main(void)
 
     ROM_DATA = (unsigned char *)rom_store_data();
 
+    static const menu_control_t controls[] = {
+        { "Kreuz",   "Joystick" },
+        { "A",       "Taste A" },
+        { "B",       "Taste B" },
+        { "C",       "Mitte" },
+        { "START",   "Mitte + B" },
+        { "Liste",   "Mitte + A 1 s" },
+    };
+    menu_controls(controls, sizeof controls / sizeof controls[0]);
+
     pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
     menu_wait_release();
 

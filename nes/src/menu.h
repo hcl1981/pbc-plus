@@ -18,6 +18,11 @@ void menu_message(const char *title, const char *l1, const char *l2, const char 
 void menu_progress(uint32_t done, uint32_t total);
 void menu_progress_begin(const char *name);
 
+/* Controls card shown for two seconds before a game starts, as PicoBoyGB
+ * does: a framed box with one "console button -> PicoBoy key" line each. */
+typedef struct { const char *button, *key; } menu_control_t;
+void menu_controls(const menu_control_t *c, int n);
+
 /* Wait until every button is released. */
 void menu_wait_release(void);
 
