@@ -6,9 +6,10 @@
 #include <stdint.h>
 
 /* Scan the mounted FatFs root for ROMs and let the player pick one.
- * Writes the file name to `out`. Returns false if there are no ROMs
- * (a hint screen has been shown and the call has waited for a button;
- * the caller then switches to USB stick mode). */
+ * Writes the file name to `out`. Returns false if the player chose the first
+ * entry, "Spiele per USB aufspielen", or if there are no ROMs at all (a hint
+ * screen has been shown and the call has waited for a button); the caller
+ * then switches to USB stick mode. */
 bool menu_pick_rom(char *out, int out_size);
 
 /* Full-screen message: title plus up to three lines. */

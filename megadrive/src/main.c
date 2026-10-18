@@ -59,7 +59,7 @@
 #define FLASH_MAX_FREQ_MHZ 88
 #endif
 #ifndef SHOW_FPS
-#define SHOW_FPS 1
+#define SHOW_FPS 0
 #endif
 #ifndef Z80_SLICE_LINES
 #define Z80_SLICE_LINES 16
@@ -123,25 +123,25 @@ static void fs_write_readme(void)
     /* static: a FIL carries a 4 KB sector buffer, the stack is only 4 KB */
     static FILINFO fi;
     static FIL f;
-    if (f_stat("/LIESMICH.TXT", &fi) == FR_OK)
+    if (f_stat("/MEGADRIVE.TXT", &fi) == FR_OK)
         return;
-    if (f_open(&f, "/LIESMICH.TXT", FA_WRITE | FA_CREATE_ALWAYS) != FR_OK)
+    if (f_open(&f, "/MEGADRIVE.TXT", FA_WRITE | FA_CREATE_ALWAYS) != FR_OK)
         return;
-    f_puts("PBC Mega Drive - Genesis/Mega-Drive-Emulator fuer den PicoBoy Color Plus\r\n"
+    f_puts("PBC Mega Drive - Genesis / Mega Drive emulator for the PicoBoy Color Plus\r\n"
            "\r\n"
-           "ROMs (.md .bin .gen .smd, bis 5 MB) hierher kopieren, dann das\r\n"
-           "Laufwerk AUSWERFEN. Der PicoBoy startet danach von selbst neu und\r\n"
-           "zeigt die Spieleliste.\r\n"
+           "Copy ROMs (.md .bin .gen .smd, up to 5 MB) to this drive, then EJECT\r\n"
+           "it. The PicoBoy restarts by itself and shows the game list.\r\n"
            "\r\n"
-           "Zurueck in diesen Modus: beim Einschalten A oder B gedrueckt halten.\r\n"
+           "Back to this mode: \"Add games via USB\" at the top of the game list,\r\n"
+           "or hold A or B while switching on.\r\n"
            "\r\n"
-           "Steuerung im Spiel:\r\n"
-           "  Joystick       Steuerkreuz\r\n"
+           "Controls in game:\r\n"
+           "  Joystick       D-pad\r\n"
            "  A / B          A / B\r\n"
-           "  Mitte          C\r\n"
-           "  Mitte + B      START\r\n"
+           "  Center         C\r\n"
+           "  Center + B     START\r\n"
            "\r\n"
-           "Zurueck zur Spieleliste: RESET.\r\n", &f);
+           "Back to the game list: RESET.\r\n", &f);
     f_close(&f);
 }
 
@@ -166,33 +166,33 @@ static void diag(const char *s, uint16_t colour)
 
 static void __attribute__((noreturn)) usb_stick_mode(void)
 {
-    menu_message("USB-STICK-MODUS",
-                 "ROMs auf das Laufwerk",
-                 "PBC-ROMS kopieren und dann",
-                 "auswerfen. Startet neu.");
+    menu_message("USB DRIVE MODE",
+                 "Copy ROMs to the drive",
+                 "PBC-ROMS, then eject it.",
+                 "The PicoBoy restarts.");
     diag_y = 168;
 
-    diag("Laufwerk pruefen...", PBC_GREY);
+    diag("Checking drive...", PBC_GREY);
     FRESULT fr = f_mount(&g_fs, "", 1);
     if (fr != FR_OK) {
         char m[32];
-        snprintf(m, sizeof m, "leer (%d), formatiere...", (int)fr);
+        snprintf(m, sizeof m, "empty (%d), formatting...", (int)fr);
         diag(m, PBC_YELLOW);
         if (fs_format() && fs_mount())
             fr = FR_OK;
     }
     if (fr != FR_OK) {
-        diag("FEHLER: Laufwerk unbrauchbar", PBC_RED);
+        diag("ERROR: drive unusable", PBC_RED);
         for (;;) tight_loop_contents();
     }
-    diag("LIESMICH.TXT...", PBC_GREY);
+    diag("Writing MEGADRIVE.TXT...", PBC_GREY);
     fs_ensure_label();
     fs_write_readme();
     fs_unmount();               /* the host owns the medium from now on */
 
-    diag("USB starten...", PBC_GREY);
+    diag("Starting USB...", PBC_GREY);
     tud_init(BOARD_TUD_RHPORT);
-    diag("USB gestartet", PBC_GREY);
+    diag("USB started", PBC_GREY);
 
     int status_y = diag_y;
     uint32_t loops = 0;
@@ -204,7 +204,7 @@ static void __attribute__((noreturn)) usb_stick_mode(void)
             next_draw = time_us_64() + 500000;
             int state = tud_mounted() ? 2 : tud_connected() ? 1 : 0;
             static const char *const names[] = {
-                "PC: keine Verbindung", "PC: verbunden", "PC: Laufwerk aktiv" };
+                "PC: not connected  ", "PC: connected      ", "PC: drive mounted  " };
             char m[40];
             snprintf(m, sizeof m, "%-22s %5lu", names[state], (unsigned long)(loops % 100000));
             pbc_display_text(8, status_y, m, state == 2 ? PBC_YELLOW : PBC_WHITE, PBC_BLACK, 1);
@@ -533,7 +533,7 @@ int main(void)
         menu_progress_begin(rom);
         const char *err = rom_store_program(rom, scratch(), menu_progress);
         if (err) {
-            menu_message("FEHLER", err, rom, "Taste: zurueck");
+            menu_message("ERROR", err, rom, "Press a button");
             menu_wait_release();
             while (!input_raw())
                 sleep_ms(20);
@@ -545,11 +545,11 @@ int main(void)
     ROM_DATA = (unsigned char *)rom_store_data();
 
     static const menu_control_t controls[] = {
-        { "Kreuz",   "Joystick" },
-        { "A",       "Taste A" },
-        { "B",       "Taste B" },
-        { "C",       "Mitte" },
-        { "START",   "Mitte + B" },
+        { "D-pad",   "Joystick" },
+        { "A",       "Button A" },
+        { "B",       "Button B" },
+        { "C",       "Center" },
+        { "START",   "Center + B" },
     };
     menu_controls(controls, sizeof controls / sizeof controls[0]);
 

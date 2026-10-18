@@ -15,6 +15,7 @@ sagt, welche das ist und woher sie kommt. Die Kurzfassung steht als
 | `jumpnbump` | GPL-2.0 | `jumpnbump/LICENSE` | Jump 'n Bump, Brainchild Design 1998 |
 | `picoboygb` | MIT | `picoboygb/LICENSE` | Peanut-GB → RP2040-GB → Pico-GB, siehe `picoboygb/HERKUNFT.md` |
 | `picoboygb-arduino` | MIT | `picoboygb-arduino/LICENSE` | dieselbe Kette, Arduino-Fassung |
+| `c64` | GPL-2.0+ | `c64/LICENSE` | Frodo4 (Christian Bauer) → frank-c64 (rh1tech); Flash-Laufwerk und USB-Stick aus `picoboygb` (MIT, `c64/LICENSE.picoboygb`) |
 | `nes` | GPL-3.0 | `nes/LICENSE` | QuickNES (Shay Green, LGPL-2.1+) → frank-nes (rh1tech); Flash-Laufwerk und USB-Stick aus `picoboygb` (MIT, `nes/LICENSE.picoboygb`) |
 | `megadrive` | AGPL-3.0 | `megadrive/LICENSE` | Gwenesis → frank-genesis (rh1tech); Flash-Laufwerk und USB-Stick aus `picoboygb` (MIT, `megadrive/LICENSE.picoboygb`) |
 | `i2collection` | MIT | `i2collection/LICENSE` | Eigenentwicklung |
@@ -41,6 +42,13 @@ anbieten. Die aus PicoBoyGB übernommenen Dateien (Flash-Laufwerk,
 USB-Massenspeicher) bleiben MIT; ihr Lizenztext liegt als
 `megadrive/LICENSE.picoboygb` bei.
 
+**C64: die eingebauten ROMs sind nicht frei.** `c64/core/` enthält BASIC,
+KERNAL, Zeichensatz und 1541-DOS des C64 als Arrays, unverändert aus
+frank-c64 übernommen. Das sind die Original-ROMs von Commodore; die Rechte
+liegen heute bei Cloanto. Sie stehen nicht unter der GPL des übrigen Codes.
+frank-c64 verbreitet sie genauso, eine ausdrückliche Erlaubnis liegt diesem
+Repository aber nicht vor.
+
 **Urheberrechtsvermerke müssen erhalten bleiben.** Sowohl MIT als auch die
 FatFs-Lizenz verlangen das. Die Vermerke stehen in den Quelldateien — beim
 Aufräumen nicht entfernen.
@@ -56,6 +64,7 @@ Aufräumen nicht entfernen.
 | Game-Boy-ROMs | fremdes Urheberrecht — liegen **nicht** bei |
 | Genesis-/Mega-Drive-ROMs | fremdes Urheberrecht — liegen **nicht** bei |
 | NES-ROMs | fremdes Urheberrecht — liegen **nicht** bei |
+| C64-Disk-Images | fremdes Urheberrecht — liegen **nicht** bei |
 
 `.gitignore` schließt WADs und ROMs aus, damit eigene Kopien nicht
 versehentlich im Repo landen. Die beiliegende `freedoom1.wad` ist davon

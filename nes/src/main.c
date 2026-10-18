@@ -52,7 +52,7 @@
 #define FLASH_MAX_FREQ_MHZ 88
 #endif
 #ifndef SHOW_FPS
-#define SHOW_FPS 1
+#define SHOW_FPS 0
 #endif
 
 /* ---- FatFs volume -------------------------------------------------------- */
@@ -85,20 +85,21 @@ static void fs_write_readme(void)
         return;
     if (f_open(&f, "/NES.TXT", FA_WRITE | FA_CREATE_ALWAYS) != FR_OK)
         return;
-    f_puts("PBC NES - NES-Emulator fuer den PicoBoy Color Plus\r\n"
+    f_puts("PBC NES - NES emulator for the PicoBoy Color Plus\r\n"
            "\r\n"
-           "NES-ROMs (.nes) hierher kopieren, dann das Laufwerk AUSWERFEN.\r\n"
-           "Der PicoBoy startet danach von selbst neu und zeigt die Spieleliste.\r\n"
+           "Copy NES ROMs (.nes) to this drive, then EJECT it. The PicoBoy\r\n"
+           "restarts by itself and shows the game list.\r\n"
            "\r\n"
-           "Zurueck in diesen Modus: beim Einschalten A oder B gedrueckt halten.\r\n"
+           "Back to this mode: \"Add games via USB\" at the top of the game list,\r\n"
+           "or hold A or B while switching on.\r\n"
            "\r\n"
-           "Steuerung im Spiel:\r\n"
-           "  Joystick       Steuerkreuz\r\n"
+           "Controls in game:\r\n"
+           "  Joystick       D-pad\r\n"
            "  A / B          A / B\r\n"
-           "  Mitte + B      START\r\n"
-           "  Mitte + A      SELECT\r\n"
+           "  Center + B     START\r\n"
+           "  Center + A     SELECT\r\n"
            "\r\n"
-           "Zurueck zur Spieleliste: RESET.\r\n", &f);
+           "Back to the game list: RESET.\r\n", &f);
     f_close(&f);
 }
 
@@ -122,23 +123,23 @@ static void diag(const char *s, uint16_t colour)
 
 static void __attribute__((noreturn)) usb_stick_mode(void)
 {
-    menu_message("USB-STICK-MODUS",
-                 "NES-ROMs auf das Laufwerk",
-                 "kopieren und dann",
-                 "auswerfen. Startet neu.");
+    menu_message("USB DRIVE MODE",
+                 "Copy NES ROMs to the",
+                 "drive, then eject it.",
+                 "The PicoBoy restarts.");
     diag_y = 168;
 
-    diag("Laufwerk pruefen...", PBC_GREY);
+    diag("Checking drive...", PBC_GREY);
     FRESULT fr = f_mount(&g_fs, "", 1);
     if (fr != FR_OK) {
         char m[32];
-        snprintf(m, sizeof m, "leer (%d), formatiere...", (int)fr);
+        snprintf(m, sizeof m, "empty (%d), formatting...", (int)fr);
         diag(m, PBC_YELLOW);
         if (fs_format() && fs_mount())
             fr = FR_OK;
     }
     if (fr != FR_OK) {
-        diag("FEHLER: Laufwerk unbrauchbar", PBC_RED);
+        diag("ERROR: drive unusable", PBC_RED);
         for (;;) tight_loop_contents();
     }
     fs_ensure_label();
@@ -146,7 +147,7 @@ static void __attribute__((noreturn)) usb_stick_mode(void)
     fs_unmount();               /* the host owns the medium from now on */
 
     tud_init(BOARD_TUD_RHPORT);
-    diag("USB gestartet", PBC_GREY);
+    diag("USB started", PBC_GREY);
 
     int status_y = diag_y;
     uint64_t next_draw = 0;
@@ -156,7 +157,7 @@ static void __attribute__((noreturn)) usb_stick_mode(void)
             next_draw = time_us_64() + 500000;
             int state = tud_mounted() ? 2 : tud_connected() ? 1 : 0;
             static const char *const names[] = {
-                "PC: keine Verbindung", "PC: verbunden       ", "PC: Laufwerk aktiv  " };
+                "PC: not connected  ", "PC: connected      ", "PC: drive mounted  " };
             pbc_display_text(8, status_y, names[state],
                              state == 2 ? PBC_YELLOW : PBC_WHITE, PBC_BLACK, 1);
         }
@@ -283,7 +284,7 @@ static void __attribute__((noreturn)) reboot_to_menu(void)
 
 static void __attribute__((noreturn)) fatal(const char *what, const char *detail)
 {
-    menu_message("FEHLER", what, detail, "Taste: zurueck");
+    menu_message("ERROR", what, detail, "Press a button");
     menu_wait_release();
     while (!input_raw())
         sleep_ms(20);
@@ -313,7 +314,7 @@ int main(void)
         /* Heap, freed again before the emulator allocates its tile cache. */
         uint8_t *scratch = malloc(16384);
         if (!scratch)
-            fatal("Kein Speicher", "zum Laden");
+            fatal("Out of memory", "for loading");
         menu_progress_begin(rom);
         const char *err = rom_store_program(rom, scratch, menu_progress);
         free(scratch);
@@ -323,11 +324,11 @@ int main(void)
     fs_unmount();
 
     static const menu_control_t controls[] = {
-        { "Kreuz",   "Joystick" },
-        { "A",       "Taste A" },
-        { "B",       "Taste B" },
-        { "START",   "Mitte + B" },
-        { "SELECT",  "Mitte + A" },
+        { "D-pad",   "Joystick" },
+        { "A",       "Button A" },
+        { "B",       "Button B" },
+        { "START",   "Center + B" },
+        { "SELECT",  "Center + A" },
     };
     menu_controls(controls, sizeof controls / sizeof controls[0]);
 
@@ -339,9 +340,9 @@ int main(void)
     qnes_set_region(QNES_REGION_NTSC);
     audio_pwm_init();
     if (qnes_init(AUDIO_RATE) != 0)
-        fatal("Emulator-Start", "fehlgeschlagen");
+        fatal("Emulator start", "failed");
     if (qnes_load_rom_inplace(rom_store_data(), (long)rom_store_size()) != 0)
-        fatal("Spiel nicht ladbar:", "Mapper oder Speicher");
+        fatal("Cannot load game:", "mapper or memory");
 
     multicore_launch_core1(video_core1_main);
     emulation_loop();

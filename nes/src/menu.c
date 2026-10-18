@@ -39,7 +39,7 @@ void menu_controls(const menu_control_t *c, int n)
     pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, COL_BG);
     pbc_display_fill(box_x, box_y, box_w, box_h, COL_TITLE);              /* frame */
     pbc_display_fill(box_x + 2, box_y + 2, box_w - 4, box_h - 4, COL_BAR);
-    pbc_display_text_centered(box_y + 14, "STEUERUNG", COL_TITLE, COL_BAR, 1);
+    pbc_display_text_centered(box_y + 14, "CONTROLS", COL_TITLE, COL_BAR, 1);
 
     int y = box_y + 40;
     for (int i = 0; i < n; i++, y += 16) {
@@ -89,10 +89,10 @@ void menu_progress_begin(const char *name)
 {
     char shortname[NAME_CHARS + 1];
     shorten(name, shortname, NAME_CHARS);
-    header("SPIEL WIRD GELADEN");
+    header("LOADING GAME");
     pbc_display_text_centered(100, shortname, COL_TEXT, COL_BG, 1);
-    pbc_display_text_centered(170, "Nur beim ersten Start", COL_DIM, COL_BG, 1);
-    pbc_display_text_centered(182, "eines Spiels noetig.", COL_DIM, COL_BG, 1);
+    pbc_display_text_centered(170, "Only needed the first time", COL_DIM, COL_BG, 1);
+    pbc_display_text_centered(182, "a game is started.", COL_DIM, COL_BG, 1);
     pbc_display_fill(20, 130, 200, 12, COL_BAR);
 }
 
@@ -137,10 +137,16 @@ static void draw_row(int idx, int top, int sel, const char *current)
     char buf[NAME_CHARS + 2];
 
     pbc_display_fill(0, y, PBC_LCD_W, ROW_H, bg);
-    if (idx >= rom_count)
+    if (idx == 0) {
+        /* always the first entry: install games without the A/B boot trick */
+        pbc_display_text(12, y + 2, "Add games via USB", COL_TITLE, bg, 1);
         return;
-    bool in_flash = current && strcmp(current, rom_names[idx]) == 0;
-    shorten(rom_names[idx], buf, NAME_CHARS);
+    }
+    if (idx > rom_count)
+        return;
+    const char *name = rom_names[idx - 1];
+    bool in_flash = current && strcmp(current, name) == 0;
+    shorten(name, buf, NAME_CHARS);
     pbc_display_text(12, y + 2, buf, in_flash ? COL_TITLE : COL_TEXT, bg, 1);
 }
 
@@ -149,7 +155,10 @@ static void draw_list(int top, int sel, const char *current)
     for (int i = 0; i < LIST_ROWS; i++)
         draw_row(top + i, top, sel, current);
     char pos[24];
-    snprintf(pos, sizeof pos, "%d/%d", sel + 1, rom_count);
+    if (sel > 0)
+        snprintf(pos, sizeof pos, "%d/%d", sel, rom_count);
+    else
+        pos[0] = 0;
     pbc_display_fill(0, 254, PBC_LCD_W, 8, COL_BG);
     pbc_display_text_centered(254, pos, COL_DIM, COL_BG, 1);
 }
@@ -161,18 +170,18 @@ static void options(void)
     const int rows = 3;
     int sel = 0;
 
-    header("OPTIONEN");
-    pbc_display_text_centered(200, "Hoch/Runter: waehlen", COL_DIM, COL_BG, 1);
-    pbc_display_text_centered(212, "Links/Rechts: aendern", COL_DIM, COL_BG, 1);
-    pbc_display_text_centered(224, "B: zurueck", COL_DIM, COL_BG, 1);
+    header("OPTIONS");
+    pbc_display_text_centered(200, "Up/Down: select", COL_DIM, COL_BG, 1);
+    pbc_display_text_centered(212, "Left/Right: change", COL_DIM, COL_BG, 1);
+    pbc_display_text_centered(224, "B: back", COL_DIM, COL_BG, 1);
     menu_wait_release();
 
     for (bool redraw = true;;) {
         if (redraw) {
             char line[3][32];
-            snprintf(line[0], 32, "Ton          %s", g_settings.sound ? "an " : "aus");
-            snprintf(line[1], 32, "Lautstaerke  %-2d", g_settings.volume);
-            snprintf(line[2], 32, "Zurueck");
+            snprintf(line[0], 32, "Sound        %s", g_settings.sound ? "on " : "off");
+            snprintf(line[1], 32, "Volume       %-2d", g_settings.volume);
+            snprintf(line[2], 32, "Back");
             for (int i = 0; i < rows; i++) {
                 uint16_t bg = i == sel ? COL_SEL_BG : COL_BG;
                 uint16_t fg = (i == 1 && !g_settings.sound) ? COL_DIM : COL_TEXT;
@@ -208,7 +217,7 @@ static void options(void)
 static void list_frame(void)
 {
     header("PBC NES");
-    pbc_display_text_centered(266, "A: Spielen   B: Optionen", COL_DIM, COL_BG, 1);
+    pbc_display_text_centered(266, "A: Play   B: Options", COL_DIM, COL_BG, 1);
 }
 
 static bool pick(char *out, int out_size);
@@ -226,9 +235,9 @@ static bool pick(char *out, int out_size)
     scan();
     if (rom_count == 0) {
         menu_message("PBC NES",
-                     "Keine ROMs gefunden.",
-                     "Taste druecken fuer den",
-                     "USB-Stick-Modus");
+                     "No games found.",
+                     "Press any button for",
+                     "USB drive mode");
         menu_wait_release();
         while (!input_menu_edges())
             sleep_ms(20);
@@ -236,18 +245,19 @@ static bool pick(char *out, int out_size)
     }
 
     const char *current = rom_store_current();
-    int sel = 0;
+    int sel = 1;                            /* entry 0 is the USB item */
     for (int i = 0; current && i < rom_count; i++)
         if (strcmp(rom_names[i], current) == 0)
-            sel = i;
+            sel = i + 1;
     int top = sel - LIST_ROWS / 2;
+    const int entries = rom_count + 1;      /* the USB entry, then the games */
 
     list_frame();
     menu_wait_release();
 
     bool full = true;
     for (;;) {
-        if (top > rom_count - LIST_ROWS) top = rom_count - LIST_ROWS;
+        if (top > entries - LIST_ROWS) top = entries - LIST_ROWS;
         if (top < 0) top = 0;
         if (full) {
             draw_list(top, sel, current);
@@ -260,18 +270,20 @@ static bool pick(char *out, int out_size)
             continue;
         }
         int old_sel = sel, old_top = top;
-        if (e & IN_UP)    sel = sel > 0 ? sel - 1 : rom_count - 1;
-        if (e & IN_DOWN)  sel = sel < rom_count - 1 ? sel + 1 : 0;
+        if (e & IN_UP)    sel = sel > 0 ? sel - 1 : entries - 1;
+        if (e & IN_DOWN)  sel = sel < entries - 1 ? sel + 1 : 0;
         if (e & IN_LEFT)  { sel -= LIST_ROWS; if (sel < 0) sel = 0; }
-        if (e & IN_RIGHT) { sel += LIST_ROWS; if (sel >= rom_count) sel = rom_count - 1; }
+        if (e & IN_RIGHT) { sel += LIST_ROWS; if (sel >= entries) sel = entries - 1; }
         if (e & IN_B) {
             options();
             list_frame();
             full = true;
             continue;
         }
+        if ((e & (IN_A | IN_CENTER)) && sel == 0)
+            return false;                   /* -> USB stick mode */
         if (e & (IN_A | IN_CENTER)) {
-            strncpy(out, rom_names[sel], (size_t)out_size - 1);
+            strncpy(out, rom_names[sel - 1], (size_t)out_size - 1);
             out[out_size - 1] = 0;
             return true;
         }
@@ -284,7 +296,10 @@ static bool pick(char *out, int out_size)
             draw_row(old_sel, top, sel, current);
             draw_row(sel, top, sel, current);
             char pos[24];
-            snprintf(pos, sizeof pos, "%d/%d", sel + 1, rom_count);
+            if (sel > 0)
+                snprintf(pos, sizeof pos, "%d/%d", sel, rom_count);
+            else
+                pos[0] = 0;
             pbc_display_fill(0, 254, PBC_LCD_W, 8, COL_BG);
             pbc_display_text_centered(254, pos, COL_DIM, COL_BG, 1);
         }

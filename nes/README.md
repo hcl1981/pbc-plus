@@ -17,6 +17,8 @@ wie bei [`../megadrive`](../megadrive/):
 
 **Stand:** läuft auf dem Gerät, Ton klingt gut.
 
+Die Oberfläche auf dem Gerät ist englisch (Menüs, Optionen, Meldungen, Hilfedatei auf dem Laufwerk).
+
 ## Benutzung
 
 1. [`../dist/nes.uf2`](../dist/nes.uf2) flashen: BOOTSEL halten, USB anstecken,
@@ -27,6 +29,9 @@ wie bei [`../megadrive`](../megadrive/):
    (leeres Laufwerk) landet man automatisch in diesem Modus.
 3. Ohne gedrückte Taste einschalten: Spieleliste. Hoch/Runter wählt,
    Links/Rechts blättert, **A** oder **Mitte** startet.
+   Ganz oben steht immer **„Add games via USB“**: führt direkt in den
+   USB-Stick-Modus, ohne Neustart mit gedrückter Taste. Beim Öffnen ist das
+   erste Spiel markiert.
 4. **B** in der Spieleliste öffnet die Optionen: Ton an/aus und Lautstärke
    (1–12, Vorgabe 8). Beides bleibt gespeichert und lässt sich **nur hier**
    ändern, nicht im Spiel -- damit nichts versehentlich verstellt wird.
@@ -50,7 +55,7 @@ bei PicoBoyGB.
 | SELECT | Mitte + A |
 
 Mitte allein tut nichts, wie bei PicoBoyGB. Zurück zur Spieleliste geht es
-mit RESET. Unter dem Bild stehen gezeichnete
+mit RESET. Mit `-DSHOW_FPS=1` gebaut, stehen unter dem Bild gezeichnete
 Bilder pro Sekunde, Emulationstempo und die Auslastung von Kern 0.
 
 ## Bild
@@ -84,7 +89,7 @@ QuickNES dekodiert das CHR-ROM einmal in einen **Kachel-Cache** im RAM, doppelt
 so groß wie das CHR-ROM. Nach Abzug von Firmware und Pixelpuffern bleiben etwa
 320 KB Heap. Damit laufen Spiele bis **128 KB CHR-ROM** (z. B. Super Mario Bros. 3)
 und alle Spiele mit CHR-RAM (z. B. Zelda, Mega Man 2). Spiele mit 256 KB CHR-ROM
-(z. B. Kirby's Adventure) passen nicht; sie melden „Spiel nicht ladbar“ statt
+(z. B. Kirby's Adventure) passen nicht; sie melden „Cannot load game“ statt
 abzustürzen.
 
 ## Bauen
@@ -104,7 +109,7 @@ Werkzeuge und SDK wie bei allen Projekten dieses Repos, siehe
 | `CPU_VREG` | `VREG_VOLTAGE_1_25` | Kernspannung |
 | `FLASH_MAX_FREQ_MHZ` | 88 | Obergrenze für den Flash-Takt |
 | `PBC_SPI_HZ` | 62 500 000 | Display-SPI |
-| `SHOW_FPS` | 1 | Anzeige unter dem Bild |
+| `SHOW_FPS` | 0 | Anzeige unter dem Bild (fps, Tempo, Last) |
 
 Das NES braucht viel weniger Rechenleistung als das Mega Drive. Zeigt die
 Anzeige wenig CPU-Last, lohnt ein niedrigerer Takt für die Batterie.

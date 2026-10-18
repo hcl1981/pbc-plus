@@ -23,7 +23,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "${ROOT}/tools/pbc_build.sh"
 
-ALL=(noiz2sa spout stransball2 micropolis tyrian picoboygb megadrive nes doom jumpnbump i2collection micropython)
+ALL=(noiz2sa spout stransball2 micropolis tyrian picoboygb megadrive nes c64 doom jumpnbump i2collection micropython)
 
 beschreibung() {
     case "$1" in
@@ -35,6 +35,7 @@ beschreibung() {
         picoboygb)    echo "Game-Boy-Emulator, ROMs per USB (MIT)" ;;
         megadrive)    echo "Genesis-/Mega-Drive-Emulator, ROMs per USB (AGPL-3.0)" ;;
         nes)          echo "NES-Emulator, ROMs per USB (GPL-3.0)" ;;
+        c64)          echo "C64-Emulator, Disk-Images per USB (GPL-2.0+)" ;;
         doom)         echo "Doom mit Mehrspieler über USB-C (GPL-2.0)" ;;
         jumpnbump)    echo "Jump'n'Bump über USB-C (GPL-2.0, PlatformIO)" ;;
         i2collection) echo "Spielesammlung über USB-C (MIT, PlatformIO)" ;;
@@ -129,8 +130,9 @@ pbc_head "dist/ beschriften"
     echo "PicoBoyGB braucht ROMs: Mitte halten, RESET drücken, dann meldet"
     echo "sich das Gerät als USB-Stick zum Draufkopieren."
     echo
-    echo "Mega Drive und NES brauchen ROMs: beim Einschalten A oder B halten,"
-    echo "dann meldet sich das Gerät als USB-Stick zum Draufkopieren."
+    echo "Mega Drive, NES und C64 brauchen ROMs bzw. Disk-Images: beim"
+    echo "Einschalten A oder B halten, dann meldet sich das Gerät als"
+    echo "USB-Stick zum Draufkopieren."
 } > "${ROOT}/dist/INHALT.txt"
 pbc_ok "dist/INHALT.txt geschrieben"
 

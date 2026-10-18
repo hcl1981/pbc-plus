@@ -141,17 +141,17 @@ const char *rom_store_program(const char *name, uint8_t *scratch, rom_progress_f
     uint32_t size, file_hash = 2166136261u;
 
     if (strlen(name) >= ROM_NAME_MAX)
-        return "Dateiname zu lang";
+        return "File name too long";
 
     snprintf(path, sizeof path, "/%s", name);
     if (f_open(&f, path, FA_READ) != FR_OK)
-        return "Datei nicht lesbar";
+        return "Cannot read file";
     size = (uint32_t)f_size(&f);
 
     if (size < 16 + 8192)
-        { f_close(&f); return "Keine gueltige ROM"; }
+        { f_close(&f); return "Not a valid ROM"; }
     if (size > ROM_FLASH_SIZE)
-        { f_close(&f); return "ROM groesser als 5 MB"; }
+        { f_close(&f); return "ROM larger than 5 MB"; }
 
     /* Invalidate the info record first: a half-written region must never
      * look like a valid game after a power cut. */
@@ -163,10 +163,10 @@ const char *rom_store_program(const char *name, uint8_t *scratch, rom_progress_f
         if (chunk > 16384) chunk = 16384;
 
         if (f_read(&f, buf, chunk, &got) != FR_OK || got != chunk)
-            { f_close(&f); return "Lesefehler"; }
+            { f_close(&f); return "Read error"; }
         if (done == 0) {
             if (memcmp(buf, "NES\x1a", 4) != 0)
-                { f_close(&f); return "Kein iNES-Format"; }
+                { f_close(&f); return "Not an iNES file"; }
             file_hash = fnv1a(file_hash, buf, chunk < 4096 ? chunk : 4096);
         }
 
@@ -196,7 +196,7 @@ const char *rom_store_program(const char *name, uint8_t *scratch, rom_progress_f
         }
         f_close(&f);
         if (!ok)
-            return "Flash-Pruefung fehlgeschlagen";
+            return "Flash verify failed";
     }
 
     /* Commit. */

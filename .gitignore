@@ -62,3 +62,7 @@ DOOM*.uf2
 
 # NES-ROMs für nes.
 *.nes
+
+# C64-Disk-Images und -Programme für c64.
+*.d64
+*.prg

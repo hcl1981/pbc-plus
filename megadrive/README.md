@@ -20,6 +20,8 @@ der PBC+. Deshalb ist hier alles drumherum ersetzt:
 Ein Versuch mit Ton über den PWM-Lautsprecher lief langsamer und instabil und
 wurde wieder entfernt.
 
+Die Oberfläche auf dem Gerät ist englisch (Menüs, Optionen, Meldungen, Hilfedatei auf dem Laufwerk).
+
 ## Benutzung
 
 1. [`../dist/megadrive.uf2`](../dist/megadrive.uf2) flashen: BOOTSEL halten, USB anstecken, Datei auf
@@ -32,6 +34,9 @@ wurde wieder entfernt.
 3. Ohne gedrückte Taste einschalten: Spieleliste. Hoch/Runter wählt,
    Links/Rechts blättert, **A** oder **Mitte** startet.
    Das Spiel, das gerade im Flash liegt, ist gelb markiert.
+   Ganz oben steht immer **„Add games via USB“**: führt direkt in den
+   USB-Stick-Modus, ohne Neustart mit gedrückter Taste. Beim Öffnen ist das
+   erste Spiel markiert.
 Beim ersten Start eines Spiels wird es in den ROM-Bereich des Flash
 geschrieben (Fortschrittsbalken, bei 4 MB etwa eine halbe Minute) und danach
 geprüft. Startet man dasselbe Spiel wieder, entfällt das.
@@ -55,7 +60,7 @@ B für die Kombinationen reserviert: **C gleichzeitig mit A oder B geht nicht.**
 
 Zurück zur Spieleliste geht es mit RESET.
 
-Unter dem Bild steht z. B. `34fps 101% CPU93%`: gezeichnete Bilder pro
+Mit `-DSHOW_FPS=1` gebaut, steht unter dem Bild z. B. `34fps 101% CPU93%`: gezeichnete Bilder pro
 Sekunde, Emulationstempo (100 % = Originalgeschwindigkeit) und wie viel der
 Zeit Kern 0 arbeitet statt auf das nächste Bild zu warten. Bleibt CPU deutlich
 unter 100 %, ist Luft zum Heruntertakten.
@@ -80,7 +85,7 @@ statt der sonst üblichen MinSizeRel-Vorgabe.
 | `CPU_VREG` | `VREG_VOLTAGE_1_30` | Kernspannung. Über 1,30 V wird die Sperre des RP2350 aufgehoben |
 | `FLASH_MAX_FREQ_MHZ` | 88 | Obergrenze für den Flash-Takt (bei 300 MHz: 75 MHz) |
 | `PBC_SPI_HZ` | 62 500 000 | Display-SPI. Der Teiler hängt vom Systemtakt ab: bei 300 MHz werden daraus 50 MHz, mit `75000000` 75 MHz |
-| `SHOW_FPS` | 1 | fps-Anzeige unter dem Bild |
+| `SHOW_FPS` | 0 | Anzeige unter dem Bild (fps, Tempo, Last) |
 | `Z80_SLICE_LINES` | 16 | Z80 alle N Zeilen ausführen |
 
 **Vorsicht beim Takt:** Der Spannungswandler des PBC+ ist klein (150–250 mA).

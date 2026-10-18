@@ -24,6 +24,7 @@ cd spout && ./build.sh      # oder ein einzelnes Projekt
 | [`micropolis`](micropolis/) | Micropolis — der quelloffene Kern von SimCity 1. | `micropolis.uf2` |
 | [`tyrian`](tyrian/) | OpenTyrian. Firmware plus 8,9 MB Spieldaten in einer Datei. | `tyrian-komplett.uf2` |
 | [`picoboygb`](picoboygb/) | Game-Boy-Emulator. ROMs kommen per USB-Stick-Modus aufs Gerät. | `picoboygb.uf2` |
+| [`c64`](c64/) | Commodore-64-Emulator (Frodo4 aus frank-c64). Disk-Images per USB-Stick-Modus, startet mit `LOAD"*",8,1`, Joystick-Port pro Spiel. | `c64.uf2` |
 | [`nes`](nes/) | NES-Emulator (QuickNES-Kern aus frank-nes), 240×240 Pixel 1:1, mit Ton. ROMs per USB-Stick-Modus. | `nes.uf2` |
 | [`megadrive`](megadrive/) | Sega-Genesis-/Mega-Drive-Emulator (Kern aus frank-genesis), ROM läuft direkt aus dem Flash. ROMs per USB-Stick-Modus, ohne Ton. | `megadrive.uf2` |
 | [`doom`](doom/) | Doom mit Mehrspieler über ein USB-C-Kabel. | `doom-usb-mp.uf2` |
@@ -74,6 +75,9 @@ selbst neu und zeigt die Spieleliste.
 **NES braucht ROMs.** Genauso: beim Einschalten **A** oder **B** halten,
 `.nes`-Dateien auf das Laufwerk kopieren, auswerfen. NES und Mega Drive teilen
 sich das Laufwerk; jede Firmware listet nur ihre eigenen ROMs.
+
+**C64 braucht Disk-Images.** Ebenso über den USB-Stick-Modus, als `.d64`.
+Ohne Tastatur tippt der Emulator `LOAD"*",8,1` (und bei Bedarf `RUN`) selbst.
 
 **Tyrian-Daten liegen bei.** Die sind Freeware und stecken schon in
 `tyrian-komplett.uf2`.

@@ -7,12 +7,13 @@ Flashen: BOOTSEL gedrückt halten, USB anstecken, die gewünschte
 Es passt immer nur EINE Firmware aufs Gerät.
 
 DATEI                                     GRÖSSE  SHA256 (Anfang)
+c64.uf2                                      560K  d66d6fb82d4448d8
 i2collection.uf2                             352K  06caddf8420545ef
 jumpnbump.uf2                                1.1M  d8f26ad7455a2dac
-megadrive.uf2                                1.3M  a52202a33b94cec1
+megadrive.uf2                                1.3M  b1f9ec49ed9734cc
 micropolis.uf2                               2.0M  d817994650e66e23
 micropython-PBC_PLUS.uf2                     744K  0821784e66a86bcc
-nes.uf2                                      352K  dd94e09c2925294b
+nes.uf2                                      348K  cb6b44ed5ba48ef0
 noiz2sa.uf2                                  120K  597e5833290d22a1
 picoboygb.uf2                                128K  93672907ee58848e
 spout.uf2                                    120K  71881f01a486539b
@@ -36,5 +37,6 @@ sie umwandelt, steht in doom/ANLEITUNG.md.
 PicoBoyGB braucht ROMs: Mitte halten, RESET drücken, dann meldet
 sich das Gerät als USB-Stick zum Draufkopieren.
 
-Mega Drive und NES brauchen ROMs: beim Einschalten A oder B halten,
-dann meldet sich das Gerät als USB-Stick zum Draufkopieren.
+Mega Drive, NES und C64 brauchen ROMs bzw. Disk-Images: beim
+Einschalten A oder B halten, dann meldet sich das Gerät als
+USB-Stick zum Draufkopieren.

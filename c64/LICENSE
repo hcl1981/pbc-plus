@@ -1,0 +1,37 @@
+GNU GENERAL PUBLIC LICENSE
+Version 2, June 1991
+
+Copyright (c) 2024-2025 Mikhail Matveev <xtreme@rh1.tech>
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+---
+
+THIRD-PARTY LICENSES AND ACKNOWLEDGMENTS
+
+This project incorporates code from the following projects:
+
+1. Frodo4 (https://frodo.cebix.net/)
+   Copyright (C) 1994-2023 Christian Bauer
+   Portable Commodore 64 emulator
+   License: GNU GPL v2 or later
+
+2. FatFs (http://elm-chan.org/fsw/ff/)
+   Copyright (C) 2022 ChaN
+   Generic FAT Filesystem Module
+   License: FatFs License (BSD-style)
+
+The full text of the GNU GPL v2 license can be found at:
+https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
