@@ -24,6 +24,8 @@ cd spout && ./build.sh      # oder ein einzelnes Projekt
 | [`micropolis`](micropolis/) | Micropolis — der quelloffene Kern von SimCity 1. | `micropolis.uf2` |
 | [`tyrian`](tyrian/) | OpenTyrian. Firmware plus 8,9 MB Spieldaten in einer Datei. | `tyrian-komplett.uf2` |
 | [`picoboygb`](picoboygb/) | Game-Boy-Emulator. ROMs kommen per USB-Stick-Modus aufs Gerät. | `picoboygb.uf2` |
+| [`nes`](nes/) | NES-Emulator (QuickNES-Kern aus frank-nes), 240×240 Pixel 1:1, mit Ton. ROMs per USB-Stick-Modus. | `nes.uf2` |
+| [`megadrive`](megadrive/) | Sega-Genesis-/Mega-Drive-Emulator (Kern aus frank-genesis), ROM läuft direkt aus dem Flash. ROMs per USB-Stick-Modus, ohne Ton. | `megadrive.uf2` |
 | [`doom`](doom/) | Doom mit Mehrspieler über ein USB-C-Kabel. | `doom-usb-mp.uf2` |
 | [`jumpnbump`](jumpnbump/) | Jump 'n Bump für zwei gekoppelte Geräte. | `jumpnbump.uf2` |
 | [`i2collection`](i2collection/) | Neun Zweispieler-Spiele über USB-C: Tron, Pong, Duell, Artillerie, Bomber, Schach, Vier gewinnt, Käsekästchen. | `i2collection.uf2` |
@@ -64,6 +66,15 @@ Daten von id Software und dürfen nicht weitergegeben werden.
 drücken: das Gerät meldet sich als USB-Stick `PICOBOYGB`. Dort `.gb`-Dateien
 ablegen, auswerfen, RESET ohne Mitte — das Menü listet sie dann auf.
 
+**Mega Drive braucht ROMs.** Beim Einschalten **A** oder **B** gedrückt
+halten: das Gerät meldet sich als USB-Stick `PBC-ROMS`. Dort `.md`-, `.bin`-,
+`.gen`- oder `.smd`-Dateien ablegen und auswerfen — der PicoBoy startet von
+selbst neu und zeigt die Spieleliste.
+
+**NES braucht ROMs.** Genauso: beim Einschalten **A** oder **B** halten,
+`.nes`-Dateien auf das Laufwerk kopieren, auswerfen. NES und Mega Drive teilen
+sich das Laufwerk; jede Firmware listet nur ihre eigenen ROMs.
+
 **Tyrian-Daten liegen bei.** Die sind Freeware und stecken schon in
 `tyrian-komplett.uf2`.
 
@@ -71,7 +82,7 @@ ablegen, auswerfen, RESET ohne Mitte — das Menü listet sie dann auf.
 
 **Es gibt keine einheitliche Lizenz für dieses Repository.** Jede Portierung
 erbt die Lizenz des Projekts, auf dem sie aufsetzt — gemischt BSD, MIT,
-GPL-2.0 und GPL-3.0. Maßgeblich ist immer die Lizenzdatei im jeweiligen
+GPL-2.0, GPL-3.0 und AGPL-3.0. Maßgeblich ist immer die Lizenzdatei im jeweiligen
 Ordner.
 
 Die Übersicht, welche wo gilt, steht in [`LICENSE`](LICENSE); die
