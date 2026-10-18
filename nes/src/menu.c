@@ -9,6 +9,7 @@
 #include "display.h"
 #include "input.h"
 #include "rom_store.h"
+#include "settings.h"
 #include "menu.h"
 
 #define MAX_ROMS     200
@@ -134,10 +135,18 @@ static void draw_list(int top, int sel, const char *current)
     pbc_display_text_centered(254, pos, COL_DIM, COL_BG, 1);
 }
 
+static void list_frame_footer(void)
+{
+    pbc_display_fill(0, 266, PBC_LCD_W, 8, COL_BG);
+    pbc_display_text_centered(266, g_settings.sound ? "A: Spielen   B: Ton an "
+                                                    : "A: Spielen   B: Ton aus",
+                              COL_DIM, COL_BG, 1);
+}
+
 static void list_frame(void)
 {
     header("PBC NES");
-    pbc_display_text_centered(266, "A / Mitte: Spielen", COL_DIM, COL_BG, 1);
+    list_frame_footer();
 }
 
 static bool pick(char *out, int out_size);
@@ -193,6 +202,12 @@ static bool pick(char *out, int out_size)
         if (e & IN_DOWN)  sel = sel < rom_count - 1 ? sel + 1 : 0;
         if (e & IN_LEFT)  { sel -= LIST_ROWS; if (sel < 0) sel = 0; }
         if (e & IN_RIGHT) { sel += LIST_ROWS; if (sel >= rom_count) sel = rom_count - 1; }
+        if (e & IN_B) {
+            g_settings.sound = !g_settings.sound;
+            settings_save();
+            list_frame_footer();
+            continue;
+        }
         if (e & (IN_A | IN_CENTER)) {
             strncpy(out, rom_names[sel], (size_t)out_size - 1);
             out[out_size - 1] = 0;

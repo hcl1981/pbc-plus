@@ -8,7 +8,8 @@
  *     (from PicoBoyGB), the chosen game is copied into a flash region and
  *     QuickNES reads it from there in place
  *   - 240x240 1:1 on the ST7789, sent by core 1 (video.c)
- *   - sound on the PWM speaker (audio_pwm.c), volume on CENTER + up/down
+ *   - sound on the PWM speaker (audio_pwm.c): on/off with B in the ROM
+ *     list (saved), in game CENTER + up/down = volume, CENTER + left = mute
  *
  * Boot:
  *   A or B held  -> USB stick mode, eject restarts
@@ -36,6 +37,7 @@
 #include "rom_store.h"
 #include "video.h"
 #include "audio_pwm.h"
+#include "settings.h"
 #include "quicknes.h"
 
 /* ---- build-time configuration (see CMakeLists.txt) ---------------------- */
@@ -216,9 +218,10 @@ static void emulation_loop(void)
     const uint8_t *prev_pixels = NULL, *last_pixels = NULL;
 
     int volume = VOLUME_DEFAULT;
+    bool muted = !g_settings.sound;
     uint32_t prev_raw = 0;
     uint64_t status_hold_until = 0;     /* keep the volume note visible */
-    audio_pwm_set_volume(volume);
+    audio_pwm_set_volume(muted ? 0 : volume);
 
     uint64_t stat_t0 = time_us_64(), stat_busy_us = 0;
     uint32_t stat_drawn = 0, stat_emulated = 0;
@@ -237,13 +240,18 @@ static void emulation_loop(void)
         /* CENTER + up/down: volume, 0 = off */
         uint32_t raw = input_raw(), pressed = raw & ~prev_raw;
         prev_raw = raw;
-        if ((raw & IN_CENTER) && (pressed & (IN_UP | IN_DOWN))) {
-            volume += (pressed & IN_UP) ? 1 : -1;
-            if (volume < 0) volume = 0;
-            if (volume > AUDIO_VOL_MAX) volume = AUDIO_VOL_MAX;
-            audio_pwm_set_volume(volume);
+        if ((raw & IN_CENTER) && (pressed & (IN_UP | IN_DOWN | IN_LEFT))) {
+            if (pressed & IN_LEFT) {
+                muted = !muted;         /* the volume itself is kept */
+            } else {
+                muted = false;
+                volume += (pressed & IN_UP) ? 1 : -1;
+                if (volume < 0) volume = 0;
+                if (volume > AUDIO_VOL_MAX) volume = AUDIO_VOL_MAX;
+            }
+            audio_pwm_set_volume(muted ? 0 : volume);
             char s[24];
-            if (volume)
+            if (!muted && volume)
                 snprintf(s, sizeof s, "Lautstaerke %d/%d", volume, AUDIO_VOL_MAX);
             else
                 snprintf(s, sizeof s, "Ton aus");
@@ -321,6 +329,7 @@ static void __attribute__((noreturn)) fatal(const char *what, const char *detail
 int main(void)
 {
     input_init();
+    settings_load();
     pbc_display_init();
     pbc_display_backlight(200);
 

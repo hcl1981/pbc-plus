@@ -15,7 +15,7 @@ wie bei [`../megadrive`](../megadrive/):
 | Ton über HDMI/I2S/PWM | Ton über den **PWM-Lautsprecher** (GP15), 22 222 Hz, Lautstärke mit Mitte + Hoch/Runter |
 | Einstellungen, Spielstände, Game Genie, USB-HID | entfallen |
 
-**Stand:** Bild auf dem Gerät getestet (nach der SPI-Korrektur noch nicht neu gemessen). Ton ist neu und noch nicht gehört.
+**Stand:** läuft auf dem Gerät, Ton klingt gut.
 
 ## Benutzung
 
@@ -26,7 +26,8 @@ wie bei [`../megadrive`](../megadrive/):
    **auswerfen** – der PicoBoy startet von selbst neu. Beim allerersten Start
    (leeres Laufwerk) landet man automatisch in diesem Modus.
 3. Ohne gedrückte Taste einschalten: Spieleliste. Hoch/Runter wählt,
-   Links/Rechts blättert, **A** oder **Mitte** startet.
+   Links/Rechts blättert, **A** oder **Mitte** startet. **B** schaltet den Ton
+   an oder aus; die Einstellung bleibt gespeichert.
 
 **Gemeinsames Laufwerk mit `megadrive`:** Beide Firmwares benutzen dieselbe
 Flash-Aufteilung. NES- und Genesis-ROMs können also zusammen auf dem Laufwerk
@@ -43,6 +44,7 @@ wird das erste gestartete Spiel einmal neu in den ROM-Bereich geschrieben.
 | START | Mitte + B |
 | SELECT | Mitte + A (1 s halten = zurück zur Spieleliste) |
 | – | Mitte + Hoch/Runter: Lautstärke (0 = Ton aus, 1–12, Vorgabe 8) |
+| – | Mitte + Links: stumm schalten und wieder ein |
 
 Mitte allein tut nichts, wie bei PicoBoyGB. Solange Mitte gehalten wird, geht
 der Joystick nicht ans Spiel. Unter dem Bild stehen gezeichnete
@@ -112,6 +114,7 @@ Anzeige wenig CPU-Last, lohnt ein niedrigerer Takt für die Batterie.
 | `0x100000` | 5 MB | ROM des laufenden Spiels (`src/rom_store.c`) |
 | `0x600000` | ~9,9 MB | FatFs-Partition = USB-Stick (`src/flash_fs.h`) |
 | `0xFF0000` | 4 KB | Info, welches Spiel im ROM-Bereich liegt |
+| `0xFF1000` | 4 KB | Einstellung Ton an/aus |
 
 ## Aufbau
 
@@ -119,6 +122,7 @@ Anzeige wenig CPU-Last, lohnt ein niedrigerer Takt für die Batterie.
 src/main.c        Startablauf, USB-Stick-Modus, Takt, Emulationsschleife
 src/video.c       Palette, Ausgabe 240x240 auf Kern 1
 src/audio_pwm.c   Ton: Ringpuffer, Timer, PWM auf GP15
+src/settings.c    Ton an/aus, im Flash gespeichert
 src/input.c       Tastenbelegung (Mitte als Modifier)
 src/display.c, menu.c, rom_store.c   aus ../megadrive (rom_store ohne Byte-Tausch)
 src/flash_fs.*, usb_*.c, tusb_config.h, fatfs/   aus ../picoboygb

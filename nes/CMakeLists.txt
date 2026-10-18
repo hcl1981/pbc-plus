@@ -48,6 +48,7 @@ add_executable(pbc_nes
     src/input.c
     src/menu.c
     src/rom_store.c
+    src/settings.c
     src/flash_fs.c
     src/usb_msc.c
     src/usb_descriptors.c
