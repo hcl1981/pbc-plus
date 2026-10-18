@@ -5,10 +5,10 @@
  *   B             -> B
  *   CENTER        -> C
  *   CENTER + B    -> START
- *   CENTER + A    -> SELECT (no such button on the Genesis: opens the menu)
+ *   CENTER + A    -> nothing (the Genesis has no SELECT)
  *
  * CENTER alone becomes C only after a short grace period, so that pressing
- * CENTER first and A/B a moment later reads as START/SELECT instead of a
+ * CENTER first and B a moment later reads as START instead of a
  * stray C. While a combination is held, C, A and B are not reported.
  */
 #ifndef PBC_INPUT_H
@@ -30,7 +30,6 @@ uint32_t input_raw(void);
  * bit0 up, 1 down, 2 left, 3 right, 4 B, 5 C, 6 A, 7 START. */
 typedef struct {
     uint8_t pad;
-    bool    select;      /* CENTER + A held */
 } genesis_input_t;
 
 /* Call once per emulated frame. */

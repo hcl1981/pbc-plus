@@ -66,8 +66,6 @@
 #endif
 /* Never skip more than this many frames in a row, however slow we are. */
 #define MAX_SKIP 3
-/* Holding SELECT (CENTER + A) this long leaves the game. */
-#define SELECT_HOLD_US 1000000u
 
 /* ---- globals the emulator core expects (frank-genesis kept them in main.c) */
 extern unsigned char *ROM_DATA;
@@ -142,7 +140,8 @@ static void fs_write_readme(void)
            "  A / B          A / B\r\n"
            "  Mitte          C\r\n"
            "  Mitte + B      START\r\n"
-           "  Mitte + A      SELECT (1 s halten = zurueck zur Spieleliste)\r\n", &f);
+           "\r\n"
+           "Zurueck zur Spieleliste: RESET.\r\n", &f);
     f_close(&f);
 }
 
@@ -348,12 +347,11 @@ static void genesis_init(void)
     memset(video_screen, 0, sizeof video_screen);
 }
 
-static void emulation_loop(void)
+static void __attribute__((noreturn)) emulation_loop(void)
 {
     int last_w = 0, last_h = 0;
     uint64_t next_frame = time_us_64();
     uint32_t skipped_in_row = 0;
-    uint64_t select_since = 0;
 
     /* FPS statistics */
     uint64_t stat_t0 = time_us_64();
@@ -371,14 +369,6 @@ static void emulation_loop(void)
         button_state[0] = in.pad;
         button_state[1] = 0xFF;
         button_state[2] = 0xFF;
-        if (in.select) {
-            if (select_since == 0)
-                select_since = time_us_64();
-            else if (time_us_64() - select_since >= SELECT_HOLD_US)
-                return;
-        } else {
-            select_since = 0;
-        }
         uint64_t frame_start = time_us_64();
 
         /* ---- frame geometry ---- */
@@ -560,7 +550,6 @@ int main(void)
         { "B",       "Taste B" },
         { "C",       "Mitte" },
         { "START",   "Mitte + B" },
-        { "Liste",   "Mitte + A 1 s" },
     };
     menu_controls(controls, sizeof controls / sizeof controls[0]);
 
@@ -572,12 +561,4 @@ int main(void)
     multicore_launch_core1(core1_main);
 
     emulation_loop();
-
-    /* SELECT held: back to the ROM list. Stop core 1 so the panel is ours
-     * again, then reboot -- the simplest way to put every piece of hardware
-     * and emulator state back to a clean start. */
-    multicore_reset_core1();
-    pbc_display_end();
-    menu_message("PBC MEGA DRIVE", "Zurueck zur Spieleliste...", NULL, "Tasten loslassen");
-    reboot_to_menu();
 }

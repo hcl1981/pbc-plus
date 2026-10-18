@@ -4,7 +4,7 @@
  *   A             -> A
  *   B             -> B
  *   CENTER + B    -> START
- *   CENTER + A    -> SELECT (held 1 s: back to the ROM list)
+ *   CENTER + A    -> SELECT
  *
  * CENTER on its own does nothing; it only turns A and B into START and
  * SELECT, the same as in PicoBoyGB.

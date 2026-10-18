@@ -36,7 +36,7 @@ genesis_input_t input_poll_genesis(void)
 {
     static uint64_t center_since;
     static bool     combo_latched;   /* a combo was used during this CENTER press */
-    genesis_input_t g = { 0xFF, false };
+    genesis_input_t g = { 0xFF };
     uint32_t r = input_raw();
     uint64_t now = time_us_64();
 
@@ -51,7 +51,6 @@ genesis_input_t input_poll_genesis(void)
         if (r & (IN_A | IN_B)) {
             combo_latched = true;
             if (r & IN_B) g.pad &= ~(1u << 7);   /* START  */
-            if (r & IN_A) g.select = true;       /* SELECT */
         } else if (!combo_latched && now - center_since >= C_GRACE_US) {
             g.pad &= ~(1u << 5);                 /* C */
         }

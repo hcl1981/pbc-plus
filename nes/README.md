@@ -47,9 +47,10 @@ bei PicoBoyGB.
 | A | A |
 | B | B |
 | START | Mitte + B |
-| SELECT | Mitte + A (1 s halten = zurück zur Spieleliste) |
+| SELECT | Mitte + A |
 
-Mitte allein tut nichts, wie bei PicoBoyGB. Unter dem Bild stehen gezeichnete
+Mitte allein tut nichts, wie bei PicoBoyGB. Zurück zur Spieleliste geht es
+mit RESET. Unter dem Bild stehen gezeichnete
 Bilder pro Sekunde, Emulationstempo und die Auslastung von Kern 0.
 
 ## Bild

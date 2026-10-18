@@ -14,7 +14,7 @@
  *
  * Boot:
  *   A or B held  -> USB stick mode, eject restarts
- *   otherwise    -> ROM list, then the game
+ *   otherwise    -> ROM list, then the game (RESET leaves it)
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -54,8 +54,6 @@
 #ifndef SHOW_FPS
 #define SHOW_FPS 1
 #endif
-/* Holding SELECT (CENTER + A) this long leaves the game. */
-#define SELECT_HOLD_US 1000000u
 
 /* ---- FatFs volume -------------------------------------------------------- */
 static FATFS g_fs;
@@ -98,7 +96,9 @@ static void fs_write_readme(void)
            "  Joystick       Steuerkreuz\r\n"
            "  A / B          A / B\r\n"
            "  Mitte + B      START\r\n"
-           "  Mitte + A      SELECT (1 s halten = zurueck zur Spieleliste)\r\n", &f);
+           "  Mitte + A      SELECT\r\n"
+           "\r\n"
+           "Zurueck zur Spieleliste: RESET.\r\n", &f);
     f_close(&f);
 }
 
@@ -210,11 +210,10 @@ static void overclock(void)
 
 /* ---- emulator ------------------------------------------------------------ */
 
-static void emulation_loop(void)
+static void __attribute__((noreturn)) emulation_loop(void)
 {
     const uint32_t period = 16639;          /* NTSC: 60.0988 Hz */
     uint64_t next_frame = time_us_64();
-    uint64_t select_since = 0;
     const uint8_t *prev_pixels = NULL, *last_pixels = NULL;
 
     audio_pwm_set_volume(g_settings.sound ? g_settings.volume : 0);
@@ -224,14 +223,6 @@ static void emulation_loop(void)
 
     for (;;) {
         uint8_t joy = input_poll_nes();
-        if (joy & NES_SELECT) {
-            if (select_since == 0)
-                select_since = time_us_64();
-            else if (time_us_64() - select_since >= SELECT_HOLD_US)
-                return;
-        } else {
-            select_since = 0;
-        }
 
         /* QuickNES draws this frame into the buffer of two frames ago.
          * If core 1 is still sending that one, let it finish. */
@@ -337,7 +328,6 @@ int main(void)
         { "B",       "Taste B" },
         { "START",   "Mitte + B" },
         { "SELECT",  "Mitte + A" },
-        { "Liste",   "Mitte + A 1 s" },
     };
     menu_controls(controls, sizeof controls / sizeof controls[0]);
 
@@ -355,11 +345,4 @@ int main(void)
 
     multicore_launch_core1(video_core1_main);
     emulation_loop();
-
-    /* SELECT held: back to the ROM list. Stop core 1 so the panel is ours
-     * again, then reboot. */
-    multicore_reset_core1();
-    pbc_display_end();
-    menu_message("PBC NES", "Zurueck zur Spieleliste...", NULL, "Tasten loslassen");
-    reboot_to_menu();
 }

@@ -48,11 +48,12 @@ bei PicoBoyGB.
 | B | B |
 | C | Mitte |
 | START | Mitte + B |
-| SELECT | Mitte + A (1 s halten = zurück zur Spieleliste) |
 
 Mitte wird erst nach 40 ms als C gemeldet. So wird aus „Mitte, kurz danach B“
 sicher START und kein versehentliches C. Solange Mitte gehalten wird, sind A und
 B für die Kombinationen reserviert: **C gleichzeitig mit A oder B geht nicht.**
+
+Zurück zur Spieleliste geht es mit RESET.
 
 Unter dem Bild steht z. B. `34fps 101% CPU93%`: gezeichnete Bilder pro
 Sekunde, Emulationstempo (100 % = Originalgeschwindigkeit) und wie viel der
