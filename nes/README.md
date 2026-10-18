@@ -43,8 +43,10 @@ wird das erste gestartete Spiel einmal neu in den ROM-Bereich geschrieben.
 | B | B |
 | START | Mitte + B |
 | SELECT | Mitte + A (1 s halten = zurück zur Spieleliste) |
-| – | Mitte + Hoch/Runter: Lautstärke (0 = Ton aus, 1–12, Vorgabe 8) |
-| – | Mitte + Links: stumm schalten und wieder ein |
+| – | Mitte + Hoch/Runter: Lautstärke (1–12, Vorgabe 8) |
+
+Ein- und ausschalten lässt sich der Ton nur in der Spieleliste (B), nicht im
+Spiel -- damit das nicht versehentlich passiert.
 
 Mitte allein tut nichts, wie bei PicoBoyGB. Solange Mitte gehalten wird, geht
 der Joystick nicht ans Spiel. Unter dem Bild stehen gezeichnete
@@ -68,8 +70,8 @@ einen Sample aus einem Ringpuffer und schreibt ihn in den PWM-Wert von GP15
 (10 Bit, Träger ~244 kHz). QuickNES erzeugt genau diese Rate (22 222 Hz). Weil
 Bildtakt und Sample-Timer zwei getrennte Uhren sind, wird der Füllstand bei
 jedem Bild geprüft und um einen Sample korrigiert. Laute Spitzen werden weich
-begrenzt. Bei Lautstärke 0 steht der Timer, und der Lautsprecher-Pin liegt
-auf Low (kein Ruhestrom).
+begrenzt. Ist der Ton aus, steht der Timer, und der Lautsprecher-Pin liegt auf
+Low (kein Ruhestrom).
 
 Beim Mega Drive lief ein Tonversuch mit DMA-Endlosmodus instabil. Hier ist
 bewusst der erprobte, einfachere Weg gewählt; die NES-Tonerzeugung kostet

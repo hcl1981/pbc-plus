@@ -8,8 +8,9 @@
  *     (from PicoBoyGB), the chosen game is copied into a flash region and
  *     QuickNES reads it from there in place
  *   - 240x240 1:1 on the ST7789, sent by core 1 (video.c)
- *   - sound on the PWM speaker (audio_pwm.c): on/off with B in the ROM
- *     list (saved), in game CENTER + up/down = volume, CENTER + left = mute
+ *   - sound on the PWM speaker (audio_pwm.c): on/off only with B in the
+ *     ROM list (saved), so it cannot be switched off by accident in a game;
+ *     there CENTER + up/down sets the volume (1..max)
  *
  * Boot:
  *   A or B held  -> USB stick mode, eject restarts
@@ -218,10 +219,10 @@ static void emulation_loop(void)
     const uint8_t *prev_pixels = NULL, *last_pixels = NULL;
 
     int volume = VOLUME_DEFAULT;
-    bool muted = !g_settings.sound;
+    const bool sound = g_settings.sound;
     uint32_t prev_raw = 0;
     uint64_t status_hold_until = 0;     /* keep the volume note visible */
-    audio_pwm_set_volume(muted ? 0 : volume);
+    audio_pwm_set_volume(sound ? volume : 0);
 
     uint64_t stat_t0 = time_us_64(), stat_busy_us = 0;
     uint32_t stat_drawn = 0, stat_emulated = 0;
@@ -237,24 +238,17 @@ static void emulation_loop(void)
             select_since = 0;
         }
 
-        /* CENTER + up/down: volume, 0 = off */
+        /* CENTER + up/down: volume. Never down to 0 -- switching the sound
+         * off is left to the ROM list, so it cannot happen by accident. */
         uint32_t raw = input_raw(), pressed = raw & ~prev_raw;
         prev_raw = raw;
-        if ((raw & IN_CENTER) && (pressed & (IN_UP | IN_DOWN | IN_LEFT))) {
-            if (pressed & IN_LEFT) {
-                muted = !muted;         /* the volume itself is kept */
-            } else {
-                muted = false;
-                volume += (pressed & IN_UP) ? 1 : -1;
-                if (volume < 0) volume = 0;
-                if (volume > AUDIO_VOL_MAX) volume = AUDIO_VOL_MAX;
-            }
-            audio_pwm_set_volume(muted ? 0 : volume);
+        if (sound && (raw & IN_CENTER) && (pressed & (IN_UP | IN_DOWN))) {
+            volume += (pressed & IN_UP) ? 1 : -1;
+            if (volume < 1) volume = 1;
+            if (volume > AUDIO_VOL_MAX) volume = AUDIO_VOL_MAX;
+            audio_pwm_set_volume(volume);
             char s[24];
-            if (!muted && volume)
-                snprintf(s, sizeof s, "Lautstaerke %d/%d", volume, AUDIO_VOL_MAX);
-            else
-                snprintf(s, sizeof s, "Ton aus");
+            snprintf(s, sizeof s, "Lautstaerke %d/%d", volume, AUDIO_VOL_MAX);
             video_set_status(s);
             status_hold_until = time_us_64() + 1500000;
         }
