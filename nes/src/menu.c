@@ -135,18 +135,61 @@ static void draw_list(int top, int sel, const char *current)
     pbc_display_text_centered(254, pos, COL_DIM, COL_BG, 1);
 }
 
-static void list_frame_footer(void)
+/* Options: sound on/off and volume. The only place either can be changed,
+ * so a game cannot switch them by accident. Saved on the way out. */
+static void options(void)
 {
-    pbc_display_fill(0, 266, PBC_LCD_W, 8, COL_BG);
-    pbc_display_text_centered(266, g_settings.sound ? "A: Spielen   B: Ton an "
-                                                    : "A: Spielen   B: Ton aus",
-                              COL_DIM, COL_BG, 1);
+    const int rows = 3;
+    int sel = 0;
+
+    header("OPTIONEN");
+    pbc_display_text_centered(200, "Hoch/Runter: waehlen", COL_DIM, COL_BG, 1);
+    pbc_display_text_centered(212, "Links/Rechts: aendern", COL_DIM, COL_BG, 1);
+    pbc_display_text_centered(224, "B: zurueck", COL_DIM, COL_BG, 1);
+    menu_wait_release();
+
+    for (bool redraw = true;;) {
+        if (redraw) {
+            char line[3][32];
+            snprintf(line[0], 32, "Ton          %s", g_settings.sound ? "an " : "aus");
+            snprintf(line[1], 32, "Lautstaerke  %-2d", g_settings.volume);
+            snprintf(line[2], 32, "Zurueck");
+            for (int i = 0; i < rows; i++) {
+                uint16_t bg = i == sel ? COL_SEL_BG : COL_BG;
+                uint16_t fg = (i == 1 && !g_settings.sound) ? COL_DIM : COL_TEXT;
+                pbc_display_fill(0, 70 + i * 22, PBC_LCD_W, 16, bg);
+                pbc_display_text(32, 74 + i * 22, line[i], fg, bg, 1);
+            }
+            redraw = false;
+        }
+        uint32_t e = input_menu_edges();
+        if (!e) {
+            sleep_ms(15);
+            continue;
+        }
+        redraw = true;
+        if (e & IN_UP)   sel = (sel + rows - 1) % rows;
+        if (e & IN_DOWN) sel = (sel + 1) % rows;
+        if ((e & IN_B) || ((e & (IN_A | IN_CENTER)) && sel == 2))
+            break;
+        int dir = (e & IN_LEFT) ? -1 : (e & (IN_RIGHT | IN_A | IN_CENTER)) ? 1 : 0;
+        if (dir && sel == 0)
+            g_settings.sound = !g_settings.sound;
+        if (dir && sel == 1) {
+            int v = g_settings.volume + dir;
+            if (v < VOLUME_MIN) v = VOLUME_MIN;
+            if (v > VOLUME_MAX) v = VOLUME_MAX;
+            g_settings.volume = v;
+        }
+    }
+    settings_save();
+    menu_wait_release();
 }
 
 static void list_frame(void)
 {
     header("PBC NES");
-    list_frame_footer();
+    pbc_display_text_centered(266, "A: Spielen   B: Optionen", COL_DIM, COL_BG, 1);
 }
 
 static bool pick(char *out, int out_size);
@@ -203,9 +246,9 @@ static bool pick(char *out, int out_size)
         if (e & IN_LEFT)  { sel -= LIST_ROWS; if (sel < 0) sel = 0; }
         if (e & IN_RIGHT) { sel += LIST_ROWS; if (sel >= rom_count) sel = rom_count - 1; }
         if (e & IN_B) {
-            g_settings.sound = !g_settings.sound;
-            settings_save();
-            list_frame_footer();
+            options();
+            list_frame();
+            full = true;
             continue;
         }
         if (e & (IN_A | IN_CENTER)) {

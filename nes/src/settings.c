@@ -8,12 +8,13 @@
 
 #define SETTINGS_MAGIC 0x53454E50u   /* "PNES" */
 
-pbc_settings_t g_settings = { true };
+pbc_settings_t g_settings = { true, VOLUME_DEFAULT };
 
 typedef struct {
     uint32_t magic;
     uint32_t sound;
     uint32_t check;
+    uint32_t volume;                /* added later: a record without it has 0xFFFFFFFF here */
 } stored_t;
 
 static uint32_t checksum(const stored_t *s)
@@ -25,13 +26,17 @@ void settings_load(void)
 {
     const stored_t *s = (const stored_t *)(XIP_BASE + SETTINGS_OFFSET);
     if (s->magic == SETTINGS_MAGIC && s->check == checksum(s))
+    {
         g_settings.sound = s->sound != 0;
+        if (s->volume >= VOLUME_MIN && s->volume <= VOLUME_MAX)
+            g_settings.volume = (int)s->volume;
+    }
 }
 
 void settings_save(void)
 {
     static uint8_t page[FLASH_PAGE_SIZE] __aligned(4);
-    stored_t s = { SETTINGS_MAGIC, g_settings.sound, 0 };
+    stored_t s = { SETTINGS_MAGIC, g_settings.sound, 0, (uint32_t)g_settings.volume };
     s.check = checksum(&s);
     if (memcmp((const void *)(XIP_BASE + SETTINGS_OFFSET), &s, sizeof s) == 0)
         return;                             /* unchanged: spare the flash */

@@ -17,7 +17,7 @@
 
 #define AUDIO_TICK_US   45
 #define AUDIO_RATE      (1000000 / AUDIO_TICK_US)   /* 22222 Hz */
-#define AUDIO_VOL_MAX   12
+#define AUDIO_VOL_MAX   12   /* = VOLUME_MAX in settings.h */
 
 /* After the final system clock is set. */
 void audio_pwm_init(void);

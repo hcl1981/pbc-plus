@@ -33,12 +33,10 @@ uint8_t input_poll_nes(void)
     uint32_t r = input_raw();
     uint8_t j = 0;
 
-    if (!(r & IN_CENTER)) {               /* with CENTER: volume, see main.c */
-        if (r & IN_UP)    j |= NES_UP;
-        if (r & IN_DOWN)  j |= NES_DOWN;
-        if (r & IN_LEFT)  j |= NES_LEFT;
-        if (r & IN_RIGHT) j |= NES_RIGHT;
-    }
+    if (r & IN_UP)    j |= NES_UP;
+    if (r & IN_DOWN)  j |= NES_DOWN;
+    if (r & IN_LEFT)  j |= NES_LEFT;
+    if (r & IN_RIGHT) j |= NES_RIGHT;
 
     if (r & IN_CENTER) {
         if (r & IN_B) j |= NES_START;

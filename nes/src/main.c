@@ -8,9 +8,9 @@
  *     (from PicoBoyGB), the chosen game is copied into a flash region and
  *     QuickNES reads it from there in place
  *   - 240x240 1:1 on the ST7789, sent by core 1 (video.c)
- *   - sound on the PWM speaker (audio_pwm.c): on/off only with B in the
- *     ROM list (saved), so it cannot be switched off by accident in a game;
- *     there CENTER + up/down sets the volume (1..max)
+ *   - sound on the PWM speaker (audio_pwm.c); on/off and volume only in
+ *     the options of the ROM list (saved), never in a game, so nothing can
+ *     be changed by accident
  *
  * Boot:
  *   A or B held  -> USB stick mode, eject restarts
@@ -54,7 +54,6 @@
 #ifndef SHOW_FPS
 #define SHOW_FPS 1
 #endif
-#define VOLUME_DEFAULT 8
 /* Holding SELECT (CENTER + A) this long leaves the game. */
 #define SELECT_HOLD_US 1000000u
 
@@ -218,11 +217,7 @@ static void emulation_loop(void)
     uint64_t select_since = 0;
     const uint8_t *prev_pixels = NULL, *last_pixels = NULL;
 
-    int volume = VOLUME_DEFAULT;
-    const bool sound = g_settings.sound;
-    uint32_t prev_raw = 0;
-    uint64_t status_hold_until = 0;     /* keep the volume note visible */
-    audio_pwm_set_volume(sound ? volume : 0);
+    audio_pwm_set_volume(g_settings.sound ? g_settings.volume : 0);
 
     uint64_t stat_t0 = time_us_64(), stat_busy_us = 0;
     uint32_t stat_drawn = 0, stat_emulated = 0;
@@ -236,21 +231,6 @@ static void emulation_loop(void)
                 return;
         } else {
             select_since = 0;
-        }
-
-        /* CENTER + up/down: volume. Never down to 0 -- switching the sound
-         * off is left to the ROM list, so it cannot happen by accident. */
-        uint32_t raw = input_raw(), pressed = raw & ~prev_raw;
-        prev_raw = raw;
-        if (sound && (raw & IN_CENTER) && (pressed & (IN_UP | IN_DOWN))) {
-            volume += (pressed & IN_UP) ? 1 : -1;
-            if (volume < 1) volume = 1;
-            if (volume > AUDIO_VOL_MAX) volume = AUDIO_VOL_MAX;
-            audio_pwm_set_volume(volume);
-            char s[24];
-            snprintf(s, sizeof s, "Lautstaerke %d/%d", volume, AUDIO_VOL_MAX);
-            video_set_status(s);
-            status_hold_until = time_us_64() + 1500000;
         }
 
         /* QuickNES draws this frame into the buffer of two frames ago.
@@ -290,8 +270,7 @@ static void emulation_loop(void)
                      (unsigned long)stat_drawn,
                      (unsigned long)(stat_emulated * 100 / 60),
                      (unsigned long)(stat_busy_us * 100 / (now - stat_t0)));
-            if (now >= status_hold_until)
-                video_set_status(s);
+            video_set_status(s);
             stat_t0 = now;
             stat_drawn = stat_emulated = 0;
             stat_busy_us = 0;

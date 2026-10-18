@@ -6,8 +6,13 @@
 
 #define SETTINGS_OFFSET 0xFF1000u    /* one 4 KB sector after the ROM info */
 
+#define VOLUME_MIN     1
+#define VOLUME_MAX     12
+#define VOLUME_DEFAULT 8
+
 typedef struct {
     bool sound;
+    int  volume;                    /* VOLUME_MIN..VOLUME_MAX */
 } pbc_settings_t;
 
 extern pbc_settings_t g_settings;
