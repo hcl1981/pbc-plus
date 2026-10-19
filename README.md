@@ -24,9 +24,13 @@ cd spout && ./build.sh      # oder ein einzelnes Projekt
 | [`micropolis`](micropolis/) | Micropolis — der quelloffene Kern von SimCity 1. | `micropolis.uf2` |
 | [`tyrian`](tyrian/) | OpenTyrian. Firmware plus 8,9 MB Spieldaten in einer Datei. | `tyrian-komplett.uf2` |
 | [`picoboygb`](picoboygb/) | Game-Boy-Emulator. ROMs kommen per USB-Stick-Modus aufs Gerät. | `picoboygb.uf2` |
+| [`pbcemu`](pbcemu/) | **PBCemu**: alle Emulatoren unten (C64, NES, Master System, PC Engine, Mega Drive, Game Gear, Game Boy Color) in einer Firmware, mit Gerätewahl samt Gerätebildern und Spieleliste. | `pbcemu.uf2` |
+| [`sms`](sms/) | Sega Master System und Game Gear (SMS Plus aus pico-smsplus). Game Gear 1,5-fach vergrößert. | `sms.uf2` |
+| [`pce`](pce/) | PC Engine / TurboGrafx-16, HuCards (pce-go aus retro-go über pico-pcePlus). | `pce.uf2` |
+| [`gbc`](gbc/) | Game Boy Color und klassischer Game Boy (Peanut-GB mit Farberweiterung), 1,5-fach vergrößert, Spielstände als `.sav`. | `gbc.uf2` |
 | [`c64`](c64/) | Commodore-64-Emulator (Frodo4 aus frank-c64). Disk-Images per USB-Stick-Modus, startet mit `LOAD"*",8,1`, Joystick-Port pro Spiel. | `c64.uf2` |
 | [`nes`](nes/) | NES-Emulator (QuickNES-Kern aus frank-nes), 240×240 Pixel 1:1, mit Ton. ROMs per USB-Stick-Modus. | `nes.uf2` |
-| [`megadrive`](megadrive/) | Sega-Genesis-/Mega-Drive-Emulator (Kern aus frank-genesis), ROM läuft direkt aus dem Flash. ROMs per USB-Stick-Modus, ohne Ton. | `megadrive.uf2` |
+| [`megadrive`](megadrive/) | Sega-Genesis-/Mega-Drive-Emulator (Kern aus frank-genesis), ROM läuft direkt aus dem Flash, bis 5 MB inkl. Super Street Fighter II. ROMs per USB-Stick-Modus, ohne Ton. | `megadrive.uf2` |
 | [`doom`](doom/) | Doom mit Mehrspieler über ein USB-C-Kabel. | `doom-usb-mp.uf2` |
 | [`jumpnbump`](jumpnbump/) | Jump 'n Bump für zwei gekoppelte Geräte. | `jumpnbump.uf2` |
 | [`i2collection`](i2collection/) | Neun Zweispieler-Spiele über USB-C: Tron, Pong, Duell, Artillerie, Bomber, Schach, Vier gewinnt, Käsekästchen. | `i2collection.uf2` |
@@ -76,6 +80,13 @@ selbst neu und zeigt die Spieleliste.
 `.nes`-Dateien auf das Laufwerk kopieren, auswerfen. NES und Mega Drive teilen
 sich das Laufwerk; jede Firmware listet nur ihre eigenen ROMs.
 
+**PBCemu (`pbcemu.uf2`)** vereint diese Emulatoren; ROMs kommen genauso auf
+das Laufwerk `PBC-ROMS`, zusätzlich über die Seite „Add Games“ im Starter.
+
+**Master System/Game Gear, PC Engine und Game Boy Color** bekommen ihre ROMs
+(`.sms` `.gg`, `.pce`, `.gb` `.gbc`) genauso über den USB-Stick-Modus. Alle
+neuen Emulatoren teilen sich das Laufwerk.
+
 **C64 braucht Disk-Images.** Ebenso über den USB-Stick-Modus, als `.d64`.
 Ohne Tastatur tippt der Emulator `LOAD"*",8,1` (und bei Bedarf `RUN`) selbst.
 
@@ -108,6 +119,7 @@ gerechnet und nie auf Hardware geprüft wurde, steht es dabei.
 .
 ├── build_all.sh        Schleife über alle Projekt-build.sh
 ├── tools/              gemeinsame Bausteine der Build-Skripte
+├── common/             Übergabe zwischen Starter (pbcemu/) und Emulatoren
 ├── docs/               Bauanleitung, Hardware-Referenz, Lizenzübersicht
 ├── dist/               fertige .uf2 — mitversioniert, damit man ohne
 │                       Werkzeugkette flashen kann; dazu wad2uf2/ mit den

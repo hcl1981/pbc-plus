@@ -15,7 +15,11 @@ sagt, welche das ist und woher sie kommt. Die Kurzfassung steht als
 | `jumpnbump` | GPL-2.0 | `jumpnbump/LICENSE` | Jump 'n Bump, Brainchild Design 1998 |
 | `picoboygb` | MIT | `picoboygb/LICENSE` | Peanut-GB → RP2040-GB → Pico-GB, siehe `picoboygb/HERKUNFT.md` |
 | `picoboygb-arduino` | MIT | `picoboygb-arduino/LICENSE` | dieselbe Kette, Arduino-Fassung |
-| `c64` | GPL-2.0+ | `c64/LICENSE` | Frodo4 (Christian Bauer) → frank-c64 (rh1tech); Flash-Laufwerk und USB-Stick aus `picoboygb` (MIT, `c64/LICENSE.picoboygb`) |
+| `c64` | GPL-2.0+ | `c64/LICENSE` | Frodo4 (Christian Bauer) → frank-c64 (rh1tech); C64-ROMs: MEGA65 OpenROMs (LGPL-3.0+, `c64/tools/openroms/`); Flash-Laufwerk und USB-Stick aus `picoboygb` (MIT, `c64/LICENSE.picoboygb`) |
+| `sms` | GPL-3.0 | `sms/LICENSE` | SMS Plus (Charles MacDonald, GPL-2.0+) → pico-smsplus (PicoPlus-devel, GPL-3.0); Flash/USB aus `picoboygb` (MIT) |
+| `pce` | GPL-3.0 | `pce/LICENSE` | pce-go aus retro-go (ducalex, GPL-2.0) → pico-pcePlus (PicoPlus-devel, GPL-3.0); Flash/USB aus `picoboygb` (MIT) |
+| `pbcemu` | GPL-3.0+ | `pbcemu/LICENSE` | eigener Starter; Plattformteile aus `picoboygb` (MIT), Port/Programm-Einstellungen aus `c64` (GPL-2.0+), Schrift Lato (OFL-1.1, `pbcemu/LICENSE.lato`). `dist/pbcemu.uf2` bündelt alle Emulatoren, jeder unter seiner eigenen Lizenz |
+| `gbc` | GPL-3.0 | `gbc/LICENSE` | Peanut-GB (MIT) mit GBC-Erweiterung von tvecera → pico-peanutGB (PicoPlus-devel, GPL-3.0); minigb_apu, Flash/USB aus `picoboygb` (MIT) |
 | `nes` | GPL-3.0 | `nes/LICENSE` | QuickNES (Shay Green, LGPL-2.1+) → frank-nes (rh1tech); Flash-Laufwerk und USB-Stick aus `picoboygb` (MIT, `nes/LICENSE.picoboygb`) |
 | `megadrive` | AGPL-3.0 | `megadrive/LICENSE` | Gwenesis → frank-genesis (rh1tech); Flash-Laufwerk und USB-Stick aus `picoboygb` (MIT, `megadrive/LICENSE.picoboygb`) |
 | `i2collection` | MIT | `i2collection/LICENSE` | Eigenentwicklung |
@@ -42,12 +46,13 @@ anbieten. Die aus PicoBoyGB übernommenen Dateien (Flash-Laufwerk,
 USB-Massenspeicher) bleiben MIT; ihr Lizenztext liegt als
 `megadrive/LICENSE.picoboygb` bei.
 
-**C64: die eingebauten ROMs sind nicht frei.** `c64/core/` enthält BASIC,
-KERNAL, Zeichensatz und 1541-DOS des C64 als Arrays, unverändert aus
-frank-c64 übernommen. Das sind die Original-ROMs von Commodore; die Rechte
-liegen heute bei Cloanto. Sie stehen nicht unter der GPL des übrigen Codes.
-frank-c64 verbreitet sie genauso, eine ausdrückliche Erlaubnis liegt diesem
-Repository aber nicht vor.
+**C64: freie ROMs.** Statt der Original-ROMs von Commodore (Rechte heute bei
+Cloanto, nicht frei) enthält `c64` die freien **MEGA65 OpenROMs**
+(LGPL-3.0-or-later, einige BASIC-Teile MIT). Das KERNAL ist für die
+Laufwerksemulation gepatcht; Lizenztexte, verwendete Fassung, Änderungen und
+der Weg zum Neubauen liegen in `c64/tools/openroms/`, wie es die LGPL
+verlangt. Ältere Stände dieses Repositorys (bis Commit `a095a08`) enthielten
+noch die Commodore-ROMs.
 
 **Urheberrechtsvermerke müssen erhalten bleiben.** Sowohl MIT als auch die
 FatFs-Lizenz verlangen das. Die Vermerke stehen in den Quelldateien — beim
@@ -64,6 +69,7 @@ Aufräumen nicht entfernen.
 | Game-Boy-ROMs | fremdes Urheberrecht — liegen **nicht** bei |
 | Genesis-/Mega-Drive-ROMs | fremdes Urheberrecht — liegen **nicht** bei |
 | NES-ROMs | fremdes Urheberrecht — liegen **nicht** bei |
+| Master-System-, Game-Gear-, PC-Engine- und Game-Boy-Color-ROMs | fremdes Urheberrecht — liegen **nicht** bei |
 | C64-Disk-Images | fremdes Urheberrecht — liegen **nicht** bei |
 
 `.gitignore` schließt WADs und ROMs aus, damit eigene Kopien nicht

@@ -4,18 +4,24 @@ PBC+ — gebaute Firmware-Abbilder für den PicoBoy Color Plus
 Flashen: BOOTSEL gedrückt halten, USB anstecken, die gewünschte
          .uf2 auf das erscheinende Laufwerk kopieren.
 
-Es passt immer nur EINE Firmware aufs Gerät.
+Es passt immer nur EINE Firmware aufs Gerät. pbcemu.uf2 enthält
+alle Emulatoren (C64, NES, Master System, PC Engine, Mega Drive,
+Game Gear, Game Boy Color) mit Gerätewahl und Spieleliste.
 
 DATEI                                     GRÖSSE  SHA256 (Anfang)
-c64.uf2                                      560K  d66d6fb82d4448d8
+c64.uf2                                      564K  5d0d644002f9e1ae
+gbc.uf2                                      164K  37193c665184a580
 i2collection.uf2                             352K  06caddf8420545ef
 jumpnbump.uf2                                1.1M  d8f26ad7455a2dac
-megadrive.uf2                                1.3M  b1f9ec49ed9734cc
+megadrive.uf2                                1.3M  d532892f98740215
 micropolis.uf2                               2.0M  d817994650e66e23
-micropython-PBC_PLUS.uf2                     744K  0821784e66a86bcc
-nes.uf2                                      348K  cb6b44ed5ba48ef0
+micropython-PBC_PLUS.uf2                     748K  81dba5cdff9350f4
+nes.uf2                                      352K  d610a9a0bf321675
 noiz2sa.uf2                                  120K  597e5833290d22a1
+pbcemu.uf2                                   3.3M  afdc132333578d8e
+pce.uf2                                      224K  f4848e3eb2d9655c
 picoboygb.uf2                                128K  93672907ee58848e
+sms.uf2                                      584K  af89ca1894b43c1d
 spout.uf2                                    120K  71881f01a486539b
 stransball2.uf2                              740K  3b9b4dc1f52a9561
 tyrian-komplett.uf2                           19M  00dc75202432fbdc
@@ -37,6 +43,7 @@ sie umwandelt, steht in doom/ANLEITUNG.md.
 PicoBoyGB braucht ROMs: Mitte halten, RESET drücken, dann meldet
 sich das Gerät als USB-Stick zum Draufkopieren.
 
-Mega Drive, NES und C64 brauchen ROMs bzw. Disk-Images: beim
-Einschalten A oder B halten, dann meldet sich das Gerät als
-USB-Stick zum Draufkopieren.
+Mega Drive, NES, C64, Master System/Game Gear, PC Engine und
+Game Boy Color brauchen ROMs bzw. Disk-Images: beim Einschalten A
+oder B halten (bei pbcemu.uf2 auch: Seite "Add Games"), dann
+meldet sich das Gerät als USB-Laufwerk PBC-ROMS.

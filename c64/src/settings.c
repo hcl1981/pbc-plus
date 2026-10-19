@@ -7,6 +7,7 @@
 #include "hardware/sync.h"
 #include "hardware/regs/addressmap.h"
 #include "settings.h"
+#include "pbc_launch.h"
 
 #define SETTINGS_MAGIC 0x35364350u   /* "PC65": layout 2, with a file name per game */
 #define MAX_GAMES      150
@@ -63,6 +64,16 @@ static bool valid(const stored_t *s)
 
 void settings_load(void)
 {
+#if PBC_MULTI
+    /* Combined firmware: sound and volume are set in the launcher. */
+    const pbc_launch_t *l = pbc_launch_get();
+    if (l) {
+        g_settings.sound = l->sound != 0;
+        if (l->volume >= VOLUME_MIN && l->volume <= VOLUME_MAX)
+            g_settings.volume = l->volume;
+    }
+    return;
+#endif
     const stored_t *s = flash_copy();
     if (!valid(s))
         return;

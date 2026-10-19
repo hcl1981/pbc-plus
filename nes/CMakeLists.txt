@@ -152,4 +152,7 @@ target_link_libraries(pbc_nes
 pico_enable_stdio_usb(pbc_nes 0)
 pico_enable_stdio_uart(pbc_nes 0)
 
-pico_add_extra_outputs(pbc_nes)
+# UF2 etc. -- or, for the combined firmware (pbcemu/build.sh), a .bin
+# linked behind the launcher.
+include(${CMAKE_CURRENT_LIST_DIR}/../common/pbc_multi.cmake)
+pbc_multi(pbc_nes)

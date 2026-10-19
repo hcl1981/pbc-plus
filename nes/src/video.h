@@ -1,10 +1,19 @@
-/* video.h -- NES frame -> ST7789, 1:1 on core 1.
+/* video.h -- NES frame -> ST7789 on core 1.
  *
- * The NES picture is 256x240. The panel is 240 wide and used upright, so
- * eight columns are dropped on each side -- the strip a real TV hides in
- * its overscan anyway, and where many games leave scroll garbage. What
- * remains is 240x240, shown pixel for pixel without scaling, centred
- * vertically on the 280-row panel.
+ * The NES picture is 256x240; the panel is 240x280, used upright. How the
+ * picture is fitted is the display mode (VIDEO_MODE_*), chosen once before
+ * core 1 starts:
+ *
+ *   CROP     240x240 1:1, eight columns dropped on each side -- the strip a
+ *            real TV hides in its overscan anyway, and where many games
+ *            leave scroll garbage. The default.
+ *   FIT      the whole 256x240 scaled by 15/16 to 240x225. Where two source
+ *            pixels (rows) share an output pixel (row) they are averaged,
+ *            so thin lines and small text survive.
+ *   NO_OVERSCAN  like CROP, and the 8 top and bottom lines go as well
+ *            (240x224 1:1) -- what a TV showed.
+ *
+ * None distorts the picture; it sits centred, the rest of the panel black.
  *
  * QuickNES renders into a pair of pixel buffers and swaps them after every
  * frame. Core 0 hands a finished frame plus its palette to core 1, which
@@ -17,8 +26,15 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define VIDEO_W 240
-#define VIDEO_H 240
+enum {
+    VIDEO_MODE_CROP,
+    VIDEO_MODE_FIT,
+    VIDEO_MODE_NO_OVERSCAN,
+    VIDEO_MODE_COUNT
+};
+
+/* Before core 1 starts. Unknown modes fall back to VIDEO_MODE_CROP. */
+void video_set_mode(unsigned mode);
 
 /* Core 1 entry point. */
 void video_core1_main(void);
@@ -33,7 +49,7 @@ bool video_busy_with(const uint8_t *pixels);
  * core 1 is still sending the previous one. */
 bool video_present(const uint8_t *pixels, long pitch, const int16_t *palette, int count);
 
-/* Core 0: status text under the picture (e.g. fps), drawn between frames. */
+/* Core 0: status text (fps etc.) under the picture. NULL or "" hides it. */
 void video_set_status(const char *s);
 
 #endif /* PBC_VIDEO_H */

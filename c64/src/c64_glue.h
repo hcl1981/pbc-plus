@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+/* Before c64_init: ROMs to use instead of the built-in OpenROMs (NULL: built-in) */
+void      c64_set_roms(const uint8_t *basic, const uint8_t *kernal, const uint8_t *chargen);
 void      c64_init(void);
 bool      c64_run_frame(void);
 uint8_t  *c64_get_ram(void);

@@ -16,9 +16,13 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#ifndef ROM_FLASH_OFFSET          /* combined firmware: common/pbc_multi.cmake */
 #define ROM_FLASH_OFFSET  0x100000u
 #define ROM_FLASH_SIZE    0x500000u          /* 5 MB */
+#endif
+#ifndef ROM_INFO_OFFSET           /* combined firmware: its own sector */
 #define ROM_INFO_OFFSET   0xFF0000u          /* one 4 KB sector */
+#endif
 
 #define ROM_NAME_MAX 96
 
@@ -39,6 +43,10 @@ const char *rom_store_program(const char *name, uint8_t *scratch, rom_progress_f
 /* Pointer to the ROM in XIP flash and its size. */
 const uint8_t *rom_store_data(void);
 uint32_t       rom_store_size(void);
+
+/* Flash offset (not XIP address) of a byte of the ROM, for the SSF2
+ * mapper's address translation (ssf2.c). */
+uint32_t       rom_store_phys(uint32_t rom_offset);
 
 /* True for .md .bin .gen .smd (case-insensitive). */
 bool rom_store_is_rom_name(const char *name);

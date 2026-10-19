@@ -63,7 +63,15 @@ Zurück zur Spieleliste geht es mit RESET.
 Mit `-DSHOW_FPS=1` gebaut, steht unter dem Bild z. B. `34fps 101% CPU93%`: gezeichnete Bilder pro
 Sekunde, Emulationstempo (100 % = Originalgeschwindigkeit) und wie viel der
 Zeit Kern 0 arbeitet statt auf das nächste Bild zu warten. Bleibt CPU deutlich
-unter 100 %, ist Luft zum Heruntertakten.
+unter 100 %, ist Luft zum Heruntertakten. In PBCemu schaltet man die Anzeige
+in den Einstellungen des Starters ein.
+
+**Anzeigemodi** (in PBCemu wählbar, die Einzel-Firmware nutzt „Fit width“):
+
+| Modus | Bild |
+|---|---|
+| Fit width | Breite auf 240 skaliert (H40 ¾, H32 15/16, gemittelt), Seitenverhältnis bleibt |
+| Crop 1:1 | Pixel 1:1, die mittleren 240 Pixel jeder Zeile (H40 verliert links/rechts je 40) |
 
 ## Bauen
 
@@ -146,13 +154,32 @@ Ist die Emulation mehr als ein Bild im Rückstand, wird das Zeichnen
 übersprungen (höchstens drei Bilder am Stück). Die Emulation selbst läuft
 immer vollständig.
 
+## Super Street Fighter II (5 MB)
+
+SSF2 ist das einzige Mega-Drive-Spiel über 4 MB. Die Konsole sieht nur 4 MB,
+aufgeteilt in acht Fenster zu 512 KB; über die Register `$A130F3`–`$A130FF`
+legt das Spiel eine der zehn Bänke in die Fenster 1–7. Benutzt wird das für
+das oberste Megabyte (`$300000`), in das es die Bänke 8 und 9 holt.
+
+Der 68K-Kern liest das ROM an vielen handgeschriebenen Stellen als
+`ROM_DATA + Adresse`. Eine Bank-Tabelle in jedem Zugriff würde jedes Spiel
+bremsen. Deshalb erledigt das die Adressübersetzung des RP2350 (QMI
+ATRANS, `src/ssf2.c`): `ROM_DATA` zeigt so in den XIP-Bereich, dass 0–3 MB
+in Übersetzungsfenster 1 fallen (fest, Bänke 0–5) und 3–4 MB in Fenster 2,
+dessen Flash-Basis bei jeder Umschaltung umgestellt wird. Das ist ein
+Registerzugriff, kein Kopieren. Danach wird der XIP-Cache verworfen, weil er
+nach virtuellen Adressen arbeitet. Aktiv nur bei ROMs über 4 MB; alle anderen
+Spiele behalten die normale Abbildung. Grenze: Die Fenster 1–5 bleiben fest;
+schaltet ein Spiel dort um, wird das ignoriert. SSF2 tut das nicht.
+
+**Nicht getestet** (kein ROM zur Hand) — weder auf dem PC noch auf dem Gerät.
+
 ## Offene Punkte
 
 * **Kein Ton.** Ein Versuch (PWM per DMA, 53 kHz) lief langsamer und instabil.
 * **Keine Spielstände.** Der Kern emuliert kein batteriegepuffertes
   Cartridge-SRAM. Spiele mit Speicherfunktion verlieren ihren Stand beim
   Ausschalten.
-* Kein Mapper für Super Street Fighter II (> 4 MB).
 * Kein 6-Button-Pad, kein zweiter Spieler.
 
 ## Lizenzen

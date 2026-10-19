@@ -79,9 +79,10 @@ bei PicoBoyGB.
 | RETURN | A |
 | Leertaste | Mitte + A |
 
-Zurück zur Spieleliste geht es mit RESET. Mit `-DSHOW_FPS=1` gebaut, stehen
-unter dem Bild gezeichnete Bilder pro Sekunde, Emulationstempo (100 % = 50
-Bilder/s, PAL) und die Auslastung von Kern 0.
+Zurück zur Spieleliste geht es mit RESET. Mit `-DSHOW_FPS=1` gebaut (in
+PBCemu: Option im Starter), stehen unter dem Bild gezeichnete Bilder pro
+Sekunde, Emulationstempo (100 % = 50 Bilder/s, PAL) und die Auslastung von
+Kern 0.
 
 ## Bild
 
@@ -91,9 +92,63 @@ bei frank-c64 auf HDMI: 320×240, ab Spalte 32 und Zeile 16. Das wird auf
 äußeren, die mittleren werden gemittelt, waagerecht und senkrecht. So bleibt
 die 8-Pixel-Schrift des C64 lesbar.
 
+In PBCemu wählt man im Starter einen Anzeigemodus (eigenständig gebaut gilt
+immer „Standard“):
+
+| Modus | Ausschnitt | Auf dem Display |
+|---|---|---|
+| Standard | 320×240 wie oben | 240×180 |
+| Full border | ganzer Puffer 384×272 | 240×170 (5/8) |
+| No border | nur der Bildschirm 320×200 | 240×150 (3/4) |
+
+Alle Modi behalten das Seitenverhältnis.
+
 Kern 1 rechnet das Bild nach jedem Frame um und schickt es per DMA, während
 Kern 0 schon den nächsten emuliert. Weil Kern 1 schneller von oben liest, als
 der VIC neu zeichnet, reicht ein einziger Bildpuffer.
+
+## ROMs: OpenROMs statt Commodore
+
+Die Original-ROMs von Commodore sind nicht frei. PBC C64 nutzt deshalb
+[MEGA65 OpenROMs](https://github.com/MEGA65/open-roms), gebaut ohne die
+Schnelllader JiffyDOS und DolphinDOS. Frodos Laufwerksemulation hängt sich auf
+dem Original-KERNAL in dessen interne Routinen ein; bei OpenROMs übernehmen
+das Fallen an den Einsprüngen der OpenROMs-eigenen IEC-Routinen (Einzelheiten
+in [`tools/openroms/README.md`](tools/openroms/README.md)). Auf dem PC
+geprüft: Booten, `LOAD"*",8,1` mit VVVVVV, Inhaltsverzeichnis, Löschen über
+den Befehlskanal und Speichern. VVVVVV ließ sich anfangs im Menü nicht
+bedienen, weil OpenROMs die Speicherstelle `$CB` (gerade gedrückte Taste) nicht
+pflegt. Das ergänzt ein kleiner Patch am KERNAL. Seitdem verhält sich das Spiel
+auf dem PC bis ins erste Level genauso wie mit den Original-ROMs.
+
+Unterschiede: Der Startbildschirm zeigt „OPEN ROMS PBC C64“, das BASIC kennt
+einige Befehle nicht (`OPEN`, `CLOSE`, `INPUT#`), und Spiele, die direkt in
+Routinen des Original-KERNAL springen, können abstürzen. Wie viele Spiele
+das betrifft, lässt sich nicht vorhersagen; geprüft ist nur VVVVVV.
+
+### Eigene Commodore-ROMs
+
+Wer die Original-ROMs besitzt, kopiert sie auf das USB-Laufwerk, ins
+Hauptverzeichnis:
+
+| Datei | Größe | ROM |
+|---|---|---|
+| `kernal.rom` | 8192 | KERNAL 901227-03 (oder -02) |
+| `basic.rom` | 8192 | BASIC V2 901226-01 |
+| `chargen.rom` | 4096 | Zeichensatz 901225-01, freiwillig |
+
+Statt `.rom` geht auch `.bin` oder gar keine Endung. Sind KERNAL und BASIC da
+und ist der KERNAL ein unveränderter, nimmt der Emulator diese statt OpenROMs.
+Die Fallen für die Laufwerksemulation setzt er dabei im RAM (`src/c64_roms.c`).
+Ein veränderter KERNAL (JiffyDOS o. Ä.) wird nicht genommen. Welche ROMs
+laufen, zeigt die Steuerungsübersicht vor dem Spielstart: „ROMs Commodore“
+oder „ROMs OpenROMs“. In der Firmware und im Repo steckt nichts davon.
+
+Beim Umbau auf OpenROMs sind zwei Fehler aus frank-c64 aufgefallen und
+behoben: Die Klasse `Prefs` war zweimal mit verschiedenem Aufbau definiert
+(`Prefs_rp2350.h` ohne zwei Felder von `Prefs.h`), sodass `ThePrefs = prefs`
+beim Einhängen einer Diskette über das Objekt hinaus schrieb; und die CPU rief
+die Kassettensteuerung über einen Nullzeiger auf.
 
 ## Ton
 
@@ -167,7 +222,7 @@ unberührt: Der C64 liest die Images direkt aus dem Dateisystem.
 
 ```
 src/main.c          Startablauf, USB-Stick-Modus, Takt, Autostart, Emulationsschleife
-src/c64_video.c     Skalierung 320x240 -> 240x180, Ausgabe auf Kern 1
+src/c64_video.c     Anzeigemodi/Skalierung, Ausgabe auf Kern 1
 src/c64_input.c     Tasten -> Joystick-Port, RETURN, Leertaste
 src/c64_audio.c     SID-Samples -> Lautsprecher
 src/flash_fs.c      Flash-Laufwerk; parkt Kern 1 beim Schreiben
@@ -189,7 +244,8 @@ core/rp2350/        frank-c64-Anbindung, angepasst:
   `src/tusb_config.h`, `src/font8x8.h`, `fatfs/diskio.c`: aus PicoBoyGB,
   **MIT**, siehe `LICENSE.picoboygb`.
 * `fatfs/`: ChaN FatFs, eigene BSD-artige Lizenz (im Dateikopf).
-* Die eingebauten C64-ROMs (BASIC, KERNAL, Zeichensatz, 1541) sind die
-  Original-ROMs von Commodore und unverändert aus frank-c64 übernommen. Ihre
-  Rechte liegen heute bei Cloanto; sie stehen **nicht** unter der GPL. Siehe
-  `../docs/LIZENZEN.md`.
+* C64-ROMs: **MEGA65 OpenROMs**, ein freier Nachbau von BASIC, KERNAL und
+  Zeichensatz, **LGPL-3.0-or-later** (einige BASIC-Teile MIT). Herkunft,
+  Änderungen, Lizenztexte und der Weg zum Neubauen stehen in
+  [`tools/openroms/`](tools/openroms/). Die Original-ROMs von Commodore sind
+  nicht enthalten; ein 1541-ROM wird nicht gebraucht.

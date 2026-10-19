@@ -47,6 +47,7 @@ add_executable(pbc_megadrive
     src/input.c
     src/menu.c
     src/rom_store.c
+    src/ssf2.c
     src/flash_fs.c
     src/usb_msc.c
     src/usb_descriptors.c
@@ -129,6 +130,7 @@ target_link_libraries(pbc_megadrive
     hardware_clocks
     hardware_vreg
     hardware_watchdog
+    hardware_xip_cache
     tinyusb_device
     tinyusb_board
 )
@@ -138,4 +140,7 @@ target_link_libraries(pbc_megadrive
 pico_enable_stdio_usb(pbc_megadrive 0)
 pico_enable_stdio_uart(pbc_megadrive 0)
 
-pico_add_extra_outputs(pbc_megadrive)
+# UF2 etc. -- or, for the combined firmware (pbcemu/build.sh), a .bin
+# linked behind the launcher.
+include(${CMAKE_CURRENT_LIST_DIR}/../common/pbc_multi.cmake)
+pbc_multi(pbc_megadrive)

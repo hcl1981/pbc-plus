@@ -19,7 +19,15 @@ nur der Übersicht.
     picoboygb             MIT         picoboygb/LICENSE
     megadrive             AGPL-3.0    megadrive/LICENSE
     nes                   GPL-3.0     nes/LICENSE
-    c64                   GPL-2.0+    c64/LICENSE
+    sms                   GPL-3.0     sms/LICENSE
+    pce                   GPL-3.0     pce/LICENSE
+    gbc                   GPL-3.0     gbc/LICENSE
+    c64                   GPL-2.0+    c64/LICENSE  (C64-ROMs: OpenROMs, LGPL-3.0+,
+                                      c64/tools/openroms/)
+    pbcemu                GPL-3.0+    pbcemu/LICENSE  (Schrift: Lato, OFL-1.1,
+                                      pbcemu/LICENSE.lato; pbcemu.uf2
+                                      enthält alle Emulatoren, je eigene Lizenz)
+    common/               GPL-3.0+    (Übergabe Starter/Emulatoren)
     picoboygb-arduino     MIT         picoboygb-arduino/LICENSE
     i2collection          MIT         i2collection/LICENSE
     micropython           MIT         micropython/LICENSE
@@ -49,7 +57,7 @@ Mitgelieferte Spieldaten
     jumpnbump/data-src/
         Originaldaten aus Jump 'n Bump, GPL-2.0.
 
-Die WAD-Dateien von id Software (DOOM.WAD, DOOM2.WAD), Game-Boy-, NES- und Genesis-ROMs sowie C64-Disk-Images
+Die WAD-Dateien von id Software (DOOM.WAD, DOOM2.WAD), Spiele-ROMs (Game Boy, NES, Genesis, Master System, Game Gear, PC Engine) sowie C64-Disk-Images
 liegen diesem Repository NICHT bei und dürfen nicht weitergegeben werden.
 
 Eine ausführlichere Aufstellung samt Herkunft der einzelnen Portierungen

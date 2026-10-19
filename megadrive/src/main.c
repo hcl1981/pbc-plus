@@ -31,11 +31,13 @@
 #include "tusb.h"
 
 #include "board.h"
+#include "pbc_launch.h"
 #include "color565.h"
 #include "display.h"
 #include "input.h"
 #include "menu.h"
 #include "rom_store.h"
+#include "ssf2.h"
 #include "video.h"
 #include "HDMI.h"
 
@@ -61,6 +63,10 @@
 #ifndef SHOW_FPS
 #define SHOW_FPS 0
 #endif
+
+/* fps/speed/CPU line: SHOW_FPS on its own, the launcher's setting in the
+ * combined firmware. */
+static bool show_stats;
 #ifndef Z80_SLICE_LINES
 #define Z80_SLICE_LINES 16
 #endif
@@ -471,9 +477,7 @@ static void __attribute__((noreturn)) emulation_loop(void)
         stat_emulated++;
         if (render)
             stat_drawn++;
-#if SHOW_FPS
-        now = time_us_64();
-        if (now - stat_t0 >= 1000000) {
+        if (show_stats && (now = time_us_64()) - stat_t0 >= 1000000) {
             char s[32];
             uint32_t full = is_pal ? 50 : 60;
             /* CPU: share of real time core 0 was working rather than
@@ -487,7 +491,6 @@ static void __attribute__((noreturn)) emulation_loop(void)
             stat_drawn = stat_emulated = 0;
             stat_busy_us = 0;
         }
-#endif
     }
 }
 
@@ -515,6 +518,15 @@ int main(void)
     pbc_display_init();
     pbc_display_backlight(200);
 
+#if PBC_MULTI
+    /* Combined firmware: the launcher has picked the game and owns the
+     * USB drive mode and the game list. */
+    static char rom[ROM_NAME_MAX];
+    const pbc_launch_t *launch = pbc_launch_get();
+    if (!launch || !fs_mount())
+        reboot_to_menu();
+    strncpy(rom, launch->game, sizeof rom - 1);
+#else
     if (input_raw() & (IN_A | IN_B))
         usb_stick_mode();
 
@@ -528,6 +540,7 @@ int main(void)
         fs_unmount();
         usb_stick_mode();
     }
+#endif
 
     if (!rom_store_matches(rom)) {
         menu_progress_begin(rom);
@@ -542,7 +555,16 @@ int main(void)
     }
     fs_unmount();
 
+#if PBC_MULTI
+    show_stats = pbc_launch_stats();
+    video_set_mode((int)pbc_launch_video());
+#else
+    show_stats = SHOW_FPS;
+    video_set_mode(VIDEO_FIT);
+#endif
+
     ROM_DATA = (unsigned char *)rom_store_data();
+    ssf2_init();                    /* Super Street Fighter II: bank switching */
 
     static const menu_control_t controls[] = {
         { "D-pad",   "Joystick" },
@@ -551,7 +573,11 @@ int main(void)
         { "C",       "Center" },
         { "START",   "Center + B" },
     };
+#if PBC_MULTI
+    (void)controls;                 /* combined firmware: the launcher showed them */
+#else
     menu_controls(controls, sizeof controls / sizeof controls[0]);
+#endif
 
     pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
     menu_wait_release();

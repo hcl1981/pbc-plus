@@ -8,8 +8,15 @@
 #include "video.h"
 #include "quicknes.h"
 
-#define CROP_X 8
-#define OUT_Y  ((PBC_LCD_H - VIDEO_H) / 2)
+#define SRC_W   256
+#define SRC_H   240
+#define OUT_W   PBC_LCD_W               /* every mode is 240 wide */
+#define STATUS_Y (PBC_LCD_H - 14)       /* status line under the picture */
+
+/* Geometry of the mode in use. */
+static int mode = VIDEO_MODE_CROP;
+static int out_h = SRC_H, out_y = (PBC_LCD_H - SRC_H) / 2;   /* rows on the panel, first row */
+static int src_y0;                      /* first source row (NO_OVERSCAN) */
 
 /* Handshake. Core 0 fills one of two palette tables, then publishes the
  * frame; core 1 clears `frame_pixels` when the last row has gone out. */
@@ -22,7 +29,19 @@ static int next_lut;
 static char          status_text[32];
 static volatile bool status_dirty;
 
-static uint16_t __aligned(4) rowbuf[2][VIDEO_W];
+static uint16_t __aligned(4) rowbuf[2][OUT_W];
+static uint16_t __aligned(4) tmprow[OUT_W];     /* second row of an averaged pair */
+
+void video_set_mode(unsigned m)
+{
+    mode = m < VIDEO_MODE_COUNT ? (int)m : VIDEO_MODE_CROP;
+    switch (mode) {
+    case VIDEO_MODE_FIT:         out_h = SRC_H * 15 / 16; src_y0 = 0; break;   /* 225 */
+    case VIDEO_MODE_NO_OVERSCAN: out_h = SRC_H - 16;      src_y0 = 8; break;   /* 224 */
+    default:                     out_h = SRC_H;           src_y0 = 0; break;   /* 240 */
+    }
+    out_y = (PBC_LCD_H - out_h) / 2;
+}
 
 bool video_busy_with(const uint8_t *pixels)
 {
@@ -52,20 +71,64 @@ bool video_present(const uint8_t *pixels, long pitch, const int16_t *palette, in
 
 void video_set_status(const char *s)
 {
-    strncpy(status_text, s, sizeof status_text - 1);
+    strncpy(status_text, s ? s : "", sizeof status_text - 1);
     status_text[sizeof status_text - 1] = 0;
     status_dirty = true;
     __sev();
 }
 
-static void __not_in_flash_func(convert_row)(const uint8_t *src, const uint16_t *l, uint16_t *out)
+/* ---- row converters --------------------------------------------------------- */
+
+/* 1:1, eight columns cut on each side. */
+static void __not_in_flash_func(row_crop)(const uint8_t *src, const uint16_t *l, uint16_t *out)
 {
-    src += CROP_X;
-    for (int x = 0; x < VIDEO_W; x += 4) {
+    src += 8;
+    for (int x = 0; x < OUT_W; x += 4) {
         out[x]     = l[src[x]];
         out[x + 1] = l[src[x + 1]];
         out[x + 2] = l[src[x + 2]];
         out[x + 3] = l[src[x + 3]];
+    }
+}
+
+/* 256 -> 240: of every 16 source pixels the middle two share one output
+ * pixel, averaged. */
+static void __not_in_flash_func(row_fit)(const uint8_t *src, const uint16_t *l, uint16_t *out)
+{
+    for (int g = 0; g < SRC_W / 16; g++, src += 16, out += 15) {
+        for (int k = 0; k < 7; k++)
+            out[k] = l[src[k]];
+        out[7] = pbc_avg565(l[src[7]], l[src[8]]);
+        for (int k = 8; k < 15; k++)
+            out[k] = l[src[k + 1]];
+    }
+}
+
+static void __not_in_flash_func(avg_rows)(uint16_t *a, const uint16_t *b)
+{
+    for (int x = 0; x < OUT_W; x++)
+        a[x] = pbc_avg565(a[x], b[x]);
+}
+
+/* Builds output row y of the current mode into `out`. */
+static void __not_in_flash_func(make_row)(const uint8_t *px, long pitch, const uint16_t *l,
+                                          int y, uint16_t *out)
+{
+    switch (mode) {
+    case VIDEO_MODE_FIT: {
+        /* 240 -> 225 rows: same pattern as across, rows 7 and 8 of every 16 */
+        int g = y / 15, k = y % 15;
+        int sy = g * 16 + (k < 8 ? k : k + 1);
+        row_fit(px + sy * pitch, l, out);
+        if (k == 7) {
+            row_fit(px + (sy + 1) * pitch, l, tmprow);
+            avg_rows(out, tmprow);
+        }
+        break;
+    }
+    default:
+        row_crop(px + (src_y0 + y) * pitch, l, out);
+        break;
     }
 }
 
@@ -76,8 +139,9 @@ void __not_in_flash_func(video_core1_main)(void)
         if (!px) {
             if (status_dirty) {
                 status_dirty = false;
-                pbc_display_fill(0, PBC_LCD_H - 14, PBC_LCD_W, 8, PBC_BLACK);
-                pbc_display_text_centered(PBC_LCD_H - 14, status_text, PBC_GREY, PBC_BLACK, 1);
+                pbc_display_fill(0, STATUS_Y, PBC_LCD_W, 8, PBC_BLACK);
+                if (status_text[0])
+                    pbc_display_text_centered(STATUS_Y, status_text, PBC_GREY, PBC_BLACK, 1);
             }
             __wfe();
             continue;
@@ -86,14 +150,14 @@ void __not_in_flash_func(video_core1_main)(void)
         long pitch = frame_pitch;
         const uint16_t *l = lut[frame_lut];
 
-        pbc_display_window(0, OUT_Y, VIDEO_W, VIDEO_H);
+        pbc_display_window(0, out_y, OUT_W, out_h);
         pbc_display_begin();
         int b = 0;
-        for (int y = 0; y < VIDEO_H; y++) {
+        for (int y = 0; y < out_h; y++) {
             /* The DMA reads the other buffer meanwhile. */
-            convert_row(px + y * pitch, l, rowbuf[b]);
+            make_row(px, pitch, l, y, rowbuf[b]);
             pbc_display_wait();
-            pbc_display_send(rowbuf[b], VIDEO_W);
+            pbc_display_send(rowbuf[b], OUT_W);
             b ^= 1;
         }
         pbc_display_end();

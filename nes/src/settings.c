@@ -5,6 +5,7 @@
 #include "hardware/sync.h"
 #include "hardware/regs/addressmap.h"
 #include "settings.h"
+#include "pbc_launch.h"
 
 #define SETTINGS_MAGIC 0x53454E50u   /* "PNES" */
 
@@ -24,6 +25,16 @@ static uint32_t checksum(const stored_t *s)
 
 void settings_load(void)
 {
+#if PBC_MULTI
+    /* Combined firmware: sound and volume are set in the launcher. */
+    const pbc_launch_t *l = pbc_launch_get();
+    if (l) {
+        g_settings.sound = l->sound != 0;
+        if (l->volume >= VOLUME_MIN && l->volume <= VOLUME_MAX)
+            g_settings.volume = l->volume;
+    }
+    return;
+#endif
     const stored_t *s = (const stored_t *)(XIP_BASE + SETTINGS_OFFSET);
     if (s->magic == SETTINGS_MAGIC && s->check == checksum(s))
     {

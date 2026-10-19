@@ -10,7 +10,7 @@
 #include "HDMI.h"
 
 #define OUT_W PBC_LCD_W
-#define OUT_H_MAX 225
+#define OUT_H_MAX 240                      /* Crop 1:1, PAL */
 
 /* The VDP writes rows with a pitch of the *current* screen width (256 or
  * 320), so this is really a flat buffer; the 2D type only fixes its size. */
@@ -34,8 +34,10 @@ void hdmi_line_lut_reset(void)
 }
 
 /* ---- frame geometry, written by core 0 only while core 1 is idle --------- */
-static int src_w = 320, src_h = 224;
+static int src_w = 0, src_h = 0;          /* 0: geometry not built yet */
 static int out_h = 168, out_y = 56;
+static int mode;                           /* VIDEO_FIT, VIDEO_CROP */
+static int status_y = PBC_LCD_H - 22;
 static uint16_t xa[OUT_W], xb[OUT_W];
 static uint16_t ya[OUT_H_MAX], yb[OUT_H_MAX];
 static volatile bool need_clear = true;
@@ -87,6 +89,39 @@ bool video_idle(void)
     return seen == frame_seq && !core1_busy;
 }
 
+void video_set_mode(int m)
+{
+    mode = m == VIDEO_CROP ? VIDEO_CROP : VIDEO_FIT;
+    src_w = 0;                              /* geometry is rebuilt on the next frame */
+}
+
+/* 1:1, nothing averaged: both taps on the same source pixel/line. */
+static void map_identity(uint16_t *a, uint16_t *b, int n, int first)
+{
+    for (int i = 0; i < n; i++)
+        a[i] = b[i] = (uint16_t)(first + i);
+}
+
+static void build_geometry(int w, int h)
+{
+    bool h40 = (w == 320);
+    switch (mode) {
+    case VIDEO_CROP:                        /* the middle 240 pixels, unscaled */
+        out_h = h;
+        map_identity(xa, xb, OUT_W, (w - OUT_W) / 2);
+        map_identity(ya, yb, out_h, 0);
+        break;
+    default:
+        out_h = h40 ? h * 3 / 4 : h * 15 / 16;
+        build_map(xa, xb, OUT_W, w, h40);
+        build_map(ya, yb, out_h, h, h40);
+        break;
+    }
+    out_y = (PBC_LCD_H - out_h) / 2;
+    int free = PBC_LCD_H - out_y - out_h;
+    status_y = free >= 30 ? PBC_LCD_H - 22 : PBC_LCD_H - free + (free - 8) / 2;
+}
+
 void video_frame_begin(int w, int h)
 {
     /* The previous frame's remaining rows still read the source buffer. */
@@ -94,13 +129,9 @@ void video_frame_begin(int w, int h)
         tight_loop_contents();
 
     if (w != src_w || h != src_h) {
-        bool h40 = (w == 320);
         src_w = w;
         src_h = h;
-        out_h = h40 ? h * 3 / 4 : h * 15 / 16;
-        out_y = (PBC_LCD_H - out_h) / 2;
-        build_map(xa, xb, OUT_W, w, h40);
-        build_map(ya, yb, out_h, h, h40);
+        build_geometry(w, h);
         need_clear = true;
     }
     lines_ready = 0;
@@ -153,8 +184,8 @@ void __not_in_flash_func(video_service)(void)
         if (active_seq == frame_seq) {
             if (status_dirty) {
                 status_dirty = false;
-                pbc_display_fill(0, PBC_LCD_H - 22, PBC_LCD_W, 8, PBC_BLACK);
-                pbc_display_text_centered(PBC_LCD_H - 22, status_text, PBC_GREY, PBC_BLACK, 1);
+                pbc_display_fill(0, status_y, PBC_LCD_W, 8, PBC_BLACK);
+                pbc_display_text_centered(status_y, status_text, PBC_GREY, PBC_BLACK, 1);
             }
             return;
         }

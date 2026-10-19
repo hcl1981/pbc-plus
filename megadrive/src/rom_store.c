@@ -55,6 +55,11 @@ const uint8_t *rom_store_data(void)
     return (const uint8_t *)(XIP_BASE + ROM_FLASH_OFFSET);
 }
 
+uint32_t rom_store_phys(uint32_t rom_offset)
+{
+    return ROM_FLASH_OFFSET + rom_offset;
+}
+
 uint32_t rom_store_size(void)
 {
     const rom_info_t *i = flash_info();

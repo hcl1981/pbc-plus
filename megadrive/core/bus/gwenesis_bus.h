@@ -73,6 +73,7 @@ enum mapped_address
     IO_CTRL,
     Z80_CTRL,
     TMSS_CTRL,
+    MAPPER_CTRL,                    /* $A130xx: SSF2 bank registers (src/ssf2.c) */
     VDP_ADDR,
     RAM_ADDR
 };

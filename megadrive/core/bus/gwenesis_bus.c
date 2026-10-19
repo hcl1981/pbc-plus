@@ -421,8 +421,12 @@ static inline unsigned int gwenesis_bus_map_z80_address(unsigned int address) {
  *   Map all input/output region address for CPU program
  *
  ******************************************************************************/
+void gwenesis_mapper_write(unsigned int addr, unsigned int value);   /* src/ssf2.c */
+
 static inline unsigned int gwenesis_bus_map_io_address(unsigned int address)
 {
+  if ((address & 0xFFFF00) == 0xA13000)   /* PicoBoy: cartridge mapper registers */
+    return MAPPER_CTRL;
   unsigned int range = (address & 0x1000) ;
   switch (range) {
   case 0:      return IO_CTRL;
@@ -651,6 +655,10 @@ static inline __attribute__((always_inline)) void gwenesis_bus_write_memory_8(un
   //TODO
     return;
 
+  case MAPPER_CTRL:
+    gwenesis_mapper_write(address, value);
+    return;
+
   case TMSS_CTRL:
 
     if (tmss_state == 0) {
@@ -730,6 +738,10 @@ static inline __attribute__((always_inline)) void gwenesis_bus_write_memory_16(u
     if ((++sn_bus_writes % 1000) == 0) {
         printf("SN76489 bus writes: %lu\n", (unsigned long)sn_bus_writes);
     }
+    return;
+
+  case MAPPER_CTRL:
+    gwenesis_mapper_write(address | 1, value & 0xFF);   /* registers are the odd bytes */
     return;
 
   default:

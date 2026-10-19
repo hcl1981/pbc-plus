@@ -1,5 +1,6 @@
 # Bauordner — entstehen neu über build_all.sh bzw. das build.sh eines Projekts
 build/
+build-multi/
 build-picoboy/
 build-out/
 build-PBC_PLUS/
@@ -66,3 +67,9 @@ DOOM*.uf2
 # C64-Disk-Images und -Programme für c64.
 *.d64
 *.prg
+
+# ROMs und Spielstände für sms, pce, gbc.
+*.sms
+*.gg
+*.pce
+*.sav

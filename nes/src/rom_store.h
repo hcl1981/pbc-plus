@@ -16,9 +16,13 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#ifndef ROM_FLASH_OFFSET          /* combined firmware: common/pbc_multi.cmake */
 #define ROM_FLASH_OFFSET  0x100000u
 #define ROM_FLASH_SIZE    0x500000u          /* 5 MB */
+#endif
+#ifndef ROM_INFO_OFFSET           /* combined firmware: its own sector */
 #define ROM_INFO_OFFSET   0xFF0000u          /* one 4 KB sector */
+#endif
 
 #define ROM_NAME_MAX 96
 

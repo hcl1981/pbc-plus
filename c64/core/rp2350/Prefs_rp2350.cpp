@@ -13,7 +13,13 @@
  *  All settings are hardcoded for embedded use.
  */
 
-#include "Prefs_rp2350.h"
+/* PicoBoy Color Plus: use the one Prefs class every other file sees.
+ * frank-c64 included its own Prefs_rp2350.h here, whose class lacks the
+ * ROMSetDefs/ButtonMapDefs members of Prefs.h -- ThePrefs was then built
+ * with a smaller layout than the rest of the program assumed, and copying
+ * it (MountDrive8: ThePrefs = prefs) wrote past its end. */
+#include "../sysdeps.h"
+#include "../Prefs.h"
 
 // Global preferences instance
 Prefs ThePrefs;

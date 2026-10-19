@@ -31,6 +31,7 @@
 #include "tusb.h"
 
 #include "board.h"
+#include "pbc_launch.h"
 #include "color565.h"
 #include "display.h"
 #include "input.h"
@@ -211,6 +212,10 @@ static void overclock(void)
 
 /* ---- emulator ------------------------------------------------------------ */
 
+/* fps, speed and CPU load: from the launcher in the combined firmware,
+ * else the build option. */
+static bool show_stats;
+
 static void __attribute__((noreturn)) emulation_loop(void)
 {
     const uint32_t period = 16639;          /* NTSC: 60.0988 Hz */
@@ -254,20 +259,22 @@ static void __attribute__((noreturn)) emulation_loop(void)
         else if (now > next_frame + 4 * period)
             next_frame = now;               /* hopelessly behind: stop catching up */
 
-#if SHOW_FPS
-        now = time_us_64();
-        if (now - stat_t0 >= 1000000) {
-            char s[32];
-            snprintf(s, sizeof s, "%lufps %lu%% CPU%lu%%",
-                     (unsigned long)stat_drawn,
-                     (unsigned long)(stat_emulated * 100 / 60),
-                     (unsigned long)(stat_busy_us * 100 / (now - stat_t0)));
-            video_set_status(s);
-            stat_t0 = now;
-            stat_drawn = stat_emulated = 0;
-            stat_busy_us = 0;
+        if (show_stats) {
+            now = time_us_64();
+            uint64_t span = now - stat_t0;
+            if (span >= 1000000) {
+                /* speed: emulated frames against the 60.0988 Hz of the NES */
+                char s[32];
+                snprintf(s, sizeof s, "%lufps %lu%% CPU%lu%%",
+                         (unsigned long)(stat_drawn * 1000000ull / span),
+                         (unsigned long)(stat_emulated * (uint64_t)period * 100 / span),
+                         (unsigned long)(stat_busy_us * 100 / span));
+                video_set_status(s);
+                stat_t0 = now;
+                stat_drawn = stat_emulated = 0;
+                stat_busy_us = 0;
+            }
         }
-#endif
     }
 }
 
@@ -298,6 +305,15 @@ int main(void)
     pbc_display_init();
     pbc_display_backlight(200);
 
+#if PBC_MULTI
+    /* Combined firmware: the launcher has picked the game and owns the
+     * USB drive mode and the game list. */
+    static char rom[ROM_NAME_MAX];
+    const pbc_launch_t *launch = pbc_launch_get();
+    if (!launch || !fs_mount())
+        reboot_to_menu();
+    strncpy(rom, launch->game, sizeof rom - 1);
+#else
     if (input_raw() & (IN_A | IN_B))
         usb_stick_mode();
 
@@ -309,6 +325,7 @@ int main(void)
         fs_unmount();
         usb_stick_mode();
     }
+#endif
 
     if (!rom_store_matches(rom)) {
         /* Heap, freed again before the emulator allocates its tile cache. */
@@ -330,7 +347,11 @@ int main(void)
         { "START",   "Center + B" },
         { "SELECT",  "Center + A" },
     };
+#if PBC_MULTI
+    (void)controls;                 /* combined firmware: the launcher showed them */
+#else
     menu_controls(controls, sizeof controls / sizeof controls[0]);
+#endif
 
     pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
     menu_wait_release();
@@ -344,6 +365,13 @@ int main(void)
     if (qnes_load_rom_inplace(rom_store_data(), (long)rom_store_size()) != 0)
         fatal("Cannot load game:", "mapper or memory");
 
+#if PBC_MULTI
+    show_stats = pbc_launch_stats();
+    video_set_mode(pbc_launch_video());
+#else
+    show_stats = SHOW_FPS;
+    video_set_mode(VIDEO_MODE_CROP);
+#endif
     multicore_launch_core1(video_core1_main);
     emulation_loop();
 }

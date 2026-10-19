@@ -31,7 +31,9 @@
 extern "C" {
 #endif
 
+#ifndef PBGB_FS_FLASH_OFFSET         /* combined firmware: 0x700000 (common/pbc_multi.cmake) */
 #define PBGB_FS_FLASH_OFFSET   0x600000u
+#endif
 #define PBGB_FS_FLASH_SIZE     (0xFF0000u - PBGB_FS_FLASH_OFFSET)          /* 0x9F0000 */
 #define PBGB_FS_SECTOR_SIZE    4096u                    /* == flash erase unit */
 #define PBGB_FS_SECTOR_COUNT   (PBGB_FS_FLASH_SIZE / PBGB_FS_SECTOR_SIZE)  /* 2544 */

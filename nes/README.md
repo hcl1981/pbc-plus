@@ -55,14 +55,26 @@ bei PicoBoyGB.
 | SELECT | Mitte + A |
 
 Mitte allein tut nichts, wie bei PicoBoyGB. Zurück zur Spieleliste geht es
-mit RESET. Mit `-DSHOW_FPS=1` gebaut, stehen unter dem Bild gezeichnete
-Bilder pro Sekunde, Emulationstempo und die Auslastung von Kern 0.
+mit RESET.
+
+**Leistungsanzeige:** gezeichnete Bilder pro Sekunde, Emulationstempo (100 % =
+Originalgeschwindigkeit) und Auslastung von Kern 0, z. B. `60fps 100% CPU71%`,
+einmal pro Sekunde aufgefrischt, unter dem Bild. In PBCemu schaltet man sie in den Einstellungen des Starters ein;
+die Einzel-Firmware zeigt sie, wenn mit `-DSHOW_FPS=1` gebaut.
 
 ## Bild
 
-Das NES-Bild ist 256×240. Links und rechts fallen je 8 Spalten weg – der Streifen,
-den ein echter Fernseher im Überscan ohnehin versteckt und in dem viele Spiele
-Scroll-Reste zeigen. Übrig bleiben 240×240, ohne Skalierung, senkrecht mittig.
+Das NES-Bild ist 256×240. Wie es aufs 240×280-Display kommt, ist der
+Anzeigemodus; in PBCemu wählt man ihn je Gerät in den Einstellungen des
+Starters, die Einzel-Firmware nutzt immer den ersten:
+
+| Modus | Bild | Was passiert |
+|---|---|---|
+| Crop 1:1 | 240×240 | links und rechts je 8 Spalten weg – der Streifen, den ein Fernseher im Überscan versteckt und in dem viele Spiele Scroll-Reste zeigen; ohne Skalierung (Vorgabe) |
+| Fit width | 240×225 | das ganze Bild, auf 15/16 verkleinert; wo sich zwei Pixel oder Zeilen einen Platz teilen, werden sie gemittelt |
+| No overscan | 240×224 | wie Crop 1:1, zusätzlich oben und unten je 8 Zeilen weg, so viel wie ein Fernseher zeigte |
+
+Kein Modus verzerrt das Bild. Es sitzt senkrecht mittig, der Rest bleibt schwarz.
 
 QuickNES zeichnet abwechselnd in zwei Pixelpuffer. Kern 0 übergibt ein fertiges
 Bild samt Palette an Kern 1. Der rechnet es Zeile für Zeile in BGR565 um und
@@ -109,7 +121,7 @@ Werkzeuge und SDK wie bei allen Projekten dieses Repos, siehe
 | `CPU_VREG` | `VREG_VOLTAGE_1_25` | Kernspannung |
 | `FLASH_MAX_FREQ_MHZ` | 88 | Obergrenze für den Flash-Takt |
 | `PBC_SPI_HZ` | 62 500 000 | Display-SPI |
-| `SHOW_FPS` | 0 | Anzeige unter dem Bild (fps, Tempo, Last) |
+| `SHOW_FPS` | 0 | Leistungsanzeige in der Einzel-Firmware (in PBCemu: Einstellung im Starter) |
 
 Das NES braucht viel weniger Rechenleistung als das Mega Drive. Zeigt die
 Anzeige wenig CPU-Last, lohnt ein niedrigerer Takt für die Batterie.

@@ -52,6 +52,7 @@
 #include "sysdeps.h"
 
 #include "CPUC64.h"
+#include "rp2350/openroms_syms.h"
 #include "C64.h"
 #include "VIC.h"
 #include "SID.h"
@@ -267,7 +268,8 @@ void MOS6510::new_config()
 	io_in = (port & 3) && (port & 4);
 
 	bool tape_motor = (port & 0x20) == 0;
-	the_tape->SetMotor(tape_motor);
+	if (the_tape)		// PicoBoy Color Plus / frank-c64: no tape (nullptr)
+		the_tape->SetMotor(tape_motor);
 }
 
 
@@ -766,6 +768,52 @@ int MOS6510::EmulateLine(int cycles_left)
 				case 0x10:
 					the_c64->AutoStartOp();
 					x = 0;	// patch replaces LDX #0
+					break;
+
+				/* PicoBoy Color Plus: traps at the entry points of the
+				 * MEGA65 OpenROMs IEC primitives (tools/openroms/
+				 * make_rom_data.py). Each is followed by RTS. $A4 is
+				 * OpenROMs' IEC byte buffer, $94 its "BSOUR valid" flag,
+				 * $90 the KERNAL status. */
+				case 0x20: {	// iec_tx_command: byte under ATN
+					uint8_t b = ram[0xa4], st;
+					uint8_t hi = b & 0xf0;
+					if (hi == 0x20 || hi == 0x30 || hi == 0x40 || hi == 0x50)
+						st = the_iec->OutATN(b);	// (UN)LISTEN, (UN)TALK
+					else
+						st = the_iec->OutSec(b);	// secondary address
+					ram[0x94] = 0;
+					if (st & 0x80) {			// device not present
+						jump(OPENROMS_KERNALERROR_DEVICE_NOT_FOUND);
+						break;
+					}
+					ram[0x90] |= st;
+					c_flag = false;
+					break;
+				}
+				case 0x21: {	// iec_tx_byte: data byte, C = EOI
+					uint8_t st = the_iec->Out(ram[0xa4], c_flag);
+					ram[0x94] = 0;
+					if (st & 0x80) {
+						jump(OPENROMS_KERNALERROR_DEVICE_NOT_FOUND);
+						break;
+					}
+					ram[0x90] |= st;
+					c_flag = false;
+					break;
+				}
+				case 0x22: {	// iec_rx_byte
+					uint8_t byte;
+					ram[0x90] |= the_iec->In(byte);
+					ram[0xa4] = byte;
+					a = byte;
+					set_nz(a);
+					c_flag = false;
+					break;
+				}
+				case 0x23:		// turnaround, ATN release: nothing at DOS level
+					ram[0x94] = 0;
+					c_flag = false;
 					break;
 				default:
 					illegal_op(pc - 1);

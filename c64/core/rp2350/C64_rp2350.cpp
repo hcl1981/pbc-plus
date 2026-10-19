@@ -61,6 +61,15 @@ static uint8_t g_RAM[C64_RAM_SIZE] __aligned(4);
 static uint8_t g_RAM1541[DRIVE_RAM_SIZE] __aligned(4);
 static uint8_t g_Color[COLOR_RAM_SIZE] __aligned(4);
 
+static const uint8_t *user_basic, *user_kernal, *user_char;
+
+extern "C" void c64_set_roms(const uint8_t *basic, const uint8_t *kernal, const uint8_t *chargen)
+{
+    user_basic = basic;
+    user_kernal = kernal;
+    user_char = chargen;
+}
+
 /*
  *  C64 Constructor (simplified for RP2350)
  */
@@ -71,10 +80,13 @@ C64::C64() : quit_requested(false), prefs_editor_requested(false), load_snapshot
 
     RAM = g_RAM;
     RAM1541 = g_RAM1541;
-    Basic = BuiltinBasicROM;
-    Kernal = c64_fast_reset_rom;
-    Char = BuiltinCharROM;
-    ROM1541 = c64_1541_rom;
+    /* PicoBoy Color Plus: MEGA65 OpenROMs instead of the Commodore ROMs,
+     * KERNAL with Frodo IEC traps (see ROM_data.cpp) -- or the player's own
+     * ROMs from the drive (c64_set_roms). */
+    Basic = user_basic ? user_basic : BuiltinBasicROM;
+    Kernal = user_kernal ? user_kernal : BuiltinKernalROM;
+    Char = user_char ? user_char : BuiltinCharROM;
+    ROM1541 = BuiltinDriveROM;      /* never executed: drive 8 is DOS-level */
     // Color RAM in regular SRAM for fast VIC access
     Color = g_Color;
 

@@ -1,0 +1,20 @@
+diff --git a/src/kernal/keyboard/scnkey.s b/src/kernal/keyboard/scnkey.s
+index 677c472..46365ed 100644
+--- a/src/kernal/keyboard/scnkey.s
++++ b/src/kernal/keyboard/scnkey.s
+@@ -238,6 +238,7 @@ scnkey_no_keys:
+ 
+ 	lda #$40
+ 	sta LSTX
++	sta SFDX                           ; PBC C64: games poll $CB like on the original
+ 	rts
+ 
+ !ifdef CONFIG_JOY1_CURSOR {
+@@ -283,6 +284,7 @@ scnkey_joystick_filtered:
+ 
+ scnkey_got_key: ; .Y should now contain the key offset in matrix pointed by KEYTAB
+ 
++	sty SFDX                           ; PBC C64: current key, $40 = none
+ 	cpy LSTX
+ 	beq scnkey_try_repeat              ; branch if the same key as previously
+ 	sty LSTX

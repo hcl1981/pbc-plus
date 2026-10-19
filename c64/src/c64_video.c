@@ -10,11 +10,12 @@
 #include "c64_video.h"
 #include "audio_pwm.h"
 
-#define SRC_X  32
-#define SRC_Y  16
 #define OUT_W  240
-#define OUT_H  180
-#define OUT_Y  ((PBC_LCD_H - OUT_H) / 2)
+
+/* The window of the 384x272 VIC buffer that is shown, and how big it gets
+ * on the panel; set from the display mode before core 1 starts. */
+static int src_x = 32, src_y = 16, src_w = 320, src_h = 240;
+static int out_h = 180, out_y = (PBC_LCD_H - 180) / 2;
 
 /* C64 "Pepto" palette, as in frank-c64 */
 static const uint32_t pepto[16] = {
@@ -31,7 +32,7 @@ static uint16_t __aligned(4) rowbuf[2][OUT_W];
 
 /* Output index -> (first, second) source index, groups of 4 -> 3:
  * a | (b+c)/2 | d  (the same mapping megadrive uses for H40). */
-static uint16_t xa[OUT_W], xb[OUT_W], ya[OUT_H], yb[OUT_H];
+static uint16_t xa[OUT_W], xb[OUT_W], ya[180], yb[180];   /* out_h is at most 180 */
 
 static void build_map(uint16_t *a, uint16_t *b, int n)
 {
@@ -40,6 +41,25 @@ static void build_map(uint16_t *a, uint16_t *b, int n)
         a[i] = (uint16_t)(4 * g + (j == 0 ? 0 : j == 1 ? 1 : 3));
         b[i] = (uint16_t)(4 * g + (j == 0 ? 0 : j == 1 ? 2 : 3));
     }
+}
+
+/* Any other ratio (smaller): each output pixel averages the first and the
+ * last source pixel it covers. */
+static void build_map_any(uint16_t *a, uint16_t *b, int n, int src)
+{
+    for (int i = 0; i < n; i++) {
+        int first = i * src / n, last = ((i + 1) * src - 1) / n;
+        if (last >= src) last = src - 1;
+        a[i] = (uint16_t)first;
+        b[i] = (uint16_t)last;
+    }
+}
+
+static unsigned mode;
+
+void c64_video_set_mode(unsigned m)
+{
+    mode = m < C64_VIDEO_MODES ? m : 0;
 }
 
 void c64_video_wait_ready(void)
@@ -68,8 +88,8 @@ void c64_video_set_status(const char *s)
 
 static void __not_in_flash_func(convert_row)(int r, uint16_t *out)
 {
-    const uint8_t *ra = g_pixels + (SRC_Y + ya[r]) * C64_FB_W + SRC_X;
-    const uint8_t *rb = g_pixels + (SRC_Y + yb[r]) * C64_FB_W + SRC_X;
+    const uint8_t *ra = g_pixels + (src_y + ya[r]) * C64_FB_W + src_x;
+    const uint8_t *rb = g_pixels + (src_y + yb[r]) * C64_FB_W + src_x;
     for (int x = 0; x < OUT_W; x++) {
         int i0 = xa[x], i1 = xb[x];
         uint16_t top = pbc_avg565(pal[ra[i0]], pal[ra[i1]]);
@@ -82,8 +102,24 @@ void __not_in_flash_func(c64_video_core1_main)(void)
 {
     for (int i = 0; i < 256; i++)
         pal[i] = pbc_rgb24(pepto[i & 15]);
-    build_map(xa, xb, OUT_W);
-    build_map(ya, yb, OUT_H);
+    switch (mode) {
+    case C64_VIDEO_FULL_BORDER:     /* the whole buffer, 5/8 */
+        src_x = 0; src_y = 0; src_w = C64_FB_W; src_h = C64_FB_H; out_h = 170;
+        build_map_any(xa, xb, OUT_W, src_w);
+        build_map_any(ya, yb, out_h, src_h);
+        break;
+    case C64_VIDEO_NO_BORDER:       /* the 320x200 screen only, 3/4 */
+        src_x = 32; src_y = 35; src_w = 320; src_h = 200; out_h = 150;
+        build_map(xa, xb, OUT_W);
+        build_map(ya, yb, out_h);
+        break;
+    default:                        /* standard: 320x240, 3/4 */
+        build_map(xa, xb, OUT_W);
+        build_map(ya, yb, out_h);
+        break;
+    }
+    out_y = (PBC_LCD_H - out_h) / 2;
+    pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
 
     /* The 22 kHz sample timer runs here, not on core 0: core 0's stack goes
      * deep while the CPU emulation reaches into the disk drive and FatFs,
@@ -107,10 +143,10 @@ void __not_in_flash_func(c64_video_core1_main)(void)
             continue;
         }
         __dmb();
-        pbc_display_window(0, OUT_Y, OUT_W, OUT_H);
+        pbc_display_window(0, out_y, OUT_W, out_h);
         pbc_display_begin();
         int b = 0;
-        for (int y = 0; y < OUT_H; y++) {
+        for (int y = 0; y < out_h; y++) {
             convert_row(y, rowbuf[b]);  /* the DMA sends the other buffer meanwhile */
             pbc_display_wait();
             pbc_display_send(rowbuf[b], OUT_W);

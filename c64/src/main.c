@@ -35,6 +35,7 @@
 #include "tusb.h"
 
 #include "board.h"
+#include "pbc_launch.h"
 #include "color565.h"
 #include "display.h"
 #include "input.h"
@@ -45,6 +46,8 @@
 #include "c64_input.h"
 #include "c64_video.h"
 #include "fatfs_stdio.h"
+#include "openroms_syms.h"
+#include "c64_roms.h"
 
 /* ---- build-time configuration (see CMakeLists.txt) ---------------------- */
 #ifndef CPU_MHZ
@@ -102,6 +105,10 @@ static void fs_write_readme(void)
            "Back to this mode: \"Add games via USB\" at the top of the game list,\r\n"
            "or hold A or B while switching on.\r\n"
            "In the game list, B opens the options (joystick port, file, sound).\r\n"
+           "\r\n"
+           "Built in are the free MEGA65 OpenROMs. If you own the Commodore ROMs,\r\n"
+           "copy kernal.rom and basic.rom (optionally chargen.rom) here: some\r\n"
+           "games only run with the original KERNAL (901227-02/-03).\r\n"
            "\r\n"
            "Controls in game:\r\n"
            "  Joystick + B   joystick + fire\r\n"
@@ -219,9 +226,9 @@ static void overclock(void)
 
 /* ---- autostart ------------------------------------------------------------
  *
- * There is no keyboard, so the emulator types for the player. The KERNAL
- * waits for a key in a tight loop at $E5CD-$E5D5; the C64 sitting there
- * means BASIC is idle at READY. Sampled once per frame, so an interrupt
+ * There is no keyboard, so the emulator types for the player. The C64
+ * sitting in the OpenROMs screen editor's wait-for-key loop means BASIC is
+ * idle at READY. Sampled once per frame, so an interrupt
  * that happens to be running at that moment just delays things a frame.
  *
  *   boot   -> idle for a while: mount the image, type LOAD"*",8,1 -- or
@@ -236,10 +243,18 @@ static void overclock(void)
  */
 enum { AS_BOOT, AS_TYPED, AS_LOADING, AS_DONE };
 
+static bool own_roms;       /* the player's Commodore ROMs from the drive */
+
+/* The screen editor waiting for a key: Commodore KERNAL at $E5CD-$E5D5,
+ * OpenROMs at the addresses from its build. */
 static bool basic_idle(void)
 {
     uint16_t pc = c64_get_pc();
-    return pc >= 0xE5CD && pc <= 0xE5D5;
+    if (own_roms)
+        return pc >= 0xE5CD && pc <= 0xE5D5;
+    return (pc >= OPENROMS_CHRIN_KEYBOARD_REPEAT && pc < OPENROMS_CHRIN_KEYBOARD_EMPTY_LINE) ||
+           (pc >= OPENROMS_CHRIN_KEYBOARD_READ && pc < OPENROMS_CHRIN_KEYBOARD_ENTER) ||
+           (pc >= OPENROMS_CURSOR_ENABLE && pc < OPENROMS_CURSOR_ENABLE_END);
 }
 
 static bool is_disk(const char *path)
@@ -259,13 +274,13 @@ static void autostart_step(const char *path, const char *file)
     switch (state) {
     case AS_BOOT:
         if (idle_frames >= 10) {
-            if (file[0] && is_disk(path)) {
+            if (is_disk(path)) {
                 c64_mount_disk(NULL, 0, path);
-                /* "L" + shifted "O" is the BASIC abbreviation of LOAD */
-                cmd_len = snprintf(cmd, sizeof cmd, "L\xCF\"%s\",8,1\r", file);
+                /* spelled out: OpenROMs BASIC need not know the abbreviations */
+                cmd_len = snprintf(cmd, sizeof cmd, "LOAD\"%s\",8,1\r", file[0] ? file : "*");
                 cmd_pos = 0;
             } else {
-                c64_load_file(path);   /* .d64: LOAD"*",8,1  .prg: RUN */
+                c64_load_file(path);   /* .prg: straight into RAM, then RUN */
             }
             state = AS_TYPED;
         }
@@ -298,6 +313,10 @@ static void autostart_step(const char *path, const char *file)
 
 /* ---- emulator ------------------------------------------------------------ */
 
+/* fps, speed and load under the picture: from the launcher in the combined
+ * firmware, else the SHOW_FPS build option. */
+static bool show_stats;
+
 static void __attribute__((noreturn)) emulation_loop(const char *path, const char *file)
 {
     uint64_t next_frame = time_us_64();
@@ -322,9 +341,8 @@ static void __attribute__((noreturn)) emulation_loop(const char *path, const cha
         else if (now > next_frame + 4 * FRAME_US)
             next_frame = now;               /* hopelessly behind: stop catching up */
 
-#if SHOW_FPS
         now = time_us_64();
-        if (now - stat_t0 >= 1000000) {
+        if (show_stats && now - stat_t0 >= 1000000) {
             char s[32];
             snprintf(s, sizeof s, "%lufps %lu%% CPU%lu%%",
                      (unsigned long)stat_drawn,
@@ -335,7 +353,6 @@ static void __attribute__((noreturn)) emulation_loop(const char *path, const cha
             stat_drawn = stat_emulated = 0;
             stat_busy_us = 0;
         }
-#endif
     }
 }
 
@@ -371,6 +388,16 @@ void __attribute__((naked)) isr_hardfault(void)
 
 /* ---- main ---------------------------------------------------------------- */
 
+#if PBC_MULTI
+/* Back to the launcher, once every button is released. */
+static void __attribute__((noreturn)) reboot_to_menu(void)
+{
+    menu_wait_release();
+    watchdog_reboot(0, 0, 10);
+    for (;;) tight_loop_contents();
+}
+#endif
+
 int main(void)
 {
     input_init();
@@ -378,6 +405,15 @@ int main(void)
     pbc_display_init();
     pbc_display_backlight(200);
 
+#if PBC_MULTI
+    /* Combined firmware: the launcher has picked the game and owns the
+     * USB drive mode and the game list. */
+    static char game[ROM_NAME_MAX];
+    const pbc_launch_t *launch = pbc_launch_get();
+    if (!launch || !fs_mount())
+        reboot_to_menu();
+    strncpy(game, launch->game, sizeof game - 1);
+#else
     if (input_raw() & (IN_A | IN_B))
         usb_stick_mode();
 
@@ -389,8 +425,13 @@ int main(void)
         fs_unmount();
         usb_stick_mode();
     }
+#endif
     /* The volume stays mounted: Frodo reads and writes the disk image while
      * the game runs. */
+
+    own_roms = c64_roms_load();
+    if (own_roms)
+        c64_set_roms(c64_roms_basic(), c64_roms_kernal(), c64_roms_chargen());
 
     int port = settings_port(game);
     c64_input_set_port(port);
@@ -402,8 +443,13 @@ int main(void)
         { "Fire",    "Button B" },
         { "RETURN",  "Button A" },
         { "Space",   "Center + A" },
+        { "ROMs",    own_roms ? "Commodore" : "OpenROMs" },
     };
+#if PBC_MULTI
+    (void)controls;                 /* combined firmware: the launcher showed them */
+#else
     menu_controls(controls, sizeof controls / sizeof controls[0]);
+#endif
 
     pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
     menu_wait_release();
@@ -412,6 +458,12 @@ int main(void)
     audio_pwm_init();
 
     c64_init();
+#if PBC_MULTI
+    show_stats = pbc_launch_stats();
+    c64_video_set_mode(pbc_launch_video());
+#else
+    show_stats = SHOW_FPS;
+#endif
     multicore_launch_core1(c64_video_core1_main);
     c64_video_wait_ready();         /* the sample timer belongs to core 1 */
     audio_pwm_set_volume(g_settings.sound ? g_settings.volume : 0);
