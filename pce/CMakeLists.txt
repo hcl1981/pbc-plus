@@ -22,8 +22,8 @@ endif()
 # not like it.
 set(CPU_MHZ "200" CACHE STRING "System clock in MHz")
 set(CPU_VREG "VREG_VOLTAGE_1_15" CACHE STRING "Core voltage (VREG_VOLTAGE_1_10 .. VREG_VOLTAGE_1_60)")
-set(FLASH_MAX_FREQ_MHZ "88" CACHE STRING "Upper limit for the flash (XIP) clock in MHz")
-set(PBC_SPI_HZ "62500000" CACHE STRING "ST7789 SPI clock request in Hz")
+set(FLASH_MAX_FREQ_MHZ "100" CACHE STRING "Upper limit for the flash (XIP) clock in MHz")
+set(PBC_SPI_HZ "75000000" CACHE STRING "ST7789 SPI clock request in Hz")
 set(SHOW_FPS "0" CACHE STRING "Show fps and load under the picture: 0/1")
 
 include(pico_sdk_import.cmake)

@@ -3852,7 +3852,8 @@ void __not_in_flash_func(__gb_step_cpu)(struct gb_s *gb)
 	/* If halted, loop until an interrupt occurs. */
 }
 
-void __not_in_flash_func(gb_run_frame)(struct gb_s *gb)
+/* PBC: noinline, or GCC inlines it into the caller's loop in flash */
+void __attribute__((noinline)) __not_in_flash_func(gb_run_frame)(struct gb_s *gb)
 {
 	gb->gb_frame = 0;
 
@@ -3866,9 +3867,11 @@ void __not_in_flash_func(gb_run_frame)(struct gb_s *gb)
 uint_fast32_t gb_get_save_size(struct gb_s *gb)
 {
 	const uint_fast16_t ram_size_location = 0x0149;
+	/* PBC: 0x05 (64 KB, some MBC5 carts) was missing and read past the
+	 * end; unknown values now mean no save RAM. */
 	const uint_fast32_t ram_sizes[] =
 	{
-		0x00, 0x800, 0x2000, 0x8000, 0x20000
+		0x00, 0x800, 0x2000, 0x8000, 0x20000, 0x10000
 	};
 	uint8_t ram_size = gb->gb_rom_read(gb, ram_size_location);
 
@@ -3876,6 +3879,8 @@ uint_fast32_t gb_get_save_size(struct gb_s *gb)
 	if(gb->mbc == 2)
 		return 0x200;
 
+	if(ram_size >= sizeof(ram_sizes) / sizeof(ram_sizes[0]))
+		return 0;
 	return ram_sizes[ram_size];
 }
 
@@ -4099,8 +4104,17 @@ enum gb_init_error_e gb_init(struct gb_s *gb,
 	}
 
 	gb->cart_ram = cart_ram[gb->gb_rom_read(gb, mbc_location)];
-	gb->num_rom_banks_mask = num_rom_banks_mask[gb->gb_rom_read(gb, bank_count_location)] - 1;
-	gb->num_ram_banks = num_ram_banks[gb->gb_rom_read(gb, ram_size_location)];
+	/* PBC: header bytes outside the tables (e.g. the old 0x52-0x54 bank
+	 * counts) were read past their end; clamp to the largest entry or 0. */
+	{
+		uint8_t rom_size = gb->gb_rom_read(gb, bank_count_location);
+		uint8_t ram_size = gb->gb_rom_read(gb, ram_size_location);
+		const uint8_t n_rom = sizeof(num_rom_banks_mask) / sizeof(num_rom_banks_mask[0]);
+		if(rom_size >= n_rom)
+			rom_size = n_rom - 1;
+		gb->num_rom_banks_mask = num_rom_banks_mask[rom_size] - 1;
+		gb->num_ram_banks = ram_size < sizeof(num_ram_banks) ? num_ram_banks[ram_size] : 0;
+	}
 
 	/* Note that MBC2 will appear to have no RAM banks, but it actually
 	 * always has 512 half-bytes of RAM. Hence, gb->num_ram_banks must be

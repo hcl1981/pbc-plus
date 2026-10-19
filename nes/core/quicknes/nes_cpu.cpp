@@ -111,7 +111,8 @@ void Nes_Cpu::write( nes_addr_t addr, int value )
 
 #ifndef NES_CPU_GLUE_ONLY
 
-static const unsigned char clock_table [256] = {
+// PBC: in RAM, read on every instruction
+static unsigned char __attribute__((section(".data.nes"))) clock_table [256] = {
 //  0 1 2 3 4 5 6 7 8 9 A B C D E F
 	7,6,2,8,3,3,5,5,3,2,2,2,4,4,6,6,// 0
 	3,5,2,8,4,4,6,6,2,4,2,7,4,4,7,7,// 1

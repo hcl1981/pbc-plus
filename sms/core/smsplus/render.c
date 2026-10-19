@@ -31,9 +31,22 @@ uint8 is_vram_dirty;
 int cacheKillPtr = 0;
 int freePtr = 0;
 
-/* Pixel look-up table */
-// uint8 lut[0x10000];
-#include "lut.h"
+/* Sprite pixel over background pixel. PBC: computed instead of looked up
+ * in the 64 KB table lut.h, which sat in flash and was read at random for
+ * every opaque sprite pixel, competing with the game ROM for the XIP
+ * cache. Same result for all 65536 inputs as the generator below (checked
+ * on the host). Bit 6 marks sprite pixels for the collision flag. */
+static inline uint8 sprite_over_bg(uint8 bg, uint8 sp)
+{
+    uint8 s = sp & 0x0F, bf = bg & 0x7F;
+    if (bg & 0x40)                      /* a sprite pixel is already there */
+        return bf;
+    if (!s)                             /* transparent sprite pixel */
+        return bf;
+    if ((bg & 0x20) && (bg & 0x0F))     /* hidden by a high-priority tile, */
+        return bf | 0x40;               /* still counts for the collision */
+    return s | 0x50;                    /* sprite palette + marker */
+}
 
 /* Attribute expansion table */
 uint32 atex[4] =
@@ -633,8 +646,12 @@ void in_ram(render_obj)(int line)
             if (vdp.reg[1] & 0x01)
             {
                 int x;
-                ctp = getCache((n & 0x1ff) + ((line - yp) >> 3), (n >> 9) & 3);
-                uint8 *cache_ptr = (uint8 *)&ctp[(((line - yp) >> 1) << 3)];
+                /* PBC: row r of the unzoomed sprite; it chose the tile from
+                 * the zoomed line and the row from r, so the lower half read
+                 * the wrong tile and 8x16 read past the 64-byte tile */
+                int r = (line - yp) >> 1;
+                ctp = getCache((n & 0x1ff) + (r >> 3), (n >> 9) & 3);
+                uint8 *cache_ptr = (uint8 *)&ctp[(r & 7) << 3];
 
                 /* Draw sprite line */
                 for (x = start; x < end; x += 1)
@@ -649,7 +666,7 @@ void in_ram(render_obj)(int line)
                         uint8 bg = linebuf_ptr[x];
 
                         /* Look up result */
-                        linebuf_ptr[x] = lut[(bg << 8) | (sp)];
+                        linebuf_ptr[x] = sprite_over_bg(bg, sp);
 
                         /* Set sprite collision flag */
                         if (bg & 0x40)
@@ -676,7 +693,7 @@ void in_ram(render_obj)(int line)
                         uint8 bg = linebuf_ptr[x];
 
                         /* Look up result */
-                        linebuf_ptr[x] = lut[(bg << 8) | (sp)];
+                        linebuf_ptr[x] = sprite_over_bg(bg, sp);
 
                         /* Set sprite collision flag */
                         if (bg & 0x40)

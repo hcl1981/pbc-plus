@@ -12,9 +12,11 @@
 #include "tusb.h"
 #include "flash_fs.h"
 #include <string.h>
+#include <stdlib.h>
 
-// One-sector scratch buffer for read/write reassembly.
-static uint8_t  s_sect_buf[PBGB_FS_SECTOR_SIZE];
+// One-sector scratch buffer for read/write reassembly. PBC: taken from the
+// heap on first use; the stick mode never returns to the emulator.
+static uint8_t *s_sect_buf;
 static int32_t  s_sect_num = -1;   // sector currently held in s_sect_buf, or -1
 
 static void flush_pending(void) {
@@ -66,6 +68,7 @@ int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
     (void)lun;
     if (lba >= PBGB_FS_SECTOR_COUNT) return -1;
     if (offset + bufsize > PBGB_FS_SECTOR_SIZE) return -1;
+    if (!s_sect_buf && !(s_sect_buf = malloc(PBGB_FS_SECTOR_SIZE))) return -1;
 
     // If a different sector is buffered for writing, flush it before reusing scratch.
     if (s_sect_num >= 0 && (uint32_t)s_sect_num != lba) flush_pending();
@@ -85,6 +88,7 @@ int32_t tud_msc_write10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
     (void)lun;
     if (lba >= PBGB_FS_SECTOR_COUNT) return -1;
     if (offset + bufsize > PBGB_FS_SECTOR_SIZE) return -1;
+    if (!s_sect_buf && !(s_sect_buf = malloc(PBGB_FS_SECTOR_SIZE))) return -1;
 
     // Full-sector write in one shot.
     if (offset == 0 && bufsize == PBGB_FS_SECTOR_SIZE) {

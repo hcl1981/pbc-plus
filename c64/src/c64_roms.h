@@ -22,6 +22,12 @@ const uint8_t *c64_roms_basic(void);
 const uint8_t *c64_roms_kernal(void);
 const uint8_t *c64_roms_chargen(void);   /* NULL: keep the built-in one */
 
+/* Copies the built-in ROMs into the RAM buffers that own ROMs did not
+ * fill, so the 6510 and the VIC read them from RAM rather than flash.
+ * Afterwards the three getters always return RAM. */
+void c64_roms_fill_builtin(const uint8_t *basic_rom, const uint8_t *kernal_rom,
+                           const uint8_t *char_rom);
+
 #ifdef __cplusplus
 }
 #endif

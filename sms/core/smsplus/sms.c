@@ -294,7 +294,7 @@ static int sg_readport(int port) {
 
 
 /* Write to memory */
-void cpu_writemem16(int address, int data) {
+void in_ram(cpu_writemem16)(int address, int data) {
     if (IS_SG) {
         sg_writemem(address, data);
         return;
@@ -317,7 +317,7 @@ void cpu_writemem16(int address, int data) {
    YM2413 at $F0-$F2, the console decodes only A7, A6 and A0, so every port
    repeats through its quarter of the range: the MSX conversions reach the
    video chip at $98/$99, where an MSX has it, instead of at $BE/$BF. */
-void cpu_writeport(int port, int data) {
+void in_ram(cpu_writeport)(int port, int data) {
     if (IS_SG) {
         sg_writeport(port, data);
         return;
@@ -382,7 +382,7 @@ void cpu_writeport(int port, int data) {
 
 
 /* Read from an I/O port, decoded like cpu_writeport() */
-int cpu_readport(int port) {
+int in_ram(cpu_readport)(int port) {
     uint8 temp = 0xFF;
 
     if (IS_SG) return sg_readport(port);
@@ -436,7 +436,7 @@ int cpu_readport(int port) {
 }
 
 
-void sms_mapper_w(int address, int data) {
+void in_ram(sms_mapper_w)(int address, int data) {
     /* Calculate ROM page index */
     uint8 page = (data % cart.pages);
 

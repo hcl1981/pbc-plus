@@ -16,6 +16,16 @@ extern int vdp_68k_irq_ack(int int_level);
 
 #include "m68kconf.h"
 #include "m68kcpu.h"
+
+/* PBC: the most used opcode handlers run from RAM, picked by
+ * tools/m68k_hot.py; the second set only where there is room for it. */
+#define M68K_HOT1 __attribute__((section(".time_critical.m68k_hot")))
+#if PBC_MULTI
+#define M68K_HOT2 M68K_HOT1
+#else
+#define M68K_HOT2
+#endif
+
 #include "m68kops.h"
 #include "gwenesis_savestate.h"
 

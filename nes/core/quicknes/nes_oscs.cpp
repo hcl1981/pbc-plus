@@ -29,7 +29,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA */
 
 // Nes_Osc
 
-void Nes_Osc::clock_length( int halt_mask )
+NES_RAM void Nes_Osc::clock_length( int halt_mask )
 {
 	if ( length_counter && !(regs [0] & halt_mask) )
 		length_counter--;
@@ -57,7 +57,7 @@ int Nes_Envelope::volume() const
 
 // Nes_Square
 
-void Nes_Square::clock_sweep( int negative_adjust )
+NES_RAM void Nes_Square::clock_sweep( int negative_adjust )
 {
 	int sweep = regs [1];
 	
@@ -104,7 +104,7 @@ inline nes_time_t Nes_Square::maintain_phase( nes_time_t time, nes_time_t end_ti
 	return time;
 }
 
-void Nes_Square::run( nes_time_t time, nes_time_t end_time )
+NES_RAM void Nes_Square::run( nes_time_t time, nes_time_t end_time )
 {
 	const int period = this->period();
 	const int timer_period = (period + 1) * 2;
@@ -175,7 +175,7 @@ void Nes_Square::run( nes_time_t time, nes_time_t end_time )
 
 // Nes_Triangle
 
-void Nes_Triangle::clock_linear_counter()
+NES_RAM void Nes_Triangle::clock_linear_counter()
 {
 	if ( reg_written [3] )
 		linear_counter = regs [0] & 0x7f;
@@ -209,7 +209,7 @@ inline nes_time_t Nes_Triangle::maintain_phase( nes_time_t time, nes_time_t end_
 	return time;
 }
 
-void Nes_Triangle::run( nes_time_t time, nes_time_t end_time )
+NES_RAM void Nes_Triangle::run( nes_time_t time, nes_time_t end_time )
 {
 	const int timer_period = period() + 1;
 	if ( !output )
@@ -284,7 +284,7 @@ void Nes_Dmc::reset()
 	period = 0x1ac;
 }
 
-void Nes_Dmc::recalc_irq()
+NES_RAM void Nes_Dmc::recalc_irq()
 {
 	nes_time_t irq = Nes_Apu::no_irq;
 	if ( irq_enabled && length_counter )
@@ -374,7 +374,7 @@ void Nes_Dmc::start()
 	recalc_irq();
 }
 
-void Nes_Dmc::fill_buffer()
+NES_RAM void Nes_Dmc::fill_buffer()
 {
 	if ( !buf_full && length_counter )
 	{
@@ -396,7 +396,7 @@ void Nes_Dmc::fill_buffer()
 	}
 }
 
-void Nes_Dmc::run( nes_time_t time, nes_time_t end_time )
+NES_RAM void Nes_Dmc::run( nes_time_t time, nes_time_t end_time )
 {
 	int delta = update_amp( dac );
 	if ( !output )
@@ -469,7 +469,7 @@ static const short noise_period_table [16] = {
 	0x0CA, 0x0FE, 0x17C, 0x1FC, 0x2FA, 0x3F8, 0x7F2, 0xFE4
 };
 
-void Nes_Noise::run( nes_time_t time, nes_time_t end_time )
+NES_RAM void Nes_Noise::run( nes_time_t time, nes_time_t end_time )
 {
 	int period = noise_period_table [regs [2] & 15];
 	#if NES_APU_NOISE_LOW_CPU

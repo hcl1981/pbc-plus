@@ -4,6 +4,7 @@
  * emulates a frame (at the 22222 Hz of audio_pwm.h, see SID_rp2350.cpp).
  * They are collected here and handed to audio_pwm once per frame. */
 #include <stdint.h>
+#include "pico.h"
 #include "audio_pwm.h"
 
 #define FRAME_MAX 1024                 /* 22222 Hz / 50 Hz = 445 per frame */
@@ -11,7 +12,7 @@
 static int16_t frame_buf[FRAME_MAX];
 static int     frame_n;
 
-void sid_add_sample(int16_t left, int16_t right)
+void __not_in_flash_func(sid_add_sample)(int16_t left, int16_t right)
 {
     (void)right;                       /* mono: both channels are the same */
     if (frame_n < FRAME_MAX)

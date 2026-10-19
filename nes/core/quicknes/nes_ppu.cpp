@@ -207,7 +207,7 @@ inline void Nes_Ppu::invalidate_sprite_max_()
 	sprite_max_set_time = 0;
 }
 
-void Nes_Ppu::run_sprite_max_( nes_time_t cpu_time )
+NES_RAM void Nes_Ppu::run_sprite_max_( nes_time_t cpu_time )
 {
 	end_vblank(); // might get run outside $2002 handler
 	
@@ -274,7 +274,7 @@ inline int Nes_Ppu_Impl::first_opaque_sprite_line()
 	return line;
 }
 
-void Nes_Ppu::update_sprite_hit( nes_time_t cpu_time )
+NES_RAM void Nes_Ppu::update_sprite_hit( nes_time_t cpu_time )
 {
 	ppu_time_t earliest = earliest_sprite_hit + spr_ram [0] * scanline_len + spr_ram [3];
 	//ppu_time_t latest = earliest + sprite_height() * scanline_len;
@@ -348,7 +348,7 @@ inline void Nes_Ppu::query_until( nes_time_t time )
 		r2002 |= (w2001 << 1 & 0x20) | (w2001 << 2 & 0x20);
 }
 
-int Nes_Ppu::read_2002( nes_time_t time )
+NES_RAM int Nes_Ppu::read_2002( nes_time_t time )
 {
 	nes_time_t next = next_status_event;
 	next_status_event = vbl_end_time;
@@ -403,7 +403,7 @@ int Nes_Ppu::read_2002( nes_time_t time )
 	return ( result & 0xE0 ) | ( open_bus & 0x1F );
 }
 
-void Nes_Ppu::dma_sprites( nes_time_t time, void const* in )
+NES_RAM void Nes_Ppu::dma_sprites( nes_time_t time, void const* in )
 {
 	//dprintf( "%d sprites written\n", time );
 	render_until( time );
@@ -434,7 +434,7 @@ inline int Nes_Ppu_Impl::read_2007( int addr )
 	return result;
 }
 
-int Nes_Ppu::read( unsigned addr, nes_time_t time )
+NES_RAM int Nes_Ppu::read( unsigned addr, nes_time_t time )
 {
 	switch ( addr & 7 )
 	{
@@ -479,7 +479,7 @@ int Nes_Ppu::read( unsigned addr, nes_time_t time )
 
 // Write
 
-void Nes_Ppu::write( nes_time_t time, unsigned addr, int data )
+NES_RAM void Nes_Ppu::write( nes_time_t time, unsigned addr, int data )
 {
 	switch ( addr & 7 )
 	{

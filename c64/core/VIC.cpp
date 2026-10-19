@@ -503,7 +503,7 @@ inline void MOS6569::raster_irq()
  *  Read from VIC register
  */
 
-uint8_t MOS6569::ReadRegister(uint16_t adr)
+C64_HOT(MOS6569_ReadRegister) uint8_t MOS6569::ReadRegister(uint16_t adr)
 {
 	switch (adr) {
 		case 0x00: case 0x02: case 0x04: case 0x06:
@@ -590,7 +590,7 @@ uint8_t MOS6569::ReadRegister(uint16_t adr)
  *  Write to VIC register
  */
 
-void MOS6569::WriteRegister(uint16_t adr, uint8_t byte)
+C64_HOT(MOS6569_WriteRegister) void MOS6569::WriteRegister(uint16_t adr, uint8_t byte)
 {
 	switch (adr) {
 		case 0x00: case 0x02: case 0x04: case 0x06:
@@ -774,7 +774,7 @@ void MOS6569::TriggerLightpen()
  *  Display line drawing routines...
  */
 
-inline void MOS6569::el_std_text(uint8_t *p, const uint8_t *q, uint8_t *r)
+inline C64_HOT(MOS6569_el_std_text) void MOS6569::el_std_text(uint8_t *p, const uint8_t *q, uint8_t *r)
 {
     const unsigned int b0cc = b0c;
     uint8_t *cp = color_line;
@@ -853,7 +853,7 @@ static inline void store16(uint8_t *dst, uint16_t v)
     dst[1] = (uint8_t)(v >> 8);
 }
 
-inline void MOS6569::el_mc_text(uint8_t *p, const uint8_t *q, uint8_t *r)
+inline C64_HOT(MOS6569_el_mc_text) void MOS6569::el_mc_text(uint8_t *p, const uint8_t *q, uint8_t *r)
 {
     uint8_t *cp = color_line;
     uint8_t *mp = matrix_line;
@@ -934,7 +934,7 @@ inline void MOS6569::el_mc_text(uint8_t *p, const uint8_t *q, uint8_t *r)
 }
 
 
-inline void MOS6569::el_std_bitmap(uint8_t *p, const uint8_t *q, uint8_t *r)
+inline C64_HOT(MOS6569_el_std_bitmap) void MOS6569::el_std_bitmap(uint8_t *p, const uint8_t *q, uint8_t *r)
 {
     uint8_t *mp = matrix_line;
 
@@ -981,7 +981,7 @@ inline void MOS6569::el_std_bitmap(uint8_t *p, const uint8_t *q, uint8_t *r)
 }
 
 
-inline void MOS6569::el_mc_bitmap(uint8_t *p, const uint8_t *q, uint8_t *r)
+inline C64_HOT(MOS6569_el_mc_bitmap) void MOS6569::el_mc_bitmap(uint8_t *p, const uint8_t *q, uint8_t *r)
 {
     uint8_t *cp = color_line;
     uint8_t *mp = matrix_line;
@@ -1068,7 +1068,7 @@ inline void MOS6569::el_mc_bitmap(uint8_t *p, const uint8_t *q, uint8_t *r)
 }
 
 
-inline void MOS6569::el_ecm_text(uint8_t *p, const uint8_t *q, uint8_t *r)
+inline C64_HOT(MOS6569_el_ecm_text) void MOS6569::el_ecm_text(uint8_t *p, const uint8_t *q, uint8_t *r)
 {
     uint8_t *cp  = color_line;
     uint8_t *mp  = matrix_line;
@@ -1116,7 +1116,7 @@ inline void MOS6569::el_ecm_text(uint8_t *p, const uint8_t *q, uint8_t *r)
 }
 
 
-inline void MOS6569::el_std_idle(uint8_t *p, uint8_t *r)
+inline C64_HOT(MOS6569_el_std_idle) void MOS6569::el_std_idle(uint8_t *p, uint8_t *r)
 {
 	uint8_t data = *get_physical(ctrl1 & 0x40 ? 0x39ff : 0x3fff);
 	uint32_t conv0 = TEXT_COLOR(0, b0c, data, 0);
@@ -1141,7 +1141,7 @@ inline void MOS6569::el_std_idle(uint8_t *p, uint8_t *r)
 }
 
 
-inline void MOS6569::el_mc_idle(uint8_t *p, uint8_t *r)
+inline C64_HOT(MOS6569_el_mc_idle) void MOS6569::el_mc_idle(uint8_t *p, uint8_t *r)
 {
     uint8_t data = *get_physical(0x3fff);
 
@@ -1183,7 +1183,7 @@ inline void MOS6569::el_mc_idle(uint8_t *p, uint8_t *r)
 }
 
 
-inline void MOS6569::el_sprites(uint8_t *chunky_ptr)
+inline C64_HOT(MOS6569_el_sprites) void MOS6569::el_sprites(uint8_t *chunky_ptr)
 {
 	unsigned spr_coll = 0, gfx_coll = 0;
 
@@ -1430,7 +1430,7 @@ inline void MOS6569::el_sprites(uint8_t *chunky_ptr)
 }
 
 
-inline int MOS6569::el_update_mc(int raster)
+inline C64_HOT(MOS6569_el_update_mc) int MOS6569::el_update_mc(int raster)
 {
 	int i, j;
 	int cycles_used = 0;
@@ -1511,7 +1511,7 @@ static inline void fill_color32(uint8_t *dst, uint32_t color, size_t bytes)
  *  Also returns the number of cycles left for the CPU in this line.
  */
 
-unsigned MOS6569::EmulateLine(int & retCyclesLeft)
+C64_HOT(MOS6569_EmulateLine) unsigned MOS6569::EmulateLine(int & retCyclesLeft)
 {
 	int cycles_left = ThePrefs.NormalCycles;	// Cycles left for CPU
 	bool is_bad_line = false;

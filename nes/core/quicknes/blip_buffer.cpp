@@ -10,6 +10,10 @@
 
 #include "blip_buffer.h"
 
+#ifndef NES_RAM   /* PBC: see blargg_common.h */
+#define NES_RAM __attribute__((section(".time_critical.nes")))
+#endif
+
 #include <limits.h>
 #include <string.h>
 #include <stdlib.h>
@@ -120,7 +124,7 @@ void Blip_Buffer::bass_freq( int freq )
 	bass_shift = shift;
 }
 
-void Blip_Buffer::end_frame( blip_time_t t )
+NES_RAM void Blip_Buffer::end_frame( blip_time_t t )
 {
 	offset_ += t * factor_;
 }
@@ -145,7 +149,7 @@ blip_time_t Blip_Buffer::count_clocks( long count ) const
 	return (blip_time_t) ((time - offset_ + factor_ - 1) / factor_);
 }
 
-void Blip_Buffer::remove_samples( long count )
+NES_RAM void Blip_Buffer::remove_samples( long count )
 {
 	if ( count )
 	{
@@ -337,7 +341,7 @@ void Blip_Synth_::volume_unit( double new_unit )
 	}
 }
 
-long Blip_Buffer::read_samples( blip_sample_t* out, long max_samples, int stereo )
+NES_RAM long Blip_Buffer::read_samples( blip_sample_t* out, long max_samples, int stereo )
 {
 	long count = samples_avail();
 	if ( count > max_samples )

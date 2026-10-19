@@ -185,7 +185,7 @@ void Nes_Mapper::set_treble( blip_eq_t const& ) { }
 
 // Memory mapping
 
-void Nes_Mapper::set_prg_bank( nes_addr_t addr, bank_size_t bs, int bank )
+NES_RAM void Nes_Mapper::set_prg_bank( nes_addr_t addr, bank_size_t bs, int bank )
 {
 	int bank_size = 1 << bs;
 	
@@ -225,7 +225,7 @@ void Nes_Mapper::enable_mmc5_chr_split()
 	emu().ppu.mmc5_chr_split = true;
 }
 
-void Nes_Mapper::mirror_manual( int page0, int page1, int page2, int page3 )
+NES_RAM void Nes_Mapper::mirror_manual( int page0, int page1, int page2, int page3 )
 {
 	emu().ppu.render_bg_until( emu().clock() ); 
 	emu().ppu.set_nt_banks( page0, page1, page2, page3 );

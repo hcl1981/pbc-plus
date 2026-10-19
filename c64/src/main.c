@@ -209,6 +209,10 @@ static void __no_inline_not_in_flash_func(set_flash_timings)(int cpu_mhz)
 /* Raised only after all flash writing is done. */
 static void overclock(void)
 {
+    /* At 150 MHz nothing else would set the flash clock: no boot2 is
+     * linked in, so the bootrom's setting would stay. Divisor 2 = 75 MHz. */
+    if (CPU_MHZ <= 150)
+        set_flash_timings(CPU_MHZ);
     if (CPU_MHZ > 150) {
         if (CPU_VREG > VREG_VOLTAGE_1_30)
             vreg_disable_voltage_limit();

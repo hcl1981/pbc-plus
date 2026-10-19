@@ -58,7 +58,7 @@
 / System Configurations
 /---------------------------------------------------------------------------*/
 
-#define FF_FS_TINY		0
+#define FF_FS_TINY		1	/* PBC: files share the volume's sector buffer, 4 KB each saved */
 #define FF_FS_EXFAT		0
 #define FF_FS_NORTC		1	/* No RTC on the board -> use a fixed timestamp. */
 #define FF_NORTC_MON	1

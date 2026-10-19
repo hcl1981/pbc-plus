@@ -246,7 +246,7 @@ void MOS6510::SetTapeSense(bool pressed)
  *  Memory configuration has probably changed
  */
 
-void MOS6510::new_config()
+C64_HOT(MOS6510_new_config) void MOS6510::new_config()
 {
 	if ((ram[0] & 0x10) == 0) {
 		if (tape_sense) {
@@ -277,7 +277,7 @@ void MOS6510::new_config()
  *  Read a byte from I/O / ROM space
  */
 
-inline uint8_t MOS6510::read_byte_io(uint16_t adr)
+inline C64_HOT(MOS6510_read_byte_io) uint8_t MOS6510::read_byte_io(uint16_t adr)
 {
 	switch (adr >> 12) {
 		case 0x8:	// Cartridge ROML or RAM
@@ -392,7 +392,7 @@ uint8_t MOS6510::read_emulator_id(uint16_t adr)
 
 #if LITTLE_ENDIAN_UNALIGNED
 
-inline uint16_t MOS6510::read_word(uint16_t adr)
+inline C64_HOT(MOS6510_read_word) uint16_t MOS6510::read_word(uint16_t adr)
 {
 	switch (adr >> 12) {
 		case 0x0:
@@ -436,7 +436,7 @@ inline uint16_t MOS6510::read_word(uint16_t adr)
 
 #else
 
-inline uint16_t MOS6510::read_word(uint16_t adr)
+inline C64_HOT(MOS6510_read_word2) uint16_t MOS6510::read_word(uint16_t adr)
 {
 	return read_byte(adr) | (read_byte(adr + 1) << 8);
 }
@@ -504,7 +504,7 @@ void MOS6510::write_byte_io(uint16_t adr, uint8_t byte)
  *  Write a byte to the CPU's address space
  */
 
-inline void MOS6510::write_byte(uint16_t adr, uint8_t byte)
+inline C64_HOT(MOS6510_write_byte) void MOS6510::write_byte(uint16_t adr, uint8_t byte)
 {
 	if (adr < 0xd000) {
 		ram[adr] = byte;
@@ -625,7 +625,7 @@ void MOS6510::REUWriteByte(uint16_t adr, uint8_t byte)
  *  ADC instruction
  */
 
-void MOS6510::do_adc(uint8_t byte)
+C64_HOT(MOS6510_do_adc) void MOS6510::do_adc(uint8_t byte)
 {
 	if (!d_flag) {
 		uint16_t tmp = a + (byte) + (c_flag ? 1 : 0);
@@ -652,7 +652,7 @@ void MOS6510::do_adc(uint8_t byte)
  *  SBC instruction
  */
 
-void MOS6510::do_sbc(uint8_t byte)
+C64_HOT(MOS6510_do_sbc) void MOS6510::do_sbc(uint8_t byte)
 {
 	uint16_t tmp = a - (byte) - (c_flag ? 0 : 1);
 	if (!d_flag) {
@@ -705,7 +705,7 @@ void MOS6510::illegal_op(uint16_t adr)
  *  Returns number of cycles of last instruction
  */
 
-int MOS6510::EmulateLine(int cycles_left)
+C64_HOT(MOS6510_EmulateLine) int MOS6510::EmulateLine(int cycles_left)
 {
 	uint8_t tmp, tmp2;
 	uint16_t adr, tmp_adr;

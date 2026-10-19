@@ -81,7 +81,7 @@ add_executable(pbc_megadrive
 )
 
 set_source_files_properties(${CORE}/cpus/M68K/m68kcpu.c PROPERTIES
-    COMPILE_FLAGS "-O3 -ffast-math -funroll-loops -finline-functions")
+    COMPILE_FLAGS "-O3 -ffast-math -funroll-loops -finline-functions -fno-partial-inlining")
 set_source_files_properties(src/video.c PROPERTIES COMPILE_FLAGS "-O3")
 
 target_include_directories(pbc_megadrive PRIVATE

@@ -43,6 +43,13 @@ arithmetic on smaller types. */
 // User configuration can override the above macros if necessary
 #include "blargg_config.h"
 
+/* PBC: code run per instruction, scanline or sample goes to RAM; from
+ * flash it competed with the game ROM for the 16 KB XIP cache. */
+#define NES_RAM __attribute__((section(".time_critical.nes")))
+/* the same for functions defined in a class body (inline, so each needs a
+ * section of its own) */
+#define NES_RAM_INLINE(name) __attribute__((section(".time_critical.nes." #name)))
+
 // BOOST_STATIC_ASSERT( expr ): Generates compile error if expr is 0.
 #ifndef BOOST_STATIC_ASSERT
 #ifdef _MSC_VER

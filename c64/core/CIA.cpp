@@ -228,7 +228,7 @@ uint8_t MOS6526::timer_on_pb(uint8_t byte) const
  *  Read from register (CIA 1)
  */
 
-uint8_t MOS6526_1::ReadRegister(uint8_t reg)
+C64_HOT(MOS6526_1_ReadRegister) uint8_t MOS6526_1::ReadRegister(uint8_t reg)
 {
 	switch (reg) {
 		case 0: {	// Port A: Handle keyboard and joysticks
@@ -265,7 +265,7 @@ uint8_t MOS6526_1::ReadRegister(uint8_t reg)
  *  Read from register (CIA 2)
  */
 
-uint8_t MOS6526_2::ReadRegister(uint8_t reg)
+C64_HOT(MOS6526_2_ReadRegister) uint8_t MOS6526_2::ReadRegister(uint8_t reg)
 {
 	switch (reg) {
 		case 0: {	// Port A: IEC port
@@ -298,7 +298,7 @@ inline void MOS6526_1::check_lp()
 	}
 }
 
-void MOS6526_1::WriteRegister(uint8_t reg, uint8_t byte)
+C64_HOT(MOS6526_1_WriteRegister) void MOS6526_1::WriteRegister(uint8_t reg, uint8_t byte)
 {
 	write_register(reg, byte);
 
@@ -330,7 +330,7 @@ inline void MOS6526_2::write_pa(uint8_t inv_out)
 	}
 }
 
-void MOS6526_2::WriteRegister(uint8_t reg, uint8_t byte)
+C64_HOT(MOS6526_2_WriteRegister) void MOS6526_2::WriteRegister(uint8_t reg, uint8_t byte)
 {
 	write_register(reg, byte);
 
@@ -347,7 +347,7 @@ void MOS6526_2::WriteRegister(uint8_t reg, uint8_t byte)
  *  Emulate CIA for one raster line
  */
 
-void MOS6526::EmulateLine(int cycles)
+C64_HOT(MOS6526_EmulateLine) void MOS6526::EmulateLine(int cycles)
 {
 	unsigned long tmp;
 
@@ -393,7 +393,7 @@ tb_underflow:
  *  Count CIA TOD clock (called during VBlank)
  */
 
-void MOS6526::CountTOD()
+C64_HOT(MOS6526_CountTOD) void MOS6526::CountTOD()
 {
 	if (tod_halted)
 		return;
@@ -469,7 +469,7 @@ void MOS6526::CountTOD()
  */
 
 // Trigger IRQ (CIA 1)
-void MOS6526_1::trigger_irq()
+C64_HOT(MOS6526_1_trigger_irq) void MOS6526_1::trigger_irq()
 {
 	the_cpu->TriggerCIAIRQ();
 }
@@ -481,7 +481,7 @@ void MOS6526_1::clear_irq()
 }
 
 // Trigger NMI (CIA 2)
-void MOS6526_2::trigger_irq()
+C64_HOT(MOS6526_2_trigger_irq) void MOS6526_2::trigger_irq()
 {
 	the_cpu->TriggerNMI();
 }

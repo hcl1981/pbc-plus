@@ -29,9 +29,8 @@ extern "C" {
 #define strcasecmp stricmp
 #endif
 #endif
-#if PICO_RP2350
-#define in_ram
-#endif
+/* PBC: the RP2350 port had in_ram switched off here, so the whole core
+ * ran from flash and fought the game ROM for the 16 KB XIP cache. */
 #ifndef in_ram
 #ifdef PICO_BOARD
 #include <pico.h>

@@ -138,7 +138,7 @@ static void __not_in_flash_func(build_sprite_lists)(const vdc_ctx_t *ctx, uint64
 /*
 	Draw background tiles between two lines
 */
-static void __not_in_flash_func(draw_tiles)(const vdc_ctx_t *ctx, uint8_t *screen_buffer, int Y1, int Y2, int scroll_x, int scroll_y)
+static void __no_inline_not_in_flash_func(draw_tiles)(const vdc_ctx_t *ctx, uint8_t *screen_buffer, int Y1, int Y2, int scroll_x, int scroll_y)
 {
 	TRACE_GFX("Rendering tiles on lines %3d - %3d\tScroll: (%3d,%3d)\n", Y1, Y2, scroll_x, scroll_y);
 
@@ -1076,8 +1076,9 @@ void gfx_set_skip_render(bool skip)
 	gfx_skip_render = skip;
 }
 
-static inline void
-render_lines(int min_line, int max_line)
+/* PBC: in RAM; GCC outlined this "inline" function into flash, where it
+ * competed with the game ROM for the XIP cache. */
+static void __not_in_flash_func(render_lines)(int min_line, int max_line)
 {
 	gfx_context.latched = 0;
 	if (PCE.VPC.is_sgx) gfx_context_vdc2.latched = 0;

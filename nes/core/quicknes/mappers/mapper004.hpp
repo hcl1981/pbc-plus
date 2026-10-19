@@ -61,7 +61,7 @@ public:
 	
 	void start_frame() { next_time = first_scanline; }
 	
-	virtual void apply_mapping()
+	NES_RAM_INLINE(mapper004_apply_mapping) virtual void apply_mapping()
 	{
 		write( 0, 0xA000, mirror );
 		write( 0, 0xA001, sram_mode );
@@ -92,20 +92,20 @@ public:
 	}
 	
 	
-	virtual void a12_clocked()
+	NES_RAM_INLINE(mapper004_a12_clocked) virtual void a12_clocked()
 	{
 		clock_counter();
 		if ( irq_enabled )
 			irq_changed();
 	}
 	
-	virtual void end_frame( nes_time_t end_time )
+	NES_RAM_INLINE(mapper004_end_frame) virtual void end_frame( nes_time_t end_time )
 	{
 		run_until( end_time );
 		start_frame();
 	}
 	
-	virtual nes_time_t next_irq( nes_time_t present )
+	NES_RAM_INLINE(mapper004_next_irq) virtual nes_time_t next_irq( nes_time_t present )
 	{
 		run_until( present );
 		
@@ -129,7 +129,7 @@ public:
 		return time / ppu_overclock + 1;
 	}
 
-	void run_until( nes_time_t end_time )
+	NES_RAM_INLINE(mapper004_run_until) void run_until( nes_time_t end_time )
 	{
 		bool bg_enabled = ppu_enabled();
 		
@@ -144,7 +144,7 @@ public:
 		}
 	}
 
-	void update_chr_banks()
+	NES_RAM_INLINE(mapper004_update_chr_banks) void update_chr_banks()
 	{
 		int chr_xor = (mode >> 7 & 1) * 0x1000;
 		set_chr_bank( 0x0000 ^ chr_xor, bank_2k, banks [0] >> 1 );
@@ -191,7 +191,7 @@ public:
 			irq_changed();
 	}
 
-	void write( nes_time_t time, nes_addr_t addr, int data )
+	NES_RAM_INLINE(mapper004_write) void write( nes_time_t time, nes_addr_t addr, int data )
 	{
 		switch ( addr & 0xE001 )
 		{

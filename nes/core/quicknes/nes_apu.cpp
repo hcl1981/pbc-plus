@@ -119,7 +119,7 @@ void Nes_Apu::reset( bool pal_mode, int initial_dmc_dac )
 	//  dmc.last_amp = initial_dmc_dac; // prevent output transition
 }
 
-void Nes_Apu::irq_changed()
+NES_RAM void Nes_Apu::irq_changed()
 {
 	nes_time_t new_irq = dmc.next_irq;
 	if ( dmc.irq_flag | irq_flag ) {
@@ -138,7 +138,7 @@ void Nes_Apu::irq_changed()
 
 // frames
 
-void Nes_Apu::run_until( nes_time_t end_time )
+NES_RAM void Nes_Apu::run_until( nes_time_t end_time )
 {
 	if ( end_time > next_dmc_read_time() )
 	{
@@ -148,7 +148,7 @@ void Nes_Apu::run_until( nes_time_t end_time )
 	}
 }
 
-void Nes_Apu::run_until_( nes_time_t end_time )
+NES_RAM void Nes_Apu::run_until_( nes_time_t end_time )
 {
 	if ( end_time == last_time )
 		return;
@@ -231,7 +231,7 @@ inline void zero_apu_osc( T* osc, nes_time_t time )
 		osc->synth.offset( time, -last_amp, output );
 }
 
-void Nes_Apu::end_frame( nes_time_t end_time )
+NES_RAM void Nes_Apu::end_frame( nes_time_t end_time )
 {
 	if ( end_time > last_time )
 		run_until_( end_time );
@@ -271,7 +271,7 @@ static const unsigned char length_table [0x20] = {
 	0xC0, 0x18, 0x48, 0x1A, 0x10, 0x1C, 0x20, 0x1E
 };
 
-void Nes_Apu::write_register( nes_time_t time, nes_addr_t addr, int data )
+NES_RAM void Nes_Apu::write_register( nes_time_t time, nes_addr_t addr, int data )
 {
 	// Ignore addresses outside range
 	if ( addr < start_addr || end_addr < addr )
@@ -354,7 +354,7 @@ void Nes_Apu::write_register( nes_time_t time, nes_addr_t addr, int data )
 	}
 }
 
-int Nes_Apu::read_status( nes_time_t time )
+NES_RAM int Nes_Apu::read_status( nes_time_t time )
 {
 	run_until_( time - 1 );
 	

@@ -36,30 +36,14 @@ static uint32_t requested_size = 0;
 #define CARTRIDGE_BASE (1ul << 20)
 #define CARTRIDGE_ADDR ((uint8_t*)(XIP_BASE + CARTRIDGE_BASE))
 
+/* PBC: never writes. This came from a board where the firmware stayed
+ * under 400 KB; here 1 MB lies inside the combined firmware, the erase
+ * ran without stopping core 1, which executes from flash, and GP25 is no
+ * LED.
+ * Cartridges are not offered (only .d64/.prg), so nothing calls it. */
 void __not_in_flash_func(flash_block)(uint8_t* buffer, size_t flash_target_offset) {
-    uint8_t *e = CARTRIDGE_ADDR + flash_target_offset;
-    for (uint32_t i = 0; i < FLASH_SECTOR_SIZE; ++i) {
-        if (e[i] != buffer[i]) {
-            e = 0;
-            break;
-        }
-    }
-    if (e) { // the block is already eq.s to flash state
-        return;
-    }
-	flash_target_offset += CARTRIDGE_BASE;
-    gpio_put(PICO_DEFAULT_LED_PIN, true);
-#ifdef VIDEO_HDMI
-    multicore_lockout_start_blocking();
-#endif
-    const uint32_t ints = save_and_disable_interrupts();
-    flash_range_erase(flash_target_offset, FLASH_SECTOR_SIZE);
-    flash_range_program(flash_target_offset, buffer, FLASH_SECTOR_SIZE);
-    restore_interrupts(ints);
-#ifdef VIDEO_HDMI
-    multicore_lockout_end_blocking();
-#endif
-    gpio_put(PICO_DEFAULT_LED_PIN, false);
+    (void)buffer;
+    (void)flash_target_offset;
 }
 
 static void easyflash_write(uint32_t flash_offset,

@@ -152,14 +152,33 @@ die Kassettensteuerung über einen Nullzeiger auf.
 
 ## Ton
 
-SID über den Lautsprecher an GP15, nach dem Verfahren aus `../nes`: Ein Timer
-holt alle 45 µs einen Sample aus einem Ringpuffer und schreibt ihn in den
-PWM-Wert. Anders als beim NES läuft dieser Timer auf **Kern 1**: Beim C64
-reicht die Aufrufkette auf Kern 0 tief (CPU → Laufwerk → FatFs), und ein
-Interrupt 22 000-mal pro Sekunde könnte dort den 4-KB-Stack sprengen. Die
-erste Fassung mit dem Timer auf Kern 0 stürzte mit Ton reproduzierbar nach
-kurzer Zeit ab; mit dem Timer auf Kern 1 läuft der Ton stabil. Er ist per
-Vorgabe trotzdem aus.
+SID über den Lautsprecher an GP15: Ein DMA-Kanal, getaktet von einem
+DMA-Timer, holt alle 45 µs einen Sample aus einem Ringpuffer und schreibt ihn
+in den PWM-Wert (`src/audio_pwm.c`, wie in `../sms`). Es gibt keinen
+Interrupt pro Sample mehr. Früher tat das ein Timer-Interrupt 22 000-mal pro
+Sekunde, und zwar auf Kern 1: Beim C64 reicht die Aufrufkette auf Kern 0 tief
+(CPU → Laufwerk → FatFs), und der Interrupt konnte dort den 4-KB-Stack
+sprengen (die erste Fassung mit dem Timer auf Kern 0 stürzte mit Ton ab).
+Mit DMA stellt sich die Frage nicht mehr. Der Ton ist per Vorgabe aus.
+
+## Was im RAM läuft
+
+Spiel-ROMs gibt es beim C64 nicht, aus dem Flash kamen aber Emulatorcode und
+die eingebauten ROMs, alles durch denselben 16-KB-Cache. Allein die
+6510-Schleife (`MOS6510::EmulateLine`) ist 32 KB groß. Deshalb liegen im RAM
+(Makro `C64_HOT` in `core/sysdeps.h`):
+
+- die 6510-Schleife samt Speicherzugriffen, VIC-Zeile mit allen
+  Zeichenroutinen (`el_*`), die CIA-Zeile und -Register sowie die SID-Ausgabe
+  mit der Hüllkurventabelle, zusammen rund 52 KB;
+- BASIC, KERNAL und Zeichensatz: Die eingebauten OpenROMs werden beim Start
+  in die RAM-Puffer kopiert, die sonst eigene ROMs aufnehmen
+  (`c64_roms_fill_builtin`).
+
+Für den Heap bleiben rund 197 KB (vorher 249 KB). Den Flash-Takt setzt die
+Firmware auch bei 150 MHz selbst (Teiler 2 = 75 MHz); nach jedem Schreiben
+aufs Laufwerk stellt `flash_fs.c` ihn wieder her, weil die Flash-Funktionen
+des SDK die Einstellung des Bootroms zurückschreiben.
 
 ## Absturzanzeige
 
@@ -186,7 +205,7 @@ Quellzeile zuordnen.
   spricht, oder mit Kopierschutz laden so nicht.
 * Nur Laufwerk 8, kein Diskettenwechsel: Spiele über mehrere Disketten gehen
   nicht.
-* Keine Cartridges (`.crt`), kein Bandlaufwerk.
+* Keine Cartridges (`.crt`), kein Bandlaufwerk. Der Cartridge-Code aus der Vorlage schrieb `.crt`-Abbilder an Flash-Adresse 1 MB, mitten in die Gesamtfirmware; das Schreiben ist abgeschaltet, `.crt` wird nicht mehr geladen.
 
 ## Bauen
 
@@ -203,7 +222,7 @@ Werkzeuge und SDK wie bei allen Projekten dieses Repos, siehe
 |---|---|---|
 | `CPU_MHZ` | 150 | Systemtakt (bei 300 MHz lag die Last unter 30 %) |
 | `CPU_VREG` | `VREG_VOLTAGE_1_10` | Kernspannung (bei 150 MHz ohnehin die Grundeinstellung) |
-| `FLASH_MAX_FREQ_MHZ` | 88 | Obergrenze für den Flash-Takt |
+| `FLASH_MAX_FREQ_MHZ` | 88 | Obergrenze für den Flash-Takt (bei 150 MHz: 75 MHz) |
 | `PBC_SPI_HZ` | 75 000 000 | Display-SPI: 150 MHz / 2 = 75 MHz (über dem Datenblattwert, läuft auf dem Gerät sauber) |
 | `SHOW_FPS` | 0 | Anzeige unter dem Bild (fps, Tempo, Last) |
 
@@ -229,7 +248,9 @@ src/flash_fs.c      Flash-Laufwerk; parkt Kern 1 beim Schreiben
 src/settings.c      Optionen im Flash, Joystick-Port und Datei je Spiel
 src/d64_dir.c       Inhaltsverzeichnis einer .d64 für die Dateiauswahl
 src/menu.c          Spieleliste und Optionen
-src/audio_pwm.c, display.c, input.c   aus ../nes
+src/c64_roms.c      eigene Commodore-ROMs; die eingebauten im RAM
+src/audio_pwm.c     Lautsprecher per DMA, wie in ../sms
+src/display.c, input.c   aus ../nes
 src/flash_fs.*, usb_*.c, tusb_config.h, fatfs/   aus ../picoboygb
 core/               Frodo4 aus frank-c64 (zeilenbasierte Fassung)
 core/rp2350/        frank-c64-Anbindung, angepasst:

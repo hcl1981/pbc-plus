@@ -116,13 +116,15 @@ static struct chan {
 
 static int32_t vol_l, vol_r;
 
-static void set_note_freq(struct chan *c, const uint32_t freq)
+/* PBC: the per-sample helpers and the register access run from RAM; from
+ * flash they evicted game ROM lines from the XIP cache. */
+static void __not_in_flash_func(set_note_freq)(struct chan *c, const uint32_t freq)
 {
 	/* Lowest expected value of freq is 64. */
 	c->freq_inc = freq * (uint32_t)(FREQ_INC_REF / AUDIO_SAMPLE_RATE);
 }
 
-static void chan_enable(const uint_fast8_t i, const bool enable)
+static void __not_in_flash_func(chan_enable)(const uint_fast8_t i, const bool enable)
 {
 	uint8_t val;
 
@@ -135,7 +137,7 @@ static void chan_enable(const uint_fast8_t i, const bool enable)
 	//audio_mem[0xFF26 - AUDIO_ADDR_COMPENSATION] |= 0x80 | ((uint8_t)enable) << i;
 }
 
-static void update_env(struct chan *c)
+static void __not_in_flash_func(update_env)(struct chan *c)
 {
 	c->env.counter += c->env.inc;
 
@@ -151,7 +153,7 @@ static void update_env(struct chan *c)
 	}
 }
 
-static void update_len(struct chan *c)
+static void __not_in_flash_func(update_len)(struct chan *c)
 {
 	if (!c->len.enabled)
 		return;
@@ -163,7 +165,7 @@ static void update_len(struct chan *c)
 	}
 }
 
-static bool update_freq(struct chan *c, uint32_t *pos)
+static bool __not_in_flash_func(update_freq)(struct chan *c, uint32_t *pos)
 {
 	uint32_t inc = c->freq_inc - *pos;
 	c->freq_counter += inc;
@@ -178,7 +180,7 @@ static bool update_freq(struct chan *c, uint32_t *pos)
 	}
 }
 
-static void update_sweep(struct chan *c)
+static void __not_in_flash_func(update_sweep)(struct chan *c)
 {
 	c->sweep.counter += c->sweep.inc;
 
@@ -203,7 +205,7 @@ static void update_sweep(struct chan *c)
 	}
 }
 
-static void update_square(int16_t* samples, const bool ch2)
+static void __not_in_flash_func(update_square)(int16_t* samples, const bool ch2)
 {
 	uint32_t freq;
 	struct chan* c = chans + ch2;
@@ -250,7 +252,7 @@ static void update_square(int16_t* samples, const bool ch2)
 	}
 }
 
-static uint8_t wave_sample(const unsigned int pos, const unsigned int volume)
+static uint8_t __not_in_flash_func(wave_sample)(const unsigned int pos, const unsigned int volume)
 {
 	uint8_t sample;
 
@@ -263,7 +265,7 @@ static uint8_t wave_sample(const unsigned int pos, const unsigned int volume)
 	return volume ? (sample >> (volume - 1)) : 0;
 }
 
-static void update_wave(int16_t *samples)
+static void __not_in_flash_func(update_wave)(int16_t *samples)
 {
 	uint32_t freq;
 	struct chan *c = chans + 2;
@@ -317,7 +319,7 @@ static void update_wave(int16_t *samples)
 	}
 }
 
-static void update_noise(int16_t *samples)
+static void __not_in_flash_func(update_noise)(int16_t *samples)
 {
 	struct chan *c = chans + 3;
 
@@ -397,7 +399,7 @@ void __not_in_flash_func(audio_callback)(void *userdata, int16_t *stream, size_t
 	update_noise(stream);
 }
 
-static void chan_trigger(uint_fast8_t i)
+static void __not_in_flash_func(chan_trigger)(uint_fast8_t i)
 {
 	struct chan *c = chans + i;
 
@@ -450,7 +452,7 @@ static void chan_trigger(uint_fast8_t i)
  *				This is not checked in this function.
  * \return	Byte at address.
  */
-uint8_t audio_read(const uint16_t addr)
+uint8_t __not_in_flash_func(audio_read)(const uint16_t addr)
 {
 	static const uint8_t ortab[] = {
 		0x80, 0x3f, 0x00, 0xff, 0xbf,
@@ -473,7 +475,7 @@ uint8_t audio_read(const uint16_t addr)
  *				This is not checked in this function.
  * \param val	Byte to write at address.
  */
-void audio_write(const uint16_t addr, const uint8_t val)
+void __not_in_flash_func(audio_write)(const uint16_t addr, const uint8_t val)
 {
 	/* Find sound channel corresponding to register address. */
 	uint_fast8_t i;

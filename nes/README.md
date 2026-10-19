@@ -83,26 +83,35 @@ emuliert. Bei 150 MHz läuft der SPI mit 75 MHz; ein Bild braucht rund 12 ms.
 
 ## Ton
 
-Wie in PicoBoyGB, das auf diesem Gerät erprobt ist: Ein Timer holt alle 45 µs
-einen Sample aus einem Ringpuffer und schreibt ihn in den PWM-Wert von GP15
-(10 Bit, Träger ~244 kHz). QuickNES erzeugt genau diese Rate (22 222 Hz). Weil
-Bildtakt und Sample-Timer zwei getrennte Uhren sind, wird der Füllstand bei
-jedem Bild geprüft und um einen Sample korrigiert. Laute Spitzen werden weich
-begrenzt. Ist der Ton aus, steht der Timer, und der Lautsprecher-Pin liegt auf
-Low (kein Ruhestrom).
-
-Beim Mega Drive lief ein Tonversuch mit DMA-Endlosmodus instabil. Hier ist
-bewusst der erprobte, einfachere Weg gewählt; die NES-Tonerzeugung kostet
-ohnehin wenig.
+Ein DMA-Kanal, getaktet von einem DMA-Timer, holt alle 45 µs einen Sample aus
+einem Ringpuffer und schreibt ihn in den PWM-Wert von GP15 (10 Bit, Träger
+~146 kHz bei 150 MHz) – ohne Interrupt pro Sample; vorher lief dafür 22 222-mal
+pro Sekunde ein Timer-Interrupt, zum Teil aus dem Flash. QuickNES erzeugt genau
+diese Rate (22 222 Hz). Weil Bildtakt und Sample-Takt zwei getrennte Uhren
+sind, wird der Füllstand bei jedem Bild geprüft und um einen Sample korrigiert;
+hinter dem letzten Sample steht Stille, so hört man bei Rückstand nichts statt
+alter Samples. Laute Spitzen werden weich begrenzt. Ist der Ton aus, steht der
+DMA, und der Lautsprecher-Pin liegt auf Low (kein Ruhestrom).
 
 ## Speicher
 
 QuickNES dekodiert das CHR-ROM einmal in einen **Kachel-Cache** im RAM, doppelt
 so groß wie das CHR-ROM. Nach Abzug von Firmware und Pixelpuffern bleiben etwa
-320 KB Heap. Damit laufen Spiele bis **128 KB CHR-ROM** (z. B. Super Mario Bros. 3)
+328 KB Heap. Damit laufen Spiele bis **128 KB CHR-ROM** (z. B. Super Mario Bros. 3)
 und alle Spiele mit CHR-RAM (z. B. Zelda, Mega Man 2). Spiele mit 256 KB CHR-ROM
 (z. B. Kirby's Adventure) passen nicht; sie melden „Cannot load game“ statt
 abzustürzen.
+
+Was pro Befehl, Zeile oder Sample läuft, liegt im RAM (`NES_RAM` in
+`blargg_common.h`, zusammen 18 KB): neben `Nes_Cpu::run` die Speicher- und
+I/O-Zugriffe der CPU (`cpu_read`/`cpu_write`, PPU- und APU-Register), der
+Zeilenzeichner (`Nes_Ppu_Rendering`), die Tonkanäle samt `Blip_Buffer` und
+die Mapper MMC1/MMC3 (001/004); dazu die Taktzahltabelle der CPU. Aus dem
+Flash konkurrierte das mit dem Spiel-ROM um den 16-KB-XIP-Cache. Den Platz
+dafür geben Puffer frei, die nur beim Laden gebraucht werden: FatFs im
+„tiny“-Modus (die Dateien teilen den Sektorpuffer des Laufwerks), und
+Formatieren, ROM-Prüfung und USB-Stick-Modus holen ihren Puffer vom Heap.
+Der Heap ist dadurch sogar etwas größer als vorher.
 
 ## Bauen
 
@@ -146,7 +155,7 @@ src/settings.c    Optionen, im Flash gespeichert
 src/input.c       Tastenbelegung (Mitte als Modifier)
 src/display.c, menu.c, rom_store.c   aus ../megadrive (rom_store ohne Byte-Tausch)
 src/flash_fs.*, usb_*.c, tusb_config.h, fatfs/   aus ../picoboygb
-core/quicknes/    QuickNES-Kern aus frank-nes, unverändert
+core/quicknes/    QuickNES-Kern aus frank-nes; entfernt: das Übernehmen von Sprites aus dem Vorbild (HDMI-Notlösung, löschte das Blinken)
 core/emu2413/     YM2413-Emulation für den VRC7-Mapper, aus frank-nes
 ```
 

@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "pico/stdlib.h"
 #include "hardware/flash.h"
 #include "hardware/sync.h"
@@ -103,15 +104,15 @@ static bool file_fingerprint(const char *name, uint32_t *size, uint32_t *hash, u
 
 bool rom_store_matches(const char *name)
 {
-    static uint8_t buf[4096];
     const rom_info_t *i = flash_info();
     uint32_t size, hash;
 
     if (!info_valid(i) || strcmp(i->name, name) != 0)
         return false;
-    if (!file_fingerprint(name, &size, &hash, buf))
-        return false;
-    return size == i->file_size && hash == i->file_hash;
+    uint8_t *buf = malloc(4096);    /* heap: the emulator's after loading */
+    bool ok = buf && file_fingerprint(name, &size, &hash, buf);
+    free(buf);
+    return ok && size == i->file_size && hash == i->file_hash;
 }
 
 /* flash_range_* must not run while code executes from XIP. Only core 0 is

@@ -117,9 +117,6 @@ static void __not_in_flash_func(send_original)(const uint16_t (*src)[GB_W])
 
 void __not_in_flash_func(video_core1_main)(void)
 {
-    /* The 22 kHz sample timer runs here, not on core 0, whose stack goes
-     * deep in the emulator (see c64). */
-    audio_pwm_set_pool(alarm_pool_create_with_unused_hardware_alarm(4));
     /* Save files are written while a game runs: park this core per sector. */
     multicore_lockout_victim_init();
     pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);

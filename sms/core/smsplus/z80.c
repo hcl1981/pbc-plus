@@ -171,6 +171,12 @@ unsigned char *cpu_writemap[8];
 int z80_ICount;
 static Z80_Regs Z80;
 Z80_Regs *Z80_Context = &Z80;
+/* PBC: opcode handlers that GCC keeps out of line and the dispatch, cycle
+ * and DAA tables run from RAM, not from the flash the game ROM is read
+ * through. */
+#define Z80_RAM_FUNC __attribute__((section(".time_critical.z80op")))
+#define Z80_RAM_DATA __attribute__((section(".data.z80tab")))
+
 static UINT32 EA;
 int after_EI = 0;
 
@@ -207,7 +213,7 @@ const static UINT8 drep_tmp1[4][4] = {
 };
 
 /* tmp2 value for all in/out repeated opcodes for B.7-0 */
-const static UINT8 breg_tmp2[256] = {
+static Z80_RAM_DATA UINT8 breg_tmp2[256] = {
 	0,0,1,1,0,1,0,0,1,1,0,0,1,0,1,1,
 	0,1,0,0,1,0,1,1,0,0,1,1,0,1,0,0,
 	1,1,0,0,1,0,1,1,0,0,1,1,0,1,0,0,
@@ -227,7 +233,7 @@ const static UINT8 breg_tmp2[256] = {
 };
 #endif
 
-const static UINT8 cc_op[0x100] = {
+static Z80_RAM_DATA UINT8 cc_op[0x100] = {
         4, 10, 7, 6, 4, 4, 7, 4, 4, 11, 7, 6, 4, 4, 7, 4,
         8, 10, 7, 6, 4, 4, 7, 4, 12, 11, 7, 6, 4, 4, 7, 4,
         7, 10, 16, 6, 4, 4, 7, 4, 7, 11, 16, 6, 4, 4, 7, 4,
@@ -246,7 +252,7 @@ const static UINT8 cc_op[0x100] = {
         5, 10, 10, 4, 10, 11, 7, 11, 5, 6, 10, 4, 10, 0, 7, 11};
 
 
-const static UINT8 cc_cb[0x100] = {
+static Z80_RAM_DATA UINT8 cc_cb[0x100] = {
         8, 8, 8, 8, 8, 8, 15, 8, 8, 8, 8, 8, 8, 8, 15, 8,
         8, 8, 8, 8, 8, 8, 15, 8, 8, 8, 8, 8, 8, 8, 15, 8,
         8, 8, 8, 8, 8, 8, 15, 8, 8, 8, 8, 8, 8, 8, 15, 8,
@@ -264,7 +270,7 @@ const static UINT8 cc_cb[0x100] = {
         8, 8, 8, 8, 8, 8, 15, 8, 8, 8, 8, 8, 8, 8, 15, 8,
         8, 8, 8, 8, 8, 8, 15, 8, 8, 8, 8, 8, 8, 8, 15, 8};
 
-const static UINT8 cc_dd[0x100] = {
+static Z80_RAM_DATA UINT8 cc_dd[0x100] = {
         4, 4, 4, 4, 4, 4, 4, 4, 4, 15, 4, 4, 4, 4, 4, 4,
         4, 4, 4, 4, 4, 4, 4, 4, 4, 15, 4, 4, 4, 4, 4, 4,
         4, 14, 20, 10, 9, 9, 9, 4, 4, 15, 20, 10, 9, 9, 9, 4,
@@ -285,7 +291,7 @@ const static UINT8 cc_dd[0x100] = {
 // dd/fd cycles are identical
 #define cc_fd cc_dd
 
-const static UINT8 cc_xxcb[0x100] = {
+static Z80_RAM_DATA UINT8 cc_xxcb[0x100] = {
         23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23,
         23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23,
         23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23,
@@ -303,7 +309,7 @@ const static UINT8 cc_xxcb[0x100] = {
         23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23,
         23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23};
 
-const static UINT8 cc_ed[0x100] = {
+static Z80_RAM_DATA UINT8 cc_ed[0x100] = {
         8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
         8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
         8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
@@ -388,7 +394,7 @@ static void take_interrupt(void);
     static __inline__ void prefix##_f4(void); static __inline__ void prefix##_f5(void); static __inline__ void prefix##_f6(void); static __inline__ void prefix##_f7(void); \
     static __inline__ void prefix##_f8(void); static __inline__ void prefix##_f9(void); static __inline__ void prefix##_fa(void); static __inline__ void prefix##_fb(void); \
     static __inline__ void prefix##_fc(void); static __inline__ void prefix##_fd(void); static __inline__ void prefix##_fe(void); static __inline__ void prefix##_ff(void); \
-static void (*tablename[0x100])(void) = {    \
+static Z80_RAM_DATA void (*tablename[0x100])(void) = {    \
     prefix##_00,prefix##_01,prefix##_02,prefix##_03,prefix##_04,prefix##_05,prefix##_06,prefix##_07, \
     prefix##_08,prefix##_09,prefix##_0a,prefix##_0b,prefix##_0c,prefix##_0d,prefix##_0e,prefix##_0f, \
     prefix##_10,prefix##_11,prefix##_12,prefix##_13,prefix##_14,prefix##_15,prefix##_16,prefix##_17, \
@@ -449,7 +455,7 @@ static __inline__ void BURNODD(int cycles, int opcodes, int cyclesum) {
 /***************************************************************
  * define an opcode function
  ***************************************************************/
-#define OP(prefix, opcode)  static __inline__ void prefix##_##opcode(void)
+#define OP(prefix, opcode)  static __inline__ Z80_RAM_FUNC void prefix##_##opcode(void)
 
 /***************************************************************
  * adjust cycle count by n T-states

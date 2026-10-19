@@ -12,7 +12,7 @@ ist dasselbe wie bei [`../nes`](../nes/) und [`../c64`](../c64/):
 |---|---|
 | HuCards von SD-Karte | **USB-Stick-Modus** in eine FatFs-Partition im Flash (aus [PicoBoyGB](../picoboygb/)); die Karte liegt im ROM-Bereich, pce-go blendet ihre Bänke direkt per XIP ein |
 | HDMI 320×240 | **ST7789**: auf 240 Pixel Breite beschnitten bzw. verkleinert, auf Kern 1 per DMA |
-| Ton über HDMI/I2S | **PWM-Lautsprecher** (GP15), 22 222 Hz, Timer auf Kern 1 |
+| Ton über HDMI/I2S | **PWM-Lautsprecher** (GP15), 22 222 Hz, per DMA |
 | CD-ROM², SuperGrafx | entfallen (bräuchten PSRAM) |
 | Menü mit Spielständen, Einstellungen, Controller-Test | entfallen |
 
@@ -88,9 +88,16 @@ das andere in BGR565 um und schickt es per DMA.
 Wie bei pico-pcePlus sample-genau: Vor jedem Schreibzugriff auf den PSG ruft
 pce-go `osd_psg_sync()` mit der Zyklusposition im Bild auf, und die Samples bis
 dahin werden noch mit den alten Registern erzeugt. Am Bildende wird der Rest
-aufgefüllt. Der Kern rechnet stereo, die Ausgabe mischt auf mono herunter.
-Abgespielt wird über `audio_pwm` (Timer alle 45 µs, Ringpuffer), dessen Timer
-wie beim C64 auf **Kern 1** läuft.
+aufgefüllt. Die Zyklusposition zählt im aktuellen CPU-Takt (113 Zyklen je
+Zeile bei 1,79 MHz, 455 nach `CSH` bei 7,16 MHz, was fast jedes Spiel
+einschaltet); die Bildlänge folgt deshalb `PCE.Timer.cycles_per_line`. Vorher
+war sie fest auf 263 × 113, und bei 7,16 MHz landete jeder PSG-Zugriff ab
+etwa Zeile 65 am Bildende – Sprache und Samples (DDA) klangen verzerrt.
+Der Kern rechnet stereo, die Ausgabe mischt auf mono herunter.
+Abgespielt wird über `audio_pwm`: Ein DMA-Kanal, getaktet von einem
+DMA-Timer, schreibt alle 45 µs ein Sample aus dem Ringpuffer in den
+PWM-Vergleichswert. Vorher lief dafür 22 222-mal pro Sekunde ein
+Timer-Interrupt auf Kern 1, dessen SDK-Code aus dem Flash kam.
 
 ## US-HuCards
 
@@ -115,8 +122,8 @@ Werkzeuge und SDK wie bei allen Projekten dieses Repos, siehe
 |---|---|---|
 | `CPU_MHZ` | 200 | Systemtakt |
 | `CPU_VREG` | `VREG_VOLTAGE_1_15` | Kernspannung |
-| `FLASH_MAX_FREQ_MHZ` | 88 | Obergrenze für den Flash-Takt |
-| `PBC_SPI_HZ` | 62 500 000 | Display-SPI |
+| `FLASH_MAX_FREQ_MHZ` | 100 | Obergrenze für den Flash-Takt (bei 200 MHz: 100 MHz, wie beim Mega Drive) |
+| `PBC_SPI_HZ` | 75 000 000 | Display-SPI. Im Spiel kommt `clk_peri` aus der USB-PLL (150 MHz, USB wird dann nicht gebraucht), also 75 MHz bei jedem Systemtakt; vorher ergaben 200 MHz nur 50 MHz, zu wenig für 60 Bilder/s |
 | `SHOW_FPS` | 0 | Leistungsanzeige (fps, Tempo, Last) in der Einzel-Firmware; im Verbund schaltet sie der Starter |
 
 **Warum 200 MHz:** pico-pcePlus erreicht 60 Bilder/s bei 252 MHz und liest
@@ -130,8 +137,10 @@ nicht in den USB-Modus, auch wenn gerade A oder B gedrückt ist.
 
 ## Speicher
 
-Firmware 110 KB. Statisch belegt sind 295 KB, davon 178 KB für die beiden
-Bildpuffer. Vom Heap (etwa 216 KB) nimmt sich pce-go rund 80 KB: 8 KB
+Firmware 117 KB. Statisch belegt sind 297 KB, davon 178 KB für die beiden
+Bildpuffer. Der Zeilenzeichner (`render_lines` mit `draw_tiles`) liegt im RAM;
+GCC hatte das `static inline` in den Flash ausgelagert, wo es mit dem
+Spiel-ROM um den 16-KB-XIP-Cache konkurrierte. Vom Heap (etwa 216 KB) nimmt sich pce-go rund 80 KB: 8 KB
 Arbeitsspeicher, 64 KB VRAM und eine 8-KB-Leerseite.
 
 ## Flash-Aufteilung (16 MB)
@@ -152,7 +161,7 @@ src/pce_glue.c    Rückrufe für pce-go: Bildpuffer, Ton (sample-genau), Speiche
 src/video.c       Anzeigemodi (Beschnitt/Skalierung), Ausgabe auf Kern 1, zwei Bildpuffer
 src/rom_store.c   HuCard in den Flash schreiben (Kopierer-Header, US-Entschlüsselung)
 src/input.c       Tastenbelegung (Mitte als Modifier)
-src/audio_pwm.c   aus ../c64 (Timer-Pool auf Kern 1)
+src/audio_pwm.c   PWM-Lautsprecher per DMA, wie in ../sms
 src/display.c, menu.c, settings.c   aus ../nes
 src/flash_fs.*, usb_*.c, tusb_config.h, fatfs/   aus ../picoboygb
 core/pce-go/      pce-go aus pico-pcePlus

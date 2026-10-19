@@ -30,7 +30,7 @@ uint8_t *__not_in_flash_func(osd_gfx_framebuffer)(int width, int height)
     return video_back_buffer();
 }
 
-void osd_gfx_lines_rendered(int first_line, int last_line)
+void __not_in_flash_func(osd_gfx_lines_rendered)(int first_line, int last_line)
 {
     (void)first_line; (void)last_line;  /* the whole frame is shown at once */
 }
@@ -52,7 +52,11 @@ void pce_glue_frame_size(int *w, int *h)
 
 /* ---- audio ---------------------------------------------------------------- */
 
-#define PCE_CYCLES_PER_FRAME (263 * 113)        /* pce-go's internal clock */
+/* pce-go counts CPU cycles: 113 per line at 1.79 MHz, 455 after CSH at
+ * 7.16 MHz, which nearly every game switches to. frame_cycle below is in
+ * the same clock, so the frame length has to follow it too; a fixed
+ * 263 * 113 put every PSG write after about line 65 at the frame end. */
+#define PCE_CYCLES_PER_FRAME (263 * PCE.Timer.cycles_per_line)
 #define PCE_FPS_X10000       598261u            /* 59.8261 Hz */
 #define SAMPLES_MAX          400                /* 22222 / 59.8 = 372 */
 
@@ -73,7 +77,7 @@ static int advance_samples(void)
 
 void __not_in_flash_func(osd_psg_sync)(int frame_cycle)
 {
-    int target = (int)((int64_t)frame_cycle * samples_this_frame / PCE_CYCLES_PER_FRAME);
+    int target = (int)((int64_t)frame_cycle * samples_this_frame / PCE_CYCLES_PER_FRAME);  /* < 2^31 */
     if (target > samples_this_frame)
         target = samples_this_frame;
     int n = target - audio_pos;

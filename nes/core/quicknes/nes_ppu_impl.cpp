@@ -143,7 +143,7 @@ void Nes_Ppu_Impl::close_chr()
 #endif
 }
 
-void Nes_Ppu_Impl::set_chr_bank( int addr, int size, long data )
+NES_RAM void Nes_Ppu_Impl::set_chr_bank( int addr, int size, long data )
 {
 	if ( data + size > chr_size )
 		data %= chr_size;
@@ -309,7 +309,7 @@ void Nes_Ppu_Impl::capture_palette()
 	}
 }
 
-void Nes_Ppu_Impl::run_hblank( int count )
+NES_RAM void Nes_Ppu_Impl::run_hblank( int count )
 {
 	long addr = (vram_addr & 0x7be0) + (vram_temp & 0x41f) + (count * 0x1000);
 	if ( w2001 & 0x08 )
@@ -387,7 +387,7 @@ void Nes_Ppu_Impl::rebuild_chr( unsigned long begin, unsigned long end )
 		update_tile( index );
 }
 
-void Nes_Ppu_Impl::update_tiles( int first_tile )
+NES_RAM void Nes_Ppu_Impl::update_tiles( int first_tile )
 {
 	int chunk = 0;
 	do

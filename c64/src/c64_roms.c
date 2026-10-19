@@ -8,7 +8,7 @@
 #define CHAR_SIZE   4096
 
 static uint8_t basic[BASIC_SIZE], kernal[KERNAL_SIZE], chargen[CHAR_SIZE];
-static bool have_char;
+static bool loaded, have_char;
 
 /* Frodo's DOS-level drive 8 needs traps ($F2 xx) at the IEC routines of the
  * KERNAL, plus a skipped RAM test. Offsets into the ROM; "orig" are the bytes
@@ -55,7 +55,22 @@ bool c64_roms_load(void)
     for (unsigned i = 0; i < sizeof kernal_patches / sizeof kernal_patches[0]; i++)
         memcpy(kernal + kernal_patches[i].off, kernal_patches[i].patch, 2);
     have_char = load(chargen_names, chargen, CHAR_SIZE);
+    loaded = true;
     return true;
+}
+
+void c64_roms_fill_builtin(const uint8_t *basic_rom, const uint8_t *kernal_rom,
+                           const uint8_t *char_rom)
+{
+    if (!loaded) {
+        memcpy(basic, basic_rom, BASIC_SIZE);
+        memcpy(kernal, kernal_rom, KERNAL_SIZE);   /* traps already in place */
+        loaded = true;
+    }
+    if (!have_char) {
+        memcpy(chargen, char_rom, CHAR_SIZE);
+        have_char = true;
+    }
 }
 
 const uint8_t *c64_roms_basic(void)   { return basic; }

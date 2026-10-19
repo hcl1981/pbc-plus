@@ -23,6 +23,7 @@
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
 #include "hardware/clocks.h"
+#include "hardware/pll.h"
 #include "hardware/vreg.h"
 #include "hardware/spi.h"
 #include "hardware/watchdog.h"
@@ -257,6 +258,21 @@ static void __no_inline_not_in_flash_func(set_flash_timings)(int cpu_mhz)
                           divisor << QMI_M0_TIMING_CLKDIV_LSB;
 }
 
+/* The SPI clock is clk_peri divided by an even number, and clk_peri
+ * follows clk_sys: at 200 MHz the display got only 50 MHz. USB is used
+ * only before the game (stick mode), so in the game the USB PLL runs at
+ * 150 MHz and drives clk_peri alone: 75 MHz SPI whatever the system clock.
+ * clk_usb and clk_adc, which hang off that PLL, are stopped first. */
+static void display_clock(void)
+{
+    clock_stop(clk_usb);
+    clock_stop(clk_adc);
+    pll_init(pll_usb, 1, 1500 * MHZ, 5, 2);          /* 12 MHz x 125 / 10 */
+    clock_configure(clk_peri, 0, CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLKSRC_PLL_USB,
+                    150 * MHZ, 150 * MHZ);
+    spi_set_baudrate(PBC_SPI, PBC_SPI_HZ);
+}
+
 /* Raised only after all flash writing (USB, ROM programming) is done, so
  * those always run at the stock clock and flash timing. */
 static void overclock(void)
@@ -275,8 +291,7 @@ static void overclock(void)
         /* below the boot clock: the boot flash timing stays valid */
         set_sys_clock_khz(CPU_MHZ * 1000, false);
     }
-    /* clk_peri follows clk_sys: re-derive the SPI divider. */
-    spi_set_baudrate(PBC_SPI, PBC_SPI_HZ);
+    display_clock();
 }
 
 /* ---- parallel line rendering (from frank-genesis, VDP_RASTER_RENDER) ----

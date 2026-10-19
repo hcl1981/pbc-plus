@@ -66,21 +66,21 @@ static void build_map(uint8_t *a, uint8_t *b, int n, int m, int first)
 
 /* ---- palette callbacks from the core (render.c) -------------------------- */
 
-void sms_palette_sync(int index)
+void __not_in_flash_func(sms_palette_sync)(int index)
 {
     /* CRAM: --BBGGRR, two bits per channel */
     int c = vdp.cram[index];
     pal[index] = PBC_RGB((c & 3) * 85, ((c >> 2) & 3) * 85, ((c >> 4) & 3) * 85);
 }
 
-void sms_palette_syncGG(int index)
+void __not_in_flash_func(sms_palette_syncGG)(int index)
 {
     /* CRAM: GGGGRRRR ----BBBB, four bits per channel */
     int lo = vdp.cram[(index << 1) | 0], hi = vdp.cram[(index << 1) | 1];
     pal[index] = PBC_RGB((lo & 15) * 17, (lo >> 4) * 17, (hi & 15) * 17);
 }
 
-void sms_palette_syncSG(int index)
+void __not_in_flash_func(sms_palette_syncSG)(int index)
 {
     const uint8 *rgb = tms_palette_rgb[index & 15];
     pal[index] = PBC_RGB(rgb[0], rgb[1], rgb[2]);
@@ -88,7 +88,7 @@ void sms_palette_syncSG(int index)
 
 /* ---- line callback from the core (render.c), core 0 ---------------------- */
 
-void sms_render_line(int line, const uint8_t *buffer)
+void __not_in_flash_func(sms_render_line)(int line, const uint8_t *buffer)
 {
     uint16_t *dst;
     if (is_gg) {
@@ -241,9 +241,6 @@ static void __not_in_flash_func(scale_row)(const uint16_t *ra, const uint16_t *r
 
 void __not_in_flash_func(sms_video_core1_main)(void)
 {
-    /* The 22 kHz sample timer runs on this core, as in c64: core 0 stays
-     * free of audio interrupts. */
-    audio_pwm_set_pool(alarm_pool_create_with_unused_hardware_alarm(4));
     __dmb();
     core1_ready = true;
 

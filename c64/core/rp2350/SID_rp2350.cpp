@@ -155,7 +155,7 @@ const int16_t MOS6581::EGDivTable[16] = {
     392, 977, 1954, 3126, 3906, 11720, 19531, 31251
 };
 
-const uint8_t MOS6581::EGDRShift[256] = {
+C64_HOT_DATA const uint8_t MOS6581::EGDRShift[256] = {
     5,5,5,5,5,5,5,5,4,4,4,4,4,4,4,4,
     3,3,3,3,3,3,3,3,3,3,3,3,2,2,2,2,
     2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,
@@ -469,7 +469,7 @@ void DigitalRenderer::Resume()
     // Nothing to do
 }
 
-void DigitalRenderer::EmulateLine()
+C64_HOT(DigitalRenderer_EmulateLine) void DigitalRenderer::EmulateLine()
 {
     // Record registers for sample playback
     sample_mode_vol[sample_in_ptr] = mode_vol;
@@ -487,7 +487,7 @@ void DigitalRenderer::EmulateLine()
     }
 }
 
-void DigitalRenderer::WriteRegister(uint16_t adr, uint8_t byte)
+C64_HOT(DigitalRenderer_WriteRegister) void DigitalRenderer::WriteRegister(uint16_t adr, uint8_t byte)
 {
     if (!ready)
         return;
@@ -580,7 +580,7 @@ static uint8_t sid_random()
     return seed >> 16;
 }
 
-int16_t DigitalRenderer::calc_single_sample()
+C64_HOT(DigitalRenderer_calc_single_sample) int16_t DigitalRenderer::calc_single_sample()
 {
     // Get current settings
     uint8_t master_volume = mode_vol & 0xf;
@@ -756,7 +756,7 @@ int16_t DigitalRenderer::calc_single_sample()
     return (int16_t)output;
 }
 
-void DigitalRenderer::calc_samples(int count)
+C64_HOT(DigitalRenderer_calc_samples) void DigitalRenderer::calc_samples(int count)
 {
     // Debug: track sample generation rate
     calc_filter();

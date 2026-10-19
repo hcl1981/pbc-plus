@@ -103,8 +103,28 @@ pico-smsplus entfernt den Versatz des PSG, links und rechts werden gemittelt.
 
 Zwei Bildpuffer in Panel-Farben (je 240×224×2 Byte) belegen 210 KB. Der Kern
 holt sich über `malloc` Tile-Cache, Arbeitsspeicher, Batterie-RAM und den
-FM-Chip, zusammen etwa 80 KB; dafür bleiben gut 200 KB Heap. Das ROM selbst
+FM-Chip, zusammen etwa 80 KB; dafür bleiben gut 140 KB Heap. Das ROM selbst
 kostet kein RAM.
+
+### Was im RAM läuft
+
+Das ROM wird direkt aus dem Flash gelesen; Flash und Emulatorcode teilen sich
+einen Cache von nur 16 KB. Der Kern läuft deshalb aus dem RAM (rund 80 KB):
+Z80 (`z80_execute`, die gut 1500 Opcode-Routinen, Sprung-, Taktzahl- und
+DAA-Tabellen), Speicher- und Port-Zugriffe, VDP, Zeichenroutinen, PSG und die
+Zeilenausgabe in `src/sms_video.c`. Im übernommenen RP2350-Port war das
+abgeschaltet (`in_ram` in `core/smsplus/shared.h` war leer), alles lief aus
+dem Flash.
+
+Die 64-KB-Tabelle `lut.h`, aus der für jedes deckende Sprite-Pixel an
+zufälliger Stelle gelesen wurde, ist durch eine Rechnung von fünf Zeilen
+ersetzt (`sprite_over_bg()` in `render.c`, für alle 65536 Eingaben gleiches
+Ergebnis, auf dem PC geprüft). Die kleinen Tabellen der FM-Klangerzeugung
+(YM2413) liegen ebenfalls im RAM.
+
+Nebenbei behoben: Doppelt große Sprites (Register 1, Bit 0) lasen in der
+unteren Hälfte die falsche Kachel, 8×16-Sprites dabei sogar über das Ende der
+64-Byte-Kachel hinaus (`core/smsplus/render.c`).
 
 ## Bauen
 

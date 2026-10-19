@@ -9,7 +9,7 @@
 
 t_SN76496 sn[MAX_76496];
 
-void SN76496Write(int chip, int data) {
+void in_ram(SN76496Write)(int chip, int data) {
     t_SN76496 *R = &sn[chip];
 
 

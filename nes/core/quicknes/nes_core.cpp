@@ -250,7 +250,7 @@ void Nes_Core::apu_irq_changed( void* emu )
 	((Nes_Core*) emu)->irq_changed();
 }
 
-void Nes_Core::write_io( nes_addr_t addr, int data )
+NES_RAM void Nes_Core::write_io( nes_addr_t addr, int data )
 {
 	// sprite dma
 	if ( addr == 0x4014 )
@@ -294,7 +294,7 @@ void Nes_Core::write_io( nes_addr_t addr, int data )
 	#endif
 }
 
-int Nes_Core::read_io( nes_addr_t addr )
+NES_RAM int Nes_Core::read_io( nes_addr_t addr )
 {
 	if ( (addr & 0xFFFE) == 0x4016 )
 	{
@@ -372,7 +372,7 @@ void Nes_Core::reset( bool full_reset, bool erase_battery_ram )
 	error_count = 0;
 }
 
-void Nes_Core::vector_interrupt( nes_addr_t vector )
+NES_RAM void Nes_Core::vector_interrupt( nes_addr_t vector )
 {
 	cpu::push_byte( cpu::r.pc >> 8 );
 	cpu::push_byte( cpu::r.pc & 0xFF );

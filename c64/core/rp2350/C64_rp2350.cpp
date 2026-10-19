@@ -45,6 +45,7 @@ extern "C" {
 // Platform-specific
 #include "Display_rp2350.h"
 #include "ROM_data.h"
+#include "c64_roms.h"
 
 #include <cstring>
 #include <cstdlib>
@@ -82,10 +83,12 @@ C64::C64() : quit_requested(false), prefs_editor_requested(false), load_snapshot
     RAM1541 = g_RAM1541;
     /* PicoBoy Color Plus: MEGA65 OpenROMs instead of the Commodore ROMs,
      * KERNAL with Frodo IEC traps (see ROM_data.cpp) -- or the player's own
-     * ROMs from the drive (c64_set_roms). */
-    Basic = user_basic ? user_basic : BuiltinBasicROM;
-    Kernal = user_kernal ? user_kernal : BuiltinKernalROM;
-    Char = user_char ? user_char : BuiltinCharROM;
+     * ROMs from the drive (c64_set_roms). Whatever is built in is copied
+     * to RAM (c64_roms.c), so that ROM fetches stay out of the flash. */
+    c64_roms_fill_builtin(BuiltinBasicROM, BuiltinKernalROM, BuiltinCharROM);
+    Basic = user_basic ? user_basic : c64_roms_basic();
+    Kernal = user_kernal ? user_kernal : c64_roms_kernal();
+    Char = user_char ? user_char : c64_roms_chargen();
     ROM1541 = BuiltinDriveROM;      /* never executed: drive 8 is DOS-level */
     // Color RAM in regular SRAM for fast VIC access
     Color = g_Color;
@@ -890,12 +893,7 @@ void c64_load_file(const char *filename)
     }
 
     // ---------- CARTRIDGE ----------
-    if (strcasecmp(ext, ".crt") == 0) {
-        c64_load_cartridge(filename);
-        if (TheC64)
-            TheC64->ResetAndAutoStart();
-        return;
-    }
+    // PBC: not supported, see flash_block() in Cartridge.cpp
 
     MII_DEBUG_PRINTF("Unsupported file type: %s\n", ext);
 }

@@ -46,6 +46,14 @@
 #include "pico/stdlib.h"
 #include "pico/time.h"
 
+// PBC: code and tables run per cycle, line or sample, placed in RAM. From
+// flash they shared the 16 KB XIP cache with each other (the 6510 loop
+// alone is 32 KB) and with the ROM images.
+// One section per function: inline ones land in COMDAT groups, which may
+// not share a named section with ordinary functions.
+#define C64_HOT(name) __attribute__((section(".time_critical.c64." #name)))
+#define C64_HOT_DATA __attribute__((section(".data.c64")))
+
 // Time functions for RP2350
 #ifdef __cplusplus
 extern "C" {

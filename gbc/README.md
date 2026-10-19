@@ -72,8 +72,11 @@ wählbar; die Einzel-Firmware nutzt immer Modus 0):
 | 0 | Scale 1.5x | 240×216, wie oben (Vorgabe) |
 | 1 | Original | 160×144 Pixel 1:1, mittig |
 
-Ein verzerrender Vollbildmodus fehlt bewusst. Bei 200 MHz läuft das Display
-mit 50 MHz SPI; ein Bild in 1,5-fach braucht damit knapp 17 ms.
+Ein verzerrender Vollbildmodus fehlt bewusst. Der Display-SPI-Takt ist
+clk_peri geteilt durch eine gerade Zahl; bei 200 MHz wären das nur 50 MHz
+(ein Bild in 1,5-fach knapp 17 ms). Im Spiel wird USB nicht gebraucht, also
+läuft die USB-PLL dann mit 150 MHz und versorgt clk_peri allein: 75 MHz SPI,
+gut 11 ms pro Bild, unabhängig vom Systemtakt.
 
 **Leistungsanzeige:** fps, Tempo in % des Originals und Auslastung von
 Kern 0, z. B. `60fps 100% CPU71%`, einmal pro Sekunde, unter dem Bild. Im Verbund schaltet sie
@@ -81,10 +84,17 @@ der Starter ein, in der Einzel-Firmware `SHOW_FPS=1`.
 
 ## Ton
 
-Wie bei `nes` und `c64`: Ein Timer holt alle 45 µs einen Sample aus einem
-Ringpuffer und schreibt ihn in den PWM-Wert von GP15. minigb_apu rechnet mit
-genau dieser Rate (22 222 Hz, 372 Samples pro Game-Boy-Bild). Der Timer läuft
-auf Kern 1, wie beim C64.
+Ein DMA-Kanal, getaktet von einem DMA-Timer, holt alle 45 µs einen Sample
+aus einem Ringpuffer und schreibt ihn in den PWM-Wert von GP15 – ohne
+Interrupt pro Sample (vorher feuerte ein Timer 22 222-mal pro Sekunde und
+lief dabei teils aus dem Flash). minigb_apu rechnet mit genau dieser Rate
+(22 222 Hz, 372 Samples pro Game-Boy-Bild); seine Routinen pro Sample liegen
+im RAM.
+
+Weitere Kleinigkeiten fürs Tempo: Die Farbpalette von Game-Boy-Color-Spielen
+wird pro Zeile nur noch dort umgerechnet, wo sich ein Eintrag geändert hat,
+und `gb_run_frame()` bleibt als eigene Funktion im RAM, statt in die
+Hauptschleife im Flash eingebaut zu werden.
 
 ## Spielstände
 
@@ -123,8 +133,8 @@ Werkzeuge und SDK wie bei allen Projekten dieses Repos, siehe
 |---|---|---|
 | `CPU_MHZ` | 200 | Systemtakt. Vorher 250 MHz bei 1,25 V; damit stürzte das Gerät mit Ton gelegentlich ab, wie zuvor die PC Engine |
 | `CPU_VREG` | `VREG_VOLTAGE_1_15` | Kernspannung |
-| `FLASH_MAX_FREQ_MHZ` | 88 | Obergrenze für den Flash-Takt |
-| `PBC_SPI_HZ` | 62 500 000 | Display-SPI |
+| `FLASH_MAX_FREQ_MHZ` | 100 | Obergrenze für den Flash-Takt (bei 200 MHz: 100 MHz, wie beim Mega Drive) |
+| `PBC_SPI_HZ` | 75 000 000 | Display-SPI, im Spiel aus der USB-PLL (150 MHz / 2) |
 | `SHOW_FPS` | 0 | Leistungsanzeige der Einzel-Firmware (im Verbund: Starter) |
 
 ## Flash-Aufteilung (16 MB)
@@ -149,12 +159,12 @@ Emulatorzustand mit Game-Boy-Color-RAM (49 KB), Cartridge-RAM bis 128 KB
 src/main.c        Startablauf, USB-Stick-Modus, Peanut-GB-Anbindung,
                   Spielstände, Absturzanzeige, Emulationsschleife
 src/video.c       Doppelpuffer, Vergrößerung 1,5x, Ausgabe auf Kern 1
-src/audio_pwm.c   Ton (Timer auf Kern 1)
+src/audio_pwm.c   Ton (DMA, wie in ../sms)
 src/flash_fs.c    Flash-Laufwerk; überspringt unveränderte Sektoren,
                   parkt Kern 1 beim Schreiben
 src/input.c, menu.c, rom_store.c, settings.c, display.c   aus ../nes
 src/usb_*.c, tusb_config.h, fatfs/                         aus ../picoboygb
-core/peanut_gb.h  Peanut-GB mit GBC-Erweiterung, aus pico-peanutGB, unverändert
+core/peanut_gb.h  Peanut-GB mit GBC-Erweiterung, aus pico-peanutGB; geändert: Kopfbytes für ROM-/RAM-Größe werden geprüft statt hinter Tabellen zu lesen, 64-KB-Speicherstände (0x05) erkannt
 core/minigb_apu.* aus ../picoboygb
 ```
 

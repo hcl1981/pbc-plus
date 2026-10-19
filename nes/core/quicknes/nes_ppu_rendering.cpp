@@ -62,7 +62,7 @@ inline Nes_Ppu_Impl::cached_tile_t const& Nes_Ppu_Impl::get_bg_tile( int index )
 
 // Fill
 
-void Nes_Ppu_Rendering::fill_background( int count )
+NES_RAM void Nes_Ppu_Rendering::fill_background( int count )
 {
 	ptrdiff_t const next_line = scanline_row_bytes - image_width;
 	uint32_t* pixels = (uint32_t*) scanline_pixels;
@@ -91,7 +91,7 @@ void Nes_Ppu_Rendering::fill_background( int count )
 	}
 }
 
-void Nes_Ppu_Rendering::clip_left( int count )
+NES_RAM void Nes_Ppu_Rendering::clip_left( int count )
 {
 	ptrdiff_t next_line = scanline_row_bytes;
 	uint8_t* p = scanline_pixels;
@@ -105,7 +105,7 @@ void Nes_Ppu_Rendering::clip_left( int count )
 	}
 }
 
-void Nes_Ppu_Rendering::save_left( int count )
+NES_RAM void Nes_Ppu_Rendering::save_left( int count )
 {
 	ptrdiff_t next_line = scanline_row_bytes;
 	uint8_t* in = scanline_pixels;
@@ -122,7 +122,7 @@ void Nes_Ppu_Rendering::save_left( int count )
 	}
 }
 
-void Nes_Ppu_Rendering::restore_left( int count )
+NES_RAM void Nes_Ppu_Rendering::restore_left( int count )
 {
 	ptrdiff_t next_line = scanline_row_bytes;
 	uint8_t* out = scanline_pixels;
@@ -141,7 +141,7 @@ void Nes_Ppu_Rendering::restore_left( int count )
 
 // Background
 
-void Nes_Ppu_Rendering::draw_background_( int remain )
+NES_RAM void Nes_Ppu_Rendering::draw_background_( int remain )
 {
 	// Draws 'remain' background scanlines. Does not modify vram_addr.
 	
@@ -220,7 +220,7 @@ void Nes_Ppu_Rendering::draw_background_( int remain )
 
 // Sprites
 
-void Nes_Ppu_Rendering::draw_sprites_( int begin, int end )
+NES_RAM void Nes_Ppu_Rendering::draw_sprites_( int begin, int end )
 {
 	// Draws sprites on scanlines begin through end - 1. Handles clipping.
 	
@@ -275,7 +275,7 @@ void Nes_Ppu_Rendering::draw_sprites_( int begin, int end )
 	while ( index < 0x100 );
 }
 
-void Nes_Ppu_Rendering::check_sprite_hit( int begin, int end )
+NES_RAM void Nes_Ppu_Rendering::check_sprite_hit( int begin, int end )
 {
 	// Checks for sprite 0 hit on scanlines begin through end - 1.
 	// Updates sprite_hit_found. Background (but not sprites) must have
@@ -377,7 +377,7 @@ inline bool Nes_Ppu_Rendering::sprite_hit_possible( int scanline ) const
 	return !sprite_hit_found && spr_ram [0] <= scanline && (w2001 & 0x18) == 0x18;
 }
 
-void Nes_Ppu_Rendering::draw_scanlines( int start, int count,
+NES_RAM void Nes_Ppu_Rendering::draw_scanlines( int start, int count,
 		uint8_t* pixels, long pitch, int mode )
 {
 	scanline_pixels = pixels + image_left;
@@ -446,7 +446,7 @@ void Nes_Ppu_Rendering::draw_scanlines( int start, int count,
 	scanline_pixels = NULL;
 }
 
-void Nes_Ppu_Rendering::draw_background( int start, int count )
+NES_RAM void Nes_Ppu_Rendering::draw_background( int start, int count )
 {
 	// always capture palette at least once per frame
 	if ( (start + count >= 240 && !palette_size) || (w2001 & palette_changed) )

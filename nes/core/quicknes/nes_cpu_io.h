@@ -14,7 +14,7 @@
 
 #include "blargg_source.h"
 
-int Nes_Core::cpu_read( nes_addr_t addr, nes_time_t time )
+NES_RAM int Nes_Core::cpu_read( nes_addr_t addr, nes_time_t time )
 {
 	//LOG_FREQ( "cpu_read", 16, addr >> 12 );
 	
@@ -82,14 +82,14 @@ inline int Nes_Core::cpu_read_ppu( nes_addr_t addr, nes_time_t time )
 	return result;
 }
 
-void Nes_Core::cpu_write_2007( int data )
+NES_RAM void Nes_Core::cpu_write_2007( int data )
 {
 	// ppu.write_2007() is inlined
 	if ( ppu.write_2007( data ) & Nes_Ppu::vaddr_clock_mask )
 		mapper->a12_clocked();
 }
 
-void Nes_Core::cpu_write( nes_addr_t addr, int data, nes_time_t time )
+NES_RAM void Nes_Core::cpu_write( nes_addr_t addr, int data, nes_time_t time )
 {
 	//LOG_FREQ( "cpu_write", 16, addr >> 12 );
 	

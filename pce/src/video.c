@@ -135,10 +135,6 @@ void __not_in_flash_func(video_core1_main)(void)
         lut[i] = PBC_RGB(r3 * 255 / 7, g3 * 255 / 7, b2 * 255 / 3);
     }
 
-    /* The sample timer runs on this core: core 0 is busy emulating, and
-     * keeping 22 000 interrupts a second off its stack is what made the C64
-     * sound stable. */
-    audio_pwm_set_pool(alarm_pool_create_with_unused_hardware_alarm(4));
     __dmb();
     core1_ready = true;
 

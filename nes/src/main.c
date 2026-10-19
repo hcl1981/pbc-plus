@@ -65,10 +65,15 @@ static void fs_unmount(void) { f_mount(NULL, "", 0); }
 
 static bool fs_format(void)
 {
-    static BYTE work[FF_MAX_SS];
+    /* on the heap: needed once, and the RAM is the emulator's afterwards */
+    BYTE *work = malloc(FF_MAX_SS);
+    if (!work)
+        return false;
     /* FM_SFD: no partition table, one FAT volume filling the region. */
     MKFS_PARM opt = { FM_FAT | FM_SFD, 0, 0, 0, 0 };
-    if (f_mkfs("", &opt, work, sizeof work) != FR_OK)
+    FRESULT r = f_mkfs("", &opt, work, FF_MAX_SS);
+    free(work);
+    if (r != FR_OK)
         return false;
     if (fs_mount()) {
         f_setlabel("PBC-ROMS");

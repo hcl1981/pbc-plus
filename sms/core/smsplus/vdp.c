@@ -74,7 +74,7 @@ void vdp_reset(void) {
 
 
 /* Write data to the VDP's control port */
-void vdp_ctrl_w(int data) {
+void in_ram(vdp_ctrl_w)(int data) {
     /* Waiting for the reset of the command? */
     if (vdp.pending == 0) {
         /* Save data for later */
@@ -145,7 +145,7 @@ void vdp_ctrl_w(int data) {
 
 
 /* Read the status flags */
-int vdp_ctrl_r(void) {
+int in_ram(vdp_ctrl_r)(void) {
     /* Save the status flags */
     uint8 temp = vdp.status;
 
@@ -167,7 +167,7 @@ int vdp_ctrl_r(void) {
 
 
 /* Write data to the VDP's data port */
-void vdp_data_w(int data) {
+void in_ram(vdp_data_w)(int data) {
     int index;
 
     /* Clear the pending flag */
@@ -222,7 +222,7 @@ void vdp_data_w(int data) {
 
 
 /* Read data from the VDP's data port */
-int vdp_data_r(void) {
+int in_ram(vdp_data_r)(void) {
     uint8 temp = 0;
     vdp.pending = 0;
     temp = vdp.buffer;
@@ -282,7 +282,7 @@ void in_ram(vdp_run)(void) {
 }
 
 
-uint8 vdp_vcounter_r(void) {
+uint8 in_ram(vdp_vcounter_r)(void) {
     /* The table holds the 192-line count, which jumps back from $DA to $D5.
        The 224-line mode counts on to $EA before jumping back to $E5. */
     if (IS_224_MODE)
@@ -291,7 +291,7 @@ uint8 vdp_vcounter_r(void) {
 }
 
 
-uint8 vdp_hcounter_r(void) {
+uint8 in_ram(vdp_hcounter_r)(void) {
     int pixel = (((z80_ICount % CYCLES_PER_LINE) / 4) * 3) * 2;
     return (hcnt[((pixel >> 1) & 0x1FF)]);
 }

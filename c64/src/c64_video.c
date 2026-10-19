@@ -121,12 +121,6 @@ void __not_in_flash_func(c64_video_core1_main)(void)
     out_y = (PBC_LCD_H - out_h) / 2;
     pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
 
-    /* The 22 kHz sample timer runs here, not on core 0: core 0's stack goes
-     * deep while the CPU emulation reaches into the disk drive and FatFs,
-     * and an interrupt landing at that moment could overrun its 4 KB. Core
-     * 1 has a shallow stack and time to spare. */
-    audio_pwm_set_pool(alarm_pool_create_with_unused_hardware_alarm(4));
-
     /* Disk writes park this core while a flash sector is rewritten. */
     multicore_lockout_victim_init();
     __dmb();

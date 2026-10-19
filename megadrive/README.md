@@ -103,7 +103,7 @@ statt der sonst üblichen MinSizeRel-Vorgabe.
 | `CPU_MHZ` | 200 | Systemtakt (unter 150 wird heruntergetaktet) |
 | `CPU_VREG` | `VREG_VOLTAGE_1_15` | Kernspannung. Über 1,30 V wird die Sperre des RP2350 aufgehoben |
 | `FLASH_MAX_FREQ_MHZ` | 100 | Obergrenze für den Flash-Takt (bei 200 und 300 MHz: 100 MHz) |
-| `PBC_SPI_HZ` | 75 000 000 | Display-SPI. Der Teiler hängt vom Systemtakt ab: 200 MHz ergibt 50 MHz, 150 und 300 MHz ergeben 75 MHz (über dem Datenblattwert, läuft auf dem Gerät sauber) |
+| `PBC_SPI_HZ` | 75 000 000 | Display-SPI. Im Spiel kommt `clk_peri` aus der USB-PLL (150 MHz, USB wird dann nicht gebraucht), daher 75 MHz bei jedem Systemtakt (über dem Datenblattwert, läuft auf dem Gerät sauber) |
 | `SHOW_FPS` | 0 | Anzeige unter dem Bild (fps, Tempo, Last) |
 | `AUDIO_VOLUME` | 8 | Lautstärke der Einzel-Firmware, 0 = aus |
 | `Z80_SLICE_LINES` | 16 | Z80 alle N Zeilen ausführen |
@@ -134,8 +134,9 @@ src/menu.c        Spieleliste, Meldungen, Fortschrittsbalken
 src/rom_store.c   ROM aus FatFs in den Flash schreiben (inkl. .smd), prüfen
 src/ym_core1.c    Ton auf Core 1: Schreibprotokoll abspielen, mischen, auf 22 kHz
 src/ym2612_synth.c  zweite Übersetzung von core/sound/ym2612.c für Core 1
-src/audio_pwm.c   PWM-Lautsprecher, wie in ../sms
+src/audio_pwm.c   PWM-Lautsprecher per DMA, wie in ../sms
 tools/m68k_dispatch.py  packt die 68000-Befehlstabellen für den RAM
+tools/m68k_hot.py       wählt die 68000-Befehlsroutinen für den RAM aus
 src/HDMI.h        Ersatz für den HDMI-Header, den der VDP-Kern einbindet
 src/flash_fs.*, usb_*.c, tusb_config.h, fatfs/   aus ../picoboygb
 core/             Emulatorkern aus frank-genesis
@@ -164,8 +165,21 @@ oder pro Sample gebraucht wird, liegt deshalb im RAM.
   eine Kopie des XIP-Caches; die Z80-Bänke kosteten bei jedem Wechsel 32 KB
   Kopie, und bei SSF2 hätten die ROM-Seiten nach einem Bankwechsel veraltet
   sein können. Beide lesen jetzt direkt; das macht 96 KB RAM frei.
+- **68000-Befehlsroutinen:** Alle 1700 passen nicht in den RAM.
+  `tools/m68k_hot.py` wählt nach Befehlsart (Move, Sprünge, Vergleiche, …
+  zuerst) und Adressierung (Register, (An), (An)+, -(An) zuerst) aus: 17 KB
+  in beiden Firmwares (`M68K_HOT1`), weitere 30 KB nur in PBCemu
+  (`M68K_HOT2`), wo mehr RAM frei ist. Ändert sich der Kern, das Skript mit
+  einer Bau-.elf neu laufen lassen.
 - **VDP:** `gwenesis_vdp_render_line()` und `gwenesis_vdp_write_memory_16()`
   im RAM.
+- **Display-Takt:** Der SPI-Takt ist `clk_peri` geteilt durch eine gerade
+  Zahl, und `clk_peri` folgt dem Systemtakt; bei 200 MHz blieben 50 MHz.
+  Im Spiel versorgt deshalb die USB-PLL mit 150 MHz `clk_peri` allein
+  (`display_clock()`): 75 MHz bei jedem Systemtakt.
+- **Ton per DMA:** Ein DMA-Kanal mit DMA-Timer schiebt alle 45 µs ein Sample
+  in den PWM-Vergleichswert; vorher lief dafür 22222-mal pro Sekunde ein
+  Timer-Interrupt, zum Teil aus dem Flash.
 - **Ton:** Ist er aus, erzeugt `ym2612_run()` keine Samples, lässt aber Timer
   A/B weiterlaufen (Soundtreiber fragen deren Überlauf-Bits ab), und
   `gwenesis_SN76489_run()` zählt nur die Zeit weiter. Ist er an, schreibt

@@ -47,13 +47,13 @@ public:
 		regs [3] = 0x00;
 	}
 	
-	virtual void apply_mapping()
+	NES_RAM_INLINE(mapper001_apply_mapping) virtual void apply_mapping()
 	{
 		enable_sram(); // early MMC1 always had SRAM enabled
 		register_changed( 0 );
 	}
 	
-	virtual void write( nes_time_t, nes_addr_t addr, int data )
+	NES_RAM_INLINE(mapper001_write) virtual void write( nes_time_t, nes_addr_t addr, int data )
 	{
 		if ( !(data & 0x80) )
 		{
@@ -81,7 +81,7 @@ public:
 	}
 
 	
-	void register_changed( int reg )
+	NES_RAM_INLINE(mapper001_register_changed) void register_changed( int reg )
 	{
 		// Mirroring
 		if ( reg == 0 )

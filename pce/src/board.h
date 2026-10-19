@@ -9,7 +9,7 @@
 /* ---- Display: ST7789 on SPI0 ---- */
 #define PBC_SPI          spi0
 #ifndef PBC_SPI_HZ
-#define PBC_SPI_HZ       62500000u
+#define PBC_SPI_HZ       75000000u
 #endif
 #define PBC_PIN_SCK      18
 #define PBC_PIN_MOSI     19

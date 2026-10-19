@@ -25,6 +25,7 @@
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
 #include "hardware/clocks.h"
+#include "hardware/pll.h"
 #include "hardware/vreg.h"
 #include "hardware/spi.h"
 #include "hardware/watchdog.h"
@@ -59,7 +60,7 @@
 #define CPU_VREG VREG_VOLTAGE_1_15
 #endif
 #ifndef FLASH_MAX_FREQ_MHZ
-#define FLASH_MAX_FREQ_MHZ 88
+#define FLASH_MAX_FREQ_MHZ 100
 #endif
 #ifndef SHOW_FPS
 #define SHOW_FPS 0
@@ -205,6 +206,22 @@ static void __no_inline_not_in_flash_func(set_flash_timings)(int cpu_mhz)
                           divisor << QMI_M0_TIMING_CLKDIV_LSB;
 }
 
+/* The SPI clock is clk_peri divided by an even number, and clk_peri
+ * follows clk_sys: at 200 MHz the display got only 50 MHz (16.6 ms per
+ * frame, barely inside 16.7 ms). USB is used only before the game (stick
+ * mode), so in the game the USB PLL runs at 150 MHz and drives clk_peri
+ * alone: 75 MHz SPI whatever the system clock. clk_usb and clk_adc, which
+ * hang off that PLL, are stopped first. */
+static void display_clock(void)
+{
+    clock_stop(clk_usb);
+    clock_stop(clk_adc);
+    pll_init(pll_usb, 1, 1500 * MHZ, 5, 2);          /* 12 MHz x 125 / 10 */
+    clock_configure(clk_peri, 0, CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLKSRC_PLL_USB,
+                    150 * MHZ, 150 * MHZ);
+    spi_set_baudrate(PBC_SPI, PBC_SPI_HZ);
+}
+
 /* Raised only after all flash writing is done. */
 static void overclock(void)
 {
@@ -219,8 +236,7 @@ static void overclock(void)
             set_sys_clock_khz(250000, true);
         }
     }
-    /* clk_peri follows clk_sys: re-derive the SPI divider. */
-    spi_set_baudrate(PBC_SPI, PBC_SPI_HZ);
+    display_clock();
 }
 
 /* ---- emulator ------------------------------------------------------------ */
@@ -286,10 +302,18 @@ void __not_in_flash_func(lcd_draw_line)(struct gb_s *g, const uint8_t *pixels, c
 {
     uint16_t *row = video_back() + line * GB_W;
     if (g->cgb.cgbMode) {
-        /* palettes can change between lines: convert the 64 entries here */
-        uint16_t lut[64];
-        for (int i = 0; i < 64; i++)
-            lut[i] = cgb_to_panel(g->cgb.fixPalette[i]);
+        /* Palettes can change between lines; convert only the entries that
+         * changed since the last line (usually none). */
+        static uint16_t seen[64], lut[64];
+        static bool valid;
+        for (int i = 0; i < 64; i++) {
+            uint16_t c = g->cgb.fixPalette[i];
+            if (c != seen[i] || !valid) {
+                seen[i] = c;
+                lut[i] = cgb_to_panel(c);
+            }
+        }
+        valid = true;
         for (int x = 0; x < GB_W; x++)
             row[x] = lut[pixels[x] & 63];
     } else {

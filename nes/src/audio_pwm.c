@@ -1,42 +1,49 @@
-/* audio_pwm.c -- see audio_pwm.h */
+/* audio_pwm.c -- see audio_pwm.h
+ *
+ * A DMA channel paced by a DMA timer copies one sample every 45 us from a
+ * ring buffer into the PWM compare register: no interrupt per sample (the
+ * repeating timer before fired 22222 times a second and ran the SDK's
+ * alarm code from flash). The DMA reads the ring endlessly. How far it
+ * got follows from the time since it started, exactly, because the DMA
+ * timer and the microsecond timer both run off the crystal. The producer
+ * writes ahead of that point and fills the rest of the ring with silence,
+ * so an emulator that falls behind is heard as silence, not as old
+ * samples. */
 #include "pico/stdlib.h"
 #include "hardware/pwm.h"
 #include "hardware/gpio.h"
+#include "hardware/dma.h"
+#include "hardware/clocks.h"
 #include "audio_pwm.h"
 
 #define AUDIO_PIN  15
-#define PWM_WRAP   1023u                  /* 10 bit; ~244 kHz carrier at 250 MHz */
+#define PWM_WRAP   1023u                  /* 10 bit; 150-290 kHz carrier */
 #define PWM_MID    (PWM_WRAP / 2)
 
 #define RING_N     2048u                  /* 92 ms at 22 kHz */
 #define RING_MASK  (RING_N - 1)
+#define RING_BITS  12                     /* 2048 x 2 bytes, aligned to that */
 #define FILL_TARGET 740                   /* two frames */
 #define FILL_LOW    400
 #define FILL_HIGH   1100
 
-static uint16_t ring[RING_N];
-static volatile uint32_t head;            /* written by core 0 */
-static volatile uint32_t tail;            /* advanced by the timer */
-static uint slice, chan;
-static repeating_timer_t timer;
+static uint16_t ring[RING_N] __attribute__((aligned(RING_N * 2)));
+static uint32_t head;                     /* samples written, total */
+static uint64_t start_us;                 /* when the DMA took sample 0 */
+static uint slice;
+static int  dma_ch = -1, dma_timer = -1;
 static bool running;
 static int  volume;
 
-static bool __not_in_flash_func(tick)(repeating_timer_t *t)
+/* Samples the DMA has taken so far. */
+static inline uint32_t tail(void)
 {
-    (void)t;
-    uint32_t tl = tail;
-    if (tl != head) {
-        pwm_set_chan_level(slice, chan, ring[tl & RING_MASK]);
-        tail = tl + 1;
-    }
-    return true;                          /* empty: hold the last level */
+    return (uint32_t)((time_us_64() - start_us) / AUDIO_TICK_US);
 }
 
 void audio_pwm_init(void)
 {
     slice = pwm_gpio_to_slice_num(AUDIO_PIN);
-    chan  = pwm_gpio_to_channel(AUDIO_PIN);     /* channel B */
     pwm_config c = pwm_get_default_config();
     pwm_config_set_wrap(&c, PWM_WRAP);
     pwm_config_set_clkdiv(&c, 1.0f);
@@ -45,6 +52,9 @@ void audio_pwm_init(void)
     gpio_init(AUDIO_PIN);
     gpio_set_dir(AUDIO_PIN, GPIO_OUT);
     gpio_put(AUDIO_PIN, 0);
+
+    dma_ch = dma_claim_unused_channel(true);
+    dma_timer = dma_claim_unused_timer(true);
 }
 
 void audio_pwm_set_volume(int vol)
@@ -54,14 +64,29 @@ void audio_pwm_set_volume(int vol)
     volume = vol;
 
     if (vol && !running) {
-        head = tail = 0;
-        pwm_set_chan_level(slice, chan, PWM_MID);
+        for (uint32_t i = 0; i < RING_N; i++)
+            ring[i] = PWM_MID;
+        head = 0;
+        pwm_set_chan_level(slice, PWM_CHAN_B, PWM_MID);
         gpio_set_function(AUDIO_PIN, GPIO_FUNC_PWM);
-        /* Negative period: fixed rate, measured from the previous start. */
-        add_repeating_timer_us(-AUDIO_TICK_US, tick, NULL, &timer);
+
+        /* one sample per AUDIO_TICK_US: clk_sys / (MHz * 45), exact for
+         * every whole-MHz clock */
+        dma_timer_set_fraction((uint)dma_timer, 1,
+                               (uint16_t)(clock_get_hz(clk_sys) / 1000000u * AUDIO_TICK_US));
+        dma_channel_config c = dma_channel_get_default_config((uint)dma_ch);
+        channel_config_set_transfer_data_size(&c, DMA_SIZE_16);  /* lands in A and B */
+        channel_config_set_read_increment(&c, true);
+        channel_config_set_write_increment(&c, false);
+        channel_config_set_ring(&c, false, RING_BITS);
+        channel_config_set_dreq(&c, dma_get_timer_dreq((uint)dma_timer));
+        dma_channel_configure((uint)dma_ch, &c, &pwm_hw->slice[slice].cc, ring,
+                              dma_encode_endless_transfer_count(), false);
+        start_us = time_us_64();
+        dma_channel_start((uint)dma_ch);
         running = true;
     } else if (!vol && running) {
-        cancel_repeating_timer(&timer);
+        dma_channel_abort((uint)dma_ch);
         running = false;
         gpio_init(AUDIO_PIN);             /* no idle current through the speaker */
         gpio_set_dir(AUDIO_PIN, GPIO_OUT);
@@ -85,18 +110,21 @@ void audio_pwm_push(const int16_t *s, int n)
 {
     if (!running || n <= 0)
         return;
+    if (n > FILL_HIGH)
+        n = FILL_HIGH;
 
+    uint32_t t = tail();
     uint32_t h = head;
-    uint32_t fill = h - tail;
-    if (fill > RING_N - 64 || fill < FILL_LOW / 2) {
-        /* far off (start, stall, emulator below full speed): restart at the
+    int32_t fill = (int32_t)(h - t);
+    if (fill > (int32_t)(RING_N - 64) || fill < FILL_LOW / 2) {
+        /* far off (start, stall, emulator below full speed; the DMA has
+         * been playing the silence after the last sample): restart at the
          * target fill with silence in front */
-        uint32_t t = tail;
-        h = t;
-        for (int i = 0; i < FILL_TARGET - n && i < (int)RING_N - 64; i++)
+        h = t + 2;                        /* a little ahead of the DMA */
+        for (int i = 0; i < FILL_TARGET - n; i++)
             ring[h++ & RING_MASK] = PWM_MID;
     }
-    fill = h - tail;
+    fill = (int32_t)(h - t);
     bool drop = fill > FILL_HIGH, repeat = fill < FILL_LOW;
 
     for (int i = 0; i < n; i++) {
@@ -107,5 +135,10 @@ void audio_pwm_push(const int16_t *s, int n)
         if (repeat && i == n / 2)
             ring[h++ & RING_MASK] = v;
     }
-    head = h;                             /* publish after the data */
+    head = h;
+
+    /* silence up to just before the DMA's position */
+    uint32_t end = t + RING_N - 16;
+    for (uint32_t i = h; (int32_t)(end - i) > 0; i++)
+        ring[i & RING_MASK] = PWM_MID;
 }

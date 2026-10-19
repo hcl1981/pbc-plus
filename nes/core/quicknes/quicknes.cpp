@@ -268,27 +268,10 @@ int __attribute__((section(".time_critical.qnes_emulate_frame"))) qnes_emulate_f
 #if PIXEL_BUF_COUNT > 1
     back_buf ^= 1;
 
-    /* Sprite blink persistence: when the visible sprite count drops
-       significantly between frames (30 Hz invincibility blink), merge
-       sprite pixels from the previous frame into the current one.  This
-       is only applied on blink-hide frames so moving sprites on normal
-       frames never leave trails.  Fixes HDMI display timing race where
-       the vsync phase can lock to the "hidden" blink frames. */
-    {
-        static int prev_sprite_count = 0;
-        int cur_count = emu->visible_sprite_count;
-
-        if (prev_sprite_count - cur_count >= 3) {
-            /* Blink-hide frame: copy sprite pixels from previous frame */
-            uint8_t *cur = pixel_bufs[front_buf];
-            const uint8_t *prev = pixel_bufs[back_buf];
-            for (int i = 0; i < PIXEL_BUF_SIZE; i++) {
-                if (!(cur[i] & 0x10) && (prev[i] & 0x10))
-                    cur[i] = prev[i];
-            }
-        }
-        prev_sprite_count = cur_count;
-    }
+    /* PBC: frank-nes merged sprite pixels of the previous frame into
+     * blink-hide frames (an HDMI vsync workaround). On this display every
+     * frame is shown, so it only erased the invincibility blinking and
+     * left ghost sprites, at a 64 KB byte loop per such frame. Removed. */
 #endif
 
     emu->set_pixels(pixel_bufs[back_buf], 256 + 16);
