@@ -44,10 +44,10 @@
 
 /* ---- build-time configuration (see CMakeLists.txt) ---------------------- */
 #ifndef CPU_MHZ
-#define CPU_MHZ 200
+#define CPU_MHZ 150
 #endif
 #ifndef CPU_VREG
-#define CPU_VREG VREG_VOLTAGE_1_15
+#define CPU_VREG VREG_VOLTAGE_1_10
 #endif
 #ifndef FLASH_MAX_FREQ_MHZ
 #define FLASH_MAX_FREQ_MHZ 88

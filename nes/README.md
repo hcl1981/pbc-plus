@@ -79,7 +79,7 @@ Kein Modus verzerrt das Bild. Es sitzt senkrecht mittig, der Rest bleibt schwarz
 QuickNES zeichnet abwechselnd in zwei Pixelpuffer. Kern 0 übergibt ein fertiges
 Bild samt Palette an Kern 1. Der rechnet es Zeile für Zeile in BGR565 um und
 schickt es per DMA, während Kern 0 schon das nächste Bild in den anderen Puffer
-emuliert. Bei 200 MHz läuft der SPI mit 50 MHz; ein Bild braucht rund 18 ms.
+emuliert. Bei 150 MHz läuft der SPI mit 75 MHz; ein Bild braucht rund 12 ms.
 
 ## Ton
 
@@ -109,7 +109,7 @@ abzustürzen.
 ```bash
 ./build.sh                       # -> ../dist/nes.uf2
 ./build.sh clean
-./build.sh -DCPU_MHZ=200 -DCPU_VREG=VREG_VOLTAGE_1_10
+./build.sh -DCPU_MHZ=200 -DCPU_VREG=VREG_VOLTAGE_1_15
 ```
 
 Werkzeuge und SDK wie bei allen Projekten dieses Repos, siehe
@@ -117,10 +117,10 @@ Werkzeuge und SDK wie bei allen Projekten dieses Repos, siehe
 
 | Option | Vorgabe | Bedeutung |
 |---|---|---|
-| `CPU_MHZ` | 200 | Systemtakt (wie C64, PC Engine und GBC; vorher 250 MHz) |
-| `CPU_VREG` | `VREG_VOLTAGE_1_15` | Kernspannung |
+| `CPU_MHZ` | 150 | Systemtakt (Grundtakt, wie C64 und Master System) |
+| `CPU_VREG` | `VREG_VOLTAGE_1_10` | Kernspannung (bei 150 MHz ohnehin die Grundeinstellung) |
 | `FLASH_MAX_FREQ_MHZ` | 88 | Obergrenze für den Flash-Takt |
-| `PBC_SPI_HZ` | 62 500 000 | Display-SPI |
+| `PBC_SPI_HZ` | 75 000 000 | Display-SPI: 150 MHz / 2 = 75 MHz (über dem Datenblattwert, läuft auf dem Gerät sauber) |
 | `SHOW_FPS` | 0 | Leistungsanzeige in der Einzel-Firmware (in PBCemu: Einstellung im Starter) |
 
 Das NES braucht viel weniger Rechenleistung als das Mega Drive. Zeigt die

@@ -89,10 +89,10 @@ statt der sonst üblichen MinSizeRel-Vorgabe.
 
 | Option | Vorgabe | Bedeutung |
 |---|---|---|
-| `CPU_MHZ` | 300 | Systemtakt |
-| `CPU_VREG` | `VREG_VOLTAGE_1_30` | Kernspannung. Über 1,30 V wird die Sperre des RP2350 aufgehoben |
-| `FLASH_MAX_FREQ_MHZ` | 88 | Obergrenze für den Flash-Takt (bei 300 MHz: 75 MHz) |
-| `PBC_SPI_HZ` | 62 500 000 | Display-SPI. Der Teiler hängt vom Systemtakt ab: bei 300 MHz werden daraus 50 MHz, mit `75000000` 75 MHz |
+| `CPU_MHZ` | 250 | Systemtakt (bei 300 MHz lief er mit 101 % Tempo) |
+| `CPU_VREG` | `VREG_VOLTAGE_1_25` | Kernspannung. Über 1,30 V wird die Sperre des RP2350 aufgehoben |
+| `FLASH_MAX_FREQ_MHZ` | 88 | Obergrenze für den Flash-Takt (bei 250 MHz: 83,3 MHz) |
+| `PBC_SPI_HZ` | 62 500 000 | Display-SPI. Der Teiler hängt vom Systemtakt ab: bei 250 MHz werden daraus 62,5 MHz, bei 300 MHz 50 MHz (mit `75000000` 75 MHz) |
 | `SHOW_FPS` | 0 | Anzeige unter dem Bild (fps, Tempo, Last) |
 | `Z80_SLICE_LINES` | 16 | Z80 alle N Zeilen ausführen |
 

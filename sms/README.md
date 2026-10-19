@@ -119,10 +119,10 @@ Werkzeuge und SDK wie bei allen Projekten dieses Repos, siehe
 
 | Option | Vorgabe | Bedeutung |
 |---|---|---|
-| `CPU_MHZ` | 200 | Systemtakt (wie C64, PC Engine und GBC; vorher 250 MHz) |
-| `CPU_VREG` | `VREG_VOLTAGE_1_15` | Kernspannung |
+| `CPU_MHZ` | 150 | Systemtakt (Grundtakt, wie C64 und NES) |
+| `CPU_VREG` | `VREG_VOLTAGE_1_10` | Kernspannung (bei 150 MHz ohnehin die Grundeinstellung) |
 | `FLASH_MAX_FREQ_MHZ` | 88 | Obergrenze für den Flash-Takt |
-| `PBC_SPI_HZ` | 62 500 000 | Display-SPI |
+| `PBC_SPI_HZ` | 75 000 000 | Display-SPI: 150 MHz / 2 = 75 MHz (über dem Datenblattwert, läuft auf dem Gerät sauber) |
 | `SHOW_FPS` | 0 | Leistungsanzeige (fps, Tempo, Last) in der Einzel-Firmware; im Verbund schaltet sie der Starter |
 
 ## Flash-Aufteilung (16 MB)

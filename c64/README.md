@@ -19,7 +19,7 @@ dort. Das Drumherum ist dasselbe wie bei [`../nes`](../nes/) und
 
 **Stand:** läuft auf dem Gerät, auf dem Gerät geprüft: Ton, Spielstände auf
 Diskette (speichern, RESET, wieder laden), Dateiauswahl, USB-Eintrag. Kern 0 lag
-bei 300 MHz unter 30 % Last, daher läuft der C64 mit 200 MHz.
+bei 300 MHz unter 30 % Last, daher läuft der C64 mit 150 MHz (Grundtakt, keine Übertaktung).
 
 Die Oberfläche auf dem Gerät ist englisch (Menüs, Optionen, Meldungen, Hilfedatei auf dem Laufwerk).
 
@@ -201,10 +201,10 @@ Werkzeuge und SDK wie bei allen Projekten dieses Repos, siehe
 
 | Option | Vorgabe | Bedeutung |
 |---|---|---|
-| `CPU_MHZ` | 200 | Systemtakt (bei 300 MHz lag die Last unter 30 %) |
-| `CPU_VREG` | `VREG_VOLTAGE_1_15` | Kernspannung |
+| `CPU_MHZ` | 150 | Systemtakt (bei 300 MHz lag die Last unter 30 %) |
+| `CPU_VREG` | `VREG_VOLTAGE_1_10` | Kernspannung (bei 150 MHz ohnehin die Grundeinstellung) |
 | `FLASH_MAX_FREQ_MHZ` | 88 | Obergrenze für den Flash-Takt |
-| `PBC_SPI_HZ` | 62 500 000 | Display-SPI |
+| `PBC_SPI_HZ` | 75 000 000 | Display-SPI: 150 MHz / 2 = 75 MHz (über dem Datenblattwert, läuft auf dem Gerät sauber) |
 | `SHOW_FPS` | 0 | Anzeige unter dem Bild (fps, Tempo, Last) |
 
 ## Flash-Aufteilung (16 MB)
