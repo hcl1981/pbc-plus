@@ -19,8 +19,8 @@ endif()
 # above 1.30 V the RP2350 voltage limit has to be lifted (done in main.c).
 # The board's buck-boost converter is small, so higher settings may brown
 # out on AAA cells -- try upwards carefully.
-set(CPU_MHZ "250" CACHE STRING "System clock in MHz (e.g. 250, 300, 336, 378)")
-set(CPU_VREG "VREG_VOLTAGE_1_25" CACHE STRING "Core voltage (VREG_VOLTAGE_1_25 .. VREG_VOLTAGE_1_60)")
+set(CPU_MHZ "300" CACHE STRING "System clock in MHz (e.g. 250, 300, 336, 378)")
+set(CPU_VREG "VREG_VOLTAGE_1_30" CACHE STRING "Core voltage (VREG_VOLTAGE_1_25 .. VREG_VOLTAGE_1_60)")
 set(FLASH_MAX_FREQ_MHZ "88" CACHE STRING "Upper limit for the flash (XIP) clock in MHz")
 set(PBC_SPI_HZ "62500000" CACHE STRING "ST7789 SPI clock request in Hz")
 set(SHOW_FPS "0" CACHE STRING "Show fps and speed under the picture: 0/1")
