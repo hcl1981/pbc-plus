@@ -56,6 +56,8 @@ __license__ = "GPLv3"
 #define AUDIO_FREQ_DIVISOR 1009
 #define GWENESIS_AUDIO_BUFFER_LENGTH_NTSC 888
 #define GWENESIS_AUDIO_BUFFER_LENGTH_PAL 1056
+/* PBC: size of the per-frame sample buffers (PAL needs 1058) */
+#define GWENESIS_AUDIO_BUFFER_MAX 1152
 
 /* Audio buffer length */
 

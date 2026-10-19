@@ -1097,7 +1097,7 @@ void __time_critical_func(gwenesis_vdp_render_config)() {
  *
  ******************************************************************************/
 
-void gwenesis_vdp_render_line(int line) {
+void __time_critical_func(gwenesis_vdp_render_line)(int line) {  /* PBC: RAM, core 1 */
     uint8_t* line_buffer = &screen_buffer_line[__fast_mul(line, screen_width)];
     mode_h40 = REG12_MODE_H40;
     //mode_pal = REG1_PAL;

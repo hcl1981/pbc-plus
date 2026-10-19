@@ -1045,7 +1045,7 @@ void gwenesis_vdp_write_memory_8(unsigned int address, unsigned int value) {
 //static inline
 extern int system_clock;
 
-void gwenesis_vdp_write_memory_16(unsigned int address, unsigned int value) {
+void __not_in_flash_func(gwenesis_vdp_write_memory_16)(unsigned int address, unsigned int value) {  /* PBC: RAM */
     address = address & 0x1F;
 
     if (address < 0x4) {

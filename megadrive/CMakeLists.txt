@@ -19,11 +19,12 @@ endif()
 # above 1.30 V the RP2350 voltage limit has to be lifted (done in main.c).
 # The board's buck-boost converter is small, so higher settings may brown
 # out on AAA cells -- try upwards carefully.
-set(CPU_MHZ "300" CACHE STRING "System clock in MHz (e.g. 250, 300, 336, 378)")
-set(CPU_VREG "VREG_VOLTAGE_1_30" CACHE STRING "Core voltage (VREG_VOLTAGE_1_25 .. VREG_VOLTAGE_1_60)")
-set(FLASH_MAX_FREQ_MHZ "88" CACHE STRING "Upper limit for the flash (XIP) clock in MHz")
-set(PBC_SPI_HZ "62500000" CACHE STRING "ST7789 SPI clock request in Hz")
+set(CPU_MHZ "200" CACHE STRING "System clock in MHz (e.g. 250, 300, 336, 378)")
+set(CPU_VREG "VREG_VOLTAGE_1_15" CACHE STRING "Core voltage (VREG_VOLTAGE_1_25 .. VREG_VOLTAGE_1_60)")
+set(FLASH_MAX_FREQ_MHZ "100" CACHE STRING "Upper limit for the flash (XIP) clock in MHz")
+set(PBC_SPI_HZ "75000000" CACHE STRING "ST7789 SPI clock request in Hz")
 set(SHOW_FPS "0" CACHE STRING "Show fps and speed under the picture: 0/1")
+set(AUDIO_VOLUME "8" CACHE STRING "Volume of the stand-alone firmware: 0 = off, 1..12")
 set(Z80_SLICE_LINES "16" CACHE STRING "Run the Z80 every N scanlines")
 
 include(pico_sdk_import.cmake)
@@ -48,6 +49,9 @@ add_executable(pbc_megadrive
     src/menu.c
     src/rom_store.c
     src/ssf2.c
+    src/audio_pwm.c
+    src/ym_core1.c
+    src/ym2612_synth.c
     src/flash_fs.c
     src/usb_msc.c
     src/usb_descriptors.c
@@ -107,8 +111,10 @@ target_compile_definitions(pbc_megadrive PRIVATE
     FLASH_MAX_FREQ_MHZ=${FLASH_MAX_FREQ_MHZ}
     PBC_SPI_HZ=${PBC_SPI_HZ}u
     SHOW_FPS=${SHOW_FPS}
+    AUDIO_VOLUME=${AUDIO_VOLUME}
     Z80_SLICE_LINES=${Z80_SLICE_LINES}
-    PBC_NO_AUDIO=1
+    PBC_Z80_IN_RAM=1
+    PBC_YM_CORE1=1
     # Gwenesis / frank-genesis configuration
     PICO_ON_DEVICE=1
     ROM_SWAP=0

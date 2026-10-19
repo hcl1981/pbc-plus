@@ -141,6 +141,9 @@
 #include "ym2612.h"
 #include "gwenesis_bus.h"
 #include "gwenesis_savestate.h"
+#ifdef PBC_YM_CORE1
+#include "ym_core1.h"
+#endif
 
 typedef uint32_t UINT32;
 typedef uint16_t UINT16;
@@ -208,12 +211,22 @@ void ym_log(const char *subs, const char *fmt, ...) {
 *   TL_RES_LEN - sinus resolution (X axis)
 */
 #define TL_TAB_LEN (13*2*TL_RES_LEN)
+/* PBC: src/ym2612_synth.c builds this file a second time as core 1's
+ * synthesiser (PBC_YM_SYNTH); the read-only tables are shared. */
+#ifdef PBC_YM_SYNTH
+extern signed int tl_tab[TL_TAB_LEN];
+#else
 signed int tl_tab[TL_TAB_LEN];  /* non-static for assembly access */
+#endif
 
 #define ENV_QUIET    (TL_TAB_LEN>>3)
 
 /* sin waveform table in 'decibel' scale */
+#ifdef PBC_YM_SYNTH
+extern unsigned int sin_tab[SIN_LEN];
+#else
 unsigned int sin_tab[SIN_LEN];  /* non-static for assembly access */
+#endif
 
 /* sustain level table (3dB per step) */
 /* bit0, bit1, bit2, bit3, bit4, bit5, bit6 */
@@ -223,7 +236,7 @@ unsigned int sin_tab[SIN_LEN];  /* non-static for assembly access */
 /* 0 - 15: 0, 3, 6, 9,12,15,18,21,24,27,30,33,36,39,42,93 (dB)*/
 /* attenuation value (10 bits) = (SL << 2) << 3 */
 #define SC(db) (UINT32) ( db * (4.0/ENV_STEP) )
-static const UINT32 sl_table[16]={
+static __attribute__((section(".data.ym2612"))) UINT32 sl_table[16]={
  SC( 0),SC( 1),SC( 2),SC(3 ),SC(4 ),SC(5 ),SC(6 ),SC( 7),
  SC( 8),SC( 9),SC(10),SC(11),SC(12),SC(13),SC(14),SC(31)
 };
@@ -231,7 +244,7 @@ static const UINT32 sl_table[16]={
 
 
 #define RATE_STEPS (8)
-static const UINT8 eg_inc[19*RATE_STEPS]={
+static __attribute__((section(".data.ym2612"))) UINT8 eg_inc[19*RATE_STEPS]={
 
 /*cycle:0 1  2 3  4 5  6 7*/
 
@@ -264,7 +277,7 @@ static const UINT8 eg_inc[19*RATE_STEPS]={
 #define O(a) (a*RATE_STEPS)
 
 /*note that there is no O(17) in this table - it's directly in the code */
-static const UINT8 eg_rate_select[32+64+32]={  /* Envelope Generator rates (32 + 64 rates + 32 RKS) */
+static __attribute__((section(".data.ym2612"))) UINT8 eg_rate_select[32+64+32]={  /* Envelope Generator rates (32 + 64 rates + 32 RKS) */
 /* 32 infinite time rates (same as Rate 0) */
 O(18),O(18),O(18),O(18),O(18),O(18),O(18),O(18),
 O(18),O(18),O(18),O(18),O(18),O(18),O(18),O(18),
@@ -316,7 +329,7 @@ O(16),O(16),O(16),O(16),O(16),O(16),O(16),O(16)
 /*mask  2047, 1023, 511, 255, 127, 63, 31, 15, 7,  3, 1,  0,  0,  0,  0,  0 */
 
 #define O(a) (a*1)
-static const UINT8 eg_rate_shift[32+64+32]={  /* Envelope Generator counter shifts (32 + 64 rates + 32 RKS) */
+static __attribute__((section(".data.ym2612"))) UINT8 eg_rate_shift[32+64+32]={  /* Envelope Generator counter shifts (32 + 64 rates + 32 RKS) */
 /* 32 infinite time rates */
 /* O(0),O(0),O(0),O(0),O(0),O(0),O(0),O(0),
 O(0),O(0),O(0),O(0),O(0),O(0),O(0),O(0),
@@ -364,7 +377,7 @@ O( 0),O( 0),O( 0),O( 0),O( 0),O( 0),O( 0),O( 0)
 };
 #undef O
 
-static const UINT8 dt_tab[4 * 32]={
+static __attribute__((section(".data.ym2612"))) UINT8 dt_tab[4 * 32]={
 /* this is YM2151 and YM2612 phase increment data (in 10.10 fixed point format)*/
 /* FD=0 */
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -383,12 +396,12 @@ static const UINT8 dt_tab[4 * 32]={
 
 /* OPN key frequency number -> key code follow table */
 /* fnum higher 4bit -> keycode lower 2bit */
-static const UINT8 opn_fktable[16] = {0,0,0,0,0,0,0,1,2,3,3,3,3,3,3,3};
+static __attribute__((section(".data.ym2612"))) UINT8 opn_fktable[16] = {0,0,0,0,0,0,0,1,2,3,3,3,3,3,3,3};
 
 
 /* 8 LFO speed parameters */
 /* each value represents number of samples that one LFO level will last for */
-static const UINT32 lfo_samples_per_step[8] = {108, 77, 71, 67, 62, 44, 8, 5};
+static __attribute__((section(".data.ym2612"))) UINT32 lfo_samples_per_step[8] = {108, 77, 71, 67, 62, 44, 8, 5};
 
 
 /*There are 4 different LFO AM depths available, they are:
@@ -408,7 +421,7 @@ static const UINT32 lfo_samples_per_step[8] = {108, 77, 71, 67, 62, 44, 8, 5};
     1 for 5.9 dB
     0 for 11.8 dB
 */
-static const UINT8 lfo_ams_depth_shift[4] = {8, 3, 1, 0};
+static __attribute__((section(".data.ym2612"))) UINT8 lfo_ams_depth_shift[4] = {8, 3, 1, 0};
 
 
 
@@ -507,8 +520,10 @@ static const UINT8 lfo_pm_output[7*8][8]={
 };
 
 /* all 128 LFO PM waveforms */
-#if GW_TARGET
-static UINT8 lfo_pm_table[128*8*16];  /* 128 combinations of 7 bits meaningful (of F-NUMBER), 8 LFO depths, 32 LFO output levels per one depth */
+#if GW_TARGET && defined(PBC_YM_SYNTH)
+extern UINT8 lfo_pm_table[128*8*16];
+#elif GW_TARGET
+UINT8 lfo_pm_table[128*8*16];         /* PBC: shared with ym2612_synth.c */  /* 128 combinations of 7 bits meaningful (of F-NUMBER), 8 LFO depths, 32 LFO output levels per one depth */
 #else
 static INT32 lfo_pm_table[128*8*32] ;  /* 128 combinations of 7 bits meaningful (of F-NUMBER), 8 LFO depths, 32 LFO output levels per one depth */
 #endif
@@ -1427,7 +1442,7 @@ INLINE void update_phase_lfo_channel(FM_CH *CH)
 }
 
 /* update phase increment and envelope generator */
-INLINE void refresh_fc_eg_slot(FM_SLOT *SLOT , unsigned int fc , unsigned int kc )
+INLINE __attribute__((section(".time_critical.ym2612"))) void refresh_fc_eg_slot(FM_SLOT *SLOT , unsigned int fc , unsigned int kc )
 {
   /* add detune value */
   fc += SLOT->DT[kc];
@@ -1470,7 +1485,7 @@ INLINE void refresh_fc_eg_slot(FM_SLOT *SLOT , unsigned int fc , unsigned int kc
 }
 
 /* update phase increment counters */
-INLINE void refresh_fc_eg_chan(FM_CH *CH )
+INLINE __attribute__((section(".time_critical.ym2612"))) void refresh_fc_eg_chan(FM_CH *CH )
 {
   if( CH->SLOT[SLOT1].Incr==-1)
   {
@@ -1583,7 +1598,7 @@ INLINE void chan_calc(FM_CH *CH, int num)
 }
 
 /* write a OPN mode register 0x20-0x2f */
-INLINE void OPNWriteMode(int r, int v)
+INLINE __attribute__((section(".time_critical.ym2612"))) void OPNWriteMode(int r, int v)
 {
   UINT8 c;
   FM_CH *CH;
@@ -1639,7 +1654,7 @@ INLINE void OPNWriteMode(int r, int v)
 }
 
 /* write a OPN register (0x30-0xff) */
-INLINE void OPNWriteReg(int r, int v)
+INLINE __attribute__((section(".time_critical.ym2612"))) void OPNWriteReg(int r, int v)
 {
     //printf("Writereg %x:%x",r,v);
   FM_CH *CH;
@@ -2046,7 +2061,8 @@ void YM2612ResetChip(void)
 
 /* YM2612 execution */
 /* Generate samples for ym2612 */
-static inline void YM2612Update(int16_t *buffer, int length)
+/* PBC: synthesis and its small per-sample tables in RAM */
+static __attribute__((section(".time_critical.ym2612"))) void YM2612Update(int16_t *buffer, int length)
 {
   int i;
   int lt;
@@ -2259,18 +2275,26 @@ static inline void YM2612Update(int16_t *buffer, int length)
   INTERNAL_TIMER_B(length);
 }
 
-void ym2612_run(int target) {
+/* PBC: the YM2612 entry points run from RAM; the Z80 calls them for
+ * every register access (Sonic 2 streams DAC samples through them). */
+__attribute__((section(".time_critical.ym2612"))) void ym2612_run(int target) {
 
   if ( ym2612_clock >= target) {
     return;
   }
 
-#ifdef PBC_NO_AUDIO
-  /* PicoBoy Color Plus: no sound output. Skip the FM synthesis but keep
+  /* PicoBoy Color Plus with sound off: skip the FM synthesis but keep
    * timers A and B ticking at the sample rate, because sound drivers on
    * the Z80 (and a few 68K routines) poll the timer-overflow bits in the
    * status register and would otherwise wait forever. */
-  {
+#if defined(PBC_YM_CORE1) && !defined(PBC_YM_SYNTH)
+  /* PBC: core 0's copy only keeps the timers; with sound on, core 1
+   * synthesises from the write log (src/ym_core1.c). */
+  if (true) {
+#else
+  extern bool audio_enabled;
+  if (!audio_enabled) {
+#endif
     int samples = (target - ym2612_clock) / ym2612.divisor;
     if (samples <= 0) return;
     for (int i = 0; i < samples; i++) {
@@ -2282,15 +2306,13 @@ void ym2612_run(int target) {
     ym2612_clock += samples * ym2612.divisor;
     return;
   }
-#endif
 
   int ym2612_prev_index = ym2612_index;
   ym2612_index += (target-ym2612_clock) / ym2612.divisor;
   
   /* Bounds check - prevent buffer overflow */
-  /* Buffer size is 4096 samples */
-  if (ym2612_index > 4095) {
-    ym2612_index = 4095;
+  if (ym2612_index > GWENESIS_AUDIO_BUFFER_MAX) {
+    ym2612_index = GWENESIS_AUDIO_BUFFER_MAX;
   }
   
   if (ym2612_index > ym2612_prev_index) {
@@ -2312,11 +2334,19 @@ void ym2612_run(int target) {
 uint32_t ym_writes_total, ym_writes_dac, ym_writes_keyon, ym_keyon_nonzero;
 uint16_t ym_reg_hist[512];
 
-void YM2612Write(unsigned int a, unsigned int v,  int target)
+__attribute__((section(".time_critical.ym2612"))) void YM2612Write(unsigned int a, unsigned int v,  int target)
 {
     ym_writes_total++;
 
   ym_log(__FUNCTION__," %06x : %02x",a,v);
+
+#if defined(PBC_YM_CORE1) && !defined(PBC_YM_SYNTH)
+  {
+    extern bool audio_enabled;
+    if (audio_enabled)
+      ym_core1_log_ym(a, v, target);   /* core 1 replays it into its copy */
+  }
+#endif
 
   /* Sync audio generation up to this point before applying the write */
   if (GWENESIS_AUDIO_ACCURATE == 1)
@@ -2378,7 +2408,7 @@ void YM2612Write(unsigned int a, unsigned int v,  int target)
 
 uint32_t ym_reads_total, ym_read_last_status;
 
-unsigned int YM2612Read(int target)
+__attribute__((section(".time_critical.ym2612"))) unsigned int YM2612Read(int target)
 {
   ym_reads_total++;
   ym_read_last_status = ym2612.OPN.ST.status & 0xff;

@@ -30,7 +30,7 @@ cd spout && ./build.sh      # oder ein einzelnes Projekt
 | [`gbc`](gbc/) | Game Boy Color und klassischer Game Boy (Peanut-GB mit Farberweiterung), 1,5-fach vergrößert, Spielstände als `.sav`. | `gbc.uf2` |
 | [`c64`](c64/) | Commodore-64-Emulator (Frodo4 aus frank-c64). Disk-Images per USB-Stick-Modus, startet mit `LOAD"*",8,1`, Joystick-Port pro Spiel. | `c64.uf2` |
 | [`nes`](nes/) | NES-Emulator (QuickNES-Kern aus frank-nes), 240×240 Pixel 1:1, mit Ton. ROMs per USB-Stick-Modus. | `nes.uf2` |
-| [`megadrive`](megadrive/) | Sega-Genesis-/Mega-Drive-Emulator (Kern aus frank-genesis), ROM läuft direkt aus dem Flash, bis 5 MB inkl. Super Street Fighter II. ROMs per USB-Stick-Modus, ohne Ton. | `megadrive.uf2` |
+| [`megadrive`](megadrive/) | Sega-Genesis-/Mega-Drive-Emulator (Kern aus frank-genesis), ROM läuft direkt aus dem Flash, bis 5 MB inkl. Super Street Fighter II. ROMs per USB-Stick-Modus, mit Ton. | `megadrive.uf2` |
 | [`doom`](doom/) | Doom mit Mehrspieler über ein USB-C-Kabel. | `doom-usb-mp.uf2` |
 | [`jumpnbump`](jumpnbump/) | Jump 'n Bump für zwei gekoppelte Geräte. | `jumpnbump.uf2` |
 | [`i2collection`](i2collection/) | Neun Zweispieler-Spiele über USB-C: Tron, Pong, Duell, Artillerie, Bomber, Schach, Vier gewinnt, Käsekästchen. | `i2collection.uf2` |

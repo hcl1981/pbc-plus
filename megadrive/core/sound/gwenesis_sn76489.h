@@ -78,6 +78,7 @@ void gwenesis_SN76489_GetContext(uint8 *data);
 uint8 *gwenesis_SN76489_GetContextPtr();
 int gwenesis_SN76489_GetContextSize(void);
 void gwenesis_SN76489_Write(int data, int target);
+void gwenesis_SN76489_Apply(int data, int target);   /* PBC: core 1 */
 void gwenesis_SN76489_run(int target);
 
 void gwenesis_sn76489_save_state();

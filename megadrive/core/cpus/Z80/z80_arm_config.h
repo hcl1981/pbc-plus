@@ -12,7 +12,10 @@
  */
 
 /* Master switch: 0 = always C core, 1 = run ARM-ASM dispatch where enabled. */
-#define Z80_ARM_ENABLE 1
+/* PBC: 0. The ASM dispatch compares the opcode against up to ~240 values
+ * one after the other and hands the rest of the slice to ExecZ80 at the
+ * first opcode it lacks; with ExecZ80 in RAM the C core alone is faster. */
+#define Z80_ARM_ENABLE 0
 
 /* Chunk toggles (set to 1 to enable ASM handlers for these opcodes). */
 

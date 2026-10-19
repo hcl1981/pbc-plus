@@ -28,9 +28,13 @@
 #include <stdio.h>
 #include <math.h>
 #include <limits.h>
+#include <stdbool.h>
 #include "gwenesis_bus.h"
 #include "gwenesis_sn76489.h"
 #include "gwenesis_savestate.h"
+#ifdef PBC_YM_CORE1
+#include "ym_core1.h"
+#endif
 
 #define PSG_CUTOFF          0x6     /* Value below which PSG does not output */
 
@@ -281,25 +285,26 @@ static inline void gwenesis_SN76489_Update(INT16 *buffer, int length)
 }
 /* SN76589 execution */
 extern int scan_line;
-void gwenesis_SN76489_run(int target) {
+/* PBC: in RAM, it runs on every PSG write */
+__attribute__((section(".time_critical.sn76489"))) void gwenesis_SN76489_run(int target) {
 
 if ( sn76489_clock >= target) return;
 
-#ifdef PBC_NO_AUDIO
-  /* PicoBoy Color Plus: no sound output. The PSG has no state the CPUs
+  /* PicoBoy Color Plus with sound off: the PSG has no state the CPUs
    * can read back, so skipping sample generation entirely is invisible
    * to the game. Only the clock advances. */
-  sn76489_clock = target;
-  return;
-#endif
+  extern bool audio_enabled;
+  if (!audio_enabled) {
+    sn76489_clock = target;
+    return;
+  }
 
   int sn76489_prev_index = sn76489_index;
   sn76489_index += (target-sn76489_clock) / gwenesis_SN76489.divisor;
   
   /* Bounds check - prevent buffer overflow */
-  /* Buffer size is 4096 samples */
-  if (sn76489_index > 4095) {
-    sn76489_index = 4095;
+  if (sn76489_index > GWENESIS_AUDIO_BUFFER_MAX) {
+    sn76489_index = GWENESIS_AUDIO_BUFFER_MAX;
   }
   
   if (sn76489_index > sn76489_prev_index) {
@@ -311,7 +316,20 @@ if ( sn76489_clock >= target) return;
 }
 uint32_t psg_writes_total;
 
+#ifdef PBC_YM_CORE1
+/* PBC: with sound on, the PSG only runs on core 1: core 0 logs the write
+ * and core 1 applies it (gwenesis_SN76489_Apply) at the same time. */
 void gwenesis_SN76489_Write(int data, int target)
+{
+  extern bool audio_enabled;
+  if (audio_enabled)
+    ym_core1_log_psg(data, target);
+}
+
+void gwenesis_SN76489_Apply(int data, int target)
+#else
+void gwenesis_SN76489_Write(int data, int target)
+#endif
 {
     psg_writes_total++;
   if (GWENESIS_AUDIO_ACCURATE == 1)

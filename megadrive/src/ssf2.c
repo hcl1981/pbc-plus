@@ -7,7 +7,6 @@
 #include "ssf2.h"
 
 extern unsigned char *ROM_DATA;
-void rom_cache_init(void);                      /* core/bus: copies of ROM pages */
 
 #define BANK_SIZE   0x80000u                    /* 512 KB */
 #define MB          0x100000u
@@ -39,7 +38,6 @@ static void map_upper(void)
         phys = rom_store_phys(bank[6] * BANK_SIZE);
     atrans(2, phys, 4 * MB);
     xip_cache_invalidate_all();                 /* the cache sees virtual addresses */
-    rom_cache_init();
 }
 
 bool ssf2_init(void)

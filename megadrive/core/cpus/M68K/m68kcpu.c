@@ -11,13 +11,8 @@ extern int vdp_68k_irq_ack(int int_level);
 /* ================================ INCLUDES ============================== */
 /* ======================================================================== */
 
-#ifndef BUILD_TABLES
-  #ifndef TABLES_FULL
-    #include "m68ki_cycles.h"
-  #else
-    #include "m68ki_cycles_full.h"
-  #endif
-#endif
+/* PBC: the opcode and cycle tables are packed into RAM (m68ki_dispatch.h,
+ * included from m68kops.h); m68ki_cycles.h is no longer used. */
 
 #include "m68kconf.h"
 #include "m68kcpu.h"
@@ -178,9 +173,8 @@ void m68k_check_profile_report(void) {
 /* ====================== EXPORTS FOR ASSEMBLY CORE ====================== */
 /* ======================================================================== */
 
-/* Export pointers to static tables for assembly-optimized core */
-const unsigned char *m68k_cycles_table = m68ki_cycles;
-void (**m68k_instruction_table)(void) = (void (**)(void))m68ki_instruction_jump_table;
+/* PBC: the table pointers for the assembly core (m68k_core_opt.S, not
+ * built) are gone with the flat tables, see m68ki_dispatch.h. */
 
 /* Helper function for assembly core - fetches next instruction word */
 uint16_t m68k_fetch_opcode(void) {
@@ -482,14 +476,14 @@ void m68k_set_irq_delay(unsigned int int_level)
     if ((REG_IR & 0xF000) != 0x2000)
     {
       /* Finish executing current instruction */
-      USE_CYCLES(CYC_INSTRUCTION[REG_IR]);
+      USE_CYCLES(m68ki_op_cycles(REG_IR));
 
       /* One instruction delay before interrupt */
       irq_latency = 1;
       m68ki_trace_t1() /* auto-disable (see m68kcpu.h) */
       m68ki_use_data_space() /* auto-disable (see m68kcpu.h) */
       REG_IR = m68ki_read_imm_16();
-      m68ki_instruction_jump_table[REG_IR]();
+      m68ki_decode(REG_IR)->handler();
       m68ki_exception_if_trace() /* auto-disable (see m68kcpu.h) */
       irq_latency = 0;
     }
@@ -506,7 +500,8 @@ void m68k_set_irq_delay(unsigned int int_level)
   m68ki_check_interrupts(); /* Level triggered (IRQ) */
 }
 
-void m68k_run(unsigned int cycles) 
+/* PBC: in RAM like the tables, so the dispatch loop never waits on XIP */
+void __attribute__((section(".time_critical.m68k_run"))) m68k_run(unsigned int cycles)
 {
     //  printf("m68K_run current_cycles=%d add=%d STOP=%x\n",m68k.cycles,cycles,CPU_STOPPED);
 
@@ -556,8 +551,9 @@ void m68k_run(unsigned int cycles)
 //    printf("PC=%x IR=%x CYCLES=%d \n",m68k.pc,REG_IR,CYC_INSTRUCTION[REG_IR]);
 
     /* Execute instruction */
-    m68ki_instruction_jump_table[REG_IR]();
-    USE_CYCLES(CYC_INSTRUCTION[REG_IR]);
+    const m68ki_op_t *op = m68ki_decode(REG_IR);
+    op->handler();
+    USE_CYCLES(op->cycles);
 
     /* Trace m68k_exception, if necessary */
     m68ki_exception_if_trace(); /* auto-disable (see m68kcpu.h) */
@@ -566,7 +562,7 @@ void m68k_run(unsigned int cycles)
 
 int m68k_cycles(void)
 {
-  return CYC_INSTRUCTION[REG_IR];
+  return m68ki_op_cycles(REG_IR);
 }
 
 int m68k_cycles_run(void)

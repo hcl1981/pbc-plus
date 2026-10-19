@@ -9,8 +9,10 @@
  *     partition, taken from PicoBoyGB (flash_fs.c, usb_msc.c)
  *   - no HDMI: the frame is scaled to 240 px wide and streamed to the
  *     ST7789 while it is being drawn (video.c)
- *   - no audio: sound synthesis is compiled out (PBC_NO_AUDIO), the Z80
- *     still runs and the YM2612 timers still tick so games behave
+ *   - sound: core 0 logs the YM2612/PSG writes, core 1 synthesises them
+ *     at the chip's own 53 kHz between drawing lines and averages down to
+ *     22 kHz for the PWM speaker (ym_core1.c, audio_pwm.c as in ../sms).
+ *     With sound off only the YM2612 timers tick, so games behave the same
  *
  * Boot:
  *   A or B held  -> USB stick mode (drive "PBC-ROMS"), eject restarts
@@ -26,6 +28,8 @@
 #include "hardware/watchdog.h"
 #include "hardware/sync.h"
 #include "hardware/structs/qmi.h"
+#include "hardware/structs/scb.h"
+#include "hardware/dma.h"
 
 #include "ff.h"
 #include "tusb.h"
@@ -39,6 +43,8 @@
 #include "rom_store.h"
 #include "ssf2.h"
 #include "video.h"
+#include "audio_pwm.h"
+#include "ym_core1.h"
 #include "HDMI.h"
 
 #include "bus/gwenesis_bus.h"
@@ -52,13 +58,13 @@
 
 /* ---- build-time configuration (see CMakeLists.txt) ---------------------- */
 #ifndef CPU_MHZ
-#define CPU_MHZ 300
+#define CPU_MHZ 200
 #endif
 #ifndef CPU_VREG
-#define CPU_VREG VREG_VOLTAGE_1_30
+#define CPU_VREG VREG_VOLTAGE_1_15
 #endif
 #ifndef FLASH_MAX_FREQ_MHZ
-#define FLASH_MAX_FREQ_MHZ 88
+#define FLASH_MAX_FREQ_MHZ 100
 #endif
 #ifndef SHOW_FPS
 #define SHOW_FPS 0
@@ -89,12 +95,15 @@ unsigned int lines_per_frame = LINES_PER_FRAME_NTSC;
 int scan_line;
 unsigned int frame_counter;
 
-bool audio_enabled   = false;
+bool audio_enabled   = false;          /* sound on: synthesise YM2612 + PSG */
 bool sn76489_enabled = false;
 bool ym2612_enabled  = false;
 bool z80_enabled     = true;
 
-int16_t *gwenesis_sn76489_buffer;          /* unused with PBC_NO_AUDIO */
+/* PSG samples, made on core 1 (ym_core1.c); core 0's YM2612 copy only
+ * keeps the timers and never writes samples. */
+static int16_t psg_buf[GWENESIS_AUDIO_BUFFER_MAX];
+int16_t *gwenesis_sn76489_buffer = psg_buf;
 int16_t *gwenesis_ym2612_buffer;
 volatile int sn76489_index, sn76489_clock;
 volatile int ym2612_index, ym2612_clock;
@@ -262,6 +271,9 @@ static void overclock(void)
             set_flash_timings(250);
             set_sys_clock_khz(250000, true);
         }
+    } else if (CPU_MHZ < 150) {
+        /* below the boot clock: the boot flash timing stays valid */
+        set_sys_clock_khz(CPU_MHZ * 1000, false);
     }
     /* clk_peri follows clk_sys: re-derive the SPI divider. */
     spi_set_baudrate(PBC_SPI, PBC_SPI_HZ);
@@ -320,6 +332,7 @@ static void core1_main(void)
             vdp_job_done = true;
         }
         video_service();
+        ym_core1_service();
     }
 }
 
@@ -337,8 +350,8 @@ static void genesis_init(void)
     m68k_init();
     m68k_pulse_reset();
 
-    /* The FM synthesis is compiled out, but the chip state (timers, status)
-     * still has to be correct. */
+    /* With sound off the FM synthesis is skipped, but the chip state
+     * (timers, status) still has to be correct. */
     YM2612Init();
     YM2612ResetChip();
     YM2612Config(YM2612_DISCRETE);
@@ -363,6 +376,9 @@ static void __attribute__((noreturn)) emulation_loop(void)
     uint64_t stat_t0 = time_us_64();
     uint32_t stat_drawn = 0, stat_emulated = 0;
     uint64_t stat_busy_us = 0;          /* core 0 time not spent sleeping */
+    uint32_t stat_z80_us = 0;           /* ... of that in the Z80 */
+    uint32_t stat_vdp_us = 0;           /* ... waiting for or drawing lines */
+    uint32_t stat_ym_us0 = ym_core1_busy_us;
 
     screen_width = 320;
     screen_height = 224;
@@ -409,7 +425,8 @@ static void __attribute__((noreturn)) emulation_loop(void)
 
         extern volatile int zclk;
         zclk = 0;
-        sn76489_clock = sn76489_index = 0;
+        if (!audio_enabled)
+            sn76489_clock = sn76489_index = 0;  /* else core 1's */
         ym2612_clock = ym2612_index = 0;
 
         while (scan_line < (int)lines_per_frame) {
@@ -422,8 +439,11 @@ static void __attribute__((noreturn)) emulation_loop(void)
                 (scan_line == (int)lines_per_frame - 1) ||
                 (scan_line == screen_height - 1) ||
                 (scan_line == screen_height);
-            if (z80_due)
+            if (z80_due) {
+                uint32_t t = timer_hw->timerawl;
                 sound_z80_run(system_clock + VDP_CYCLES_PER_LINE);
+                stat_z80_us += timer_hw->timerawl - t;
+            }
 
             if (scan_line == 0 || scan_line > screen_height)
                 hint_counter = gwenesis_vdp_regs[10];
@@ -440,7 +460,9 @@ static void __attribute__((noreturn)) emulation_loop(void)
                 /* Palette in force for this line, before the next line's
                  * emulation can split it. */
                 hdmi_line_lut[scan_line] = vdp_palette_current_lut();
+                uint32_t t = timer_hw->timerawl;
                 vdp_pipeline_post(scan_line);
+                stat_vdp_us += timer_hw->timerawl - t;
             }
             scan_line++;
 
@@ -456,10 +478,18 @@ static void __attribute__((noreturn)) emulation_loop(void)
 
             system_clock += VDP_CYCLES_PER_LINE;
         }
-        sound_frame_end(888 * AUDIO_FREQ_DIVISOR);
+        if (audio_enabled) {
+            ym2612_run(system_clock);           /* core 0: timers */
+            ym_core1_frame_end(system_clock, is_pal);
+        } else {
+            sound_frame_end(system_clock);
+        }
 
-        if (render)
+        if (render) {
+            uint32_t t = timer_hw->timerawl;
             vdp_pipeline_sync();            /* retire the last line in flight */
+            stat_vdp_us += timer_hw->timerawl - t;
+        }
 
         frame_counter++;
         m68k.cycles -= system_clock;
@@ -478,20 +508,65 @@ static void __attribute__((noreturn)) emulation_loop(void)
         if (render)
             stat_drawn++;
         if (show_stats && (now = time_us_64()) - stat_t0 >= 1000000) {
-            char s[32];
+            char s[48];
             uint32_t full = is_pal ? 50 : 60;
+            uint64_t span = now - stat_t0;
             /* CPU: share of real time core 0 was working rather than
-             * waiting for the next frame. Near 100 % means no headroom. */
-            snprintf(s, sizeof s, "%lufps %lu%% CPU%lu%%",
+             * waiting for the next frame. Near 100 % means no headroom.
+             * Z: of that in the Z80, V: waiting for core 1 or drawing a
+             * line itself; the rest is the 68000. S: core 1's time spent
+             * on the sound. */
+            uint32_t ym_us = ym_core1_busy_us;
+            snprintf(s, sizeof s, "%lufps %lu%% CPU%lu%% Z%lu V%lu S%lu",
                      (unsigned long)stat_drawn,
                      (unsigned long)(stat_emulated * 100 / full),
-                     (unsigned long)(stat_busy_us * 100 / (now - stat_t0)));
+                     (unsigned long)(stat_busy_us * 100 / span),
+                     (unsigned long)(stat_z80_us * 100ull / span),
+                     (unsigned long)(stat_vdp_us * 100ull / span),
+                     (unsigned long)((ym_us - stat_ym_us0) * 100ull / span));
+            stat_ym_us0 = ym_us;
             video_set_status(s);
             stat_t0 = now;
             stat_drawn = stat_emulated = 0;
             stat_busy_us = 0;
+            stat_z80_us = stat_vdp_us = 0;
         }
     }
+}
+
+/* ---- crash report ------------------------------------------------------- */
+
+/* A fault would otherwise end in a lockup and a silent restart. Show where
+ * it happened instead (PC/LR from the exception frame, fault status), so
+ * the address can be looked up in the .elf. */
+void __attribute__((used, noreturn)) hardfault_report(const uint32_t *frame)
+{
+    uint core = get_core_num();
+    if (core == 0)
+        multicore_reset_core1();
+    dma_hw->abort = (1u << NUM_DMA_CHANNELS) - 1;
+    while (dma_hw->abort)
+        tight_loop_contents();
+    char l[4][32];
+    snprintf(l[0], sizeof l[0], "CRASH on core %u", core);
+    snprintf(l[1], sizeof l[1], "PC %08lx", (unsigned long)frame[6]);
+    snprintf(l[2], sizeof l[2], "LR %08lx", (unsigned long)frame[5]);
+    snprintf(l[3], sizeof l[3], "CFSR %08lx", (unsigned long)scb_hw->cfsr);
+    pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
+    for (int i = 0; i < 4; i++)
+        pbc_display_text(16, 80 + i * 24, l[i], i ? PBC_WHITE : PBC_RED, PBC_BLACK, 2);
+    for (;;)
+        tight_loop_contents();
+}
+
+void __attribute__((naked)) isr_hardfault(void)
+{
+    __asm volatile(
+        "tst lr, #4      \n"
+        "ite eq          \n"
+        "mrseq r0, msp   \n"
+        "mrsne r0, psp   \n"
+        "b hardfault_report \n");
 }
 
 /* ---- main ---------------------------------------------------------------- */
@@ -555,13 +630,17 @@ int main(void)
     }
     fs_unmount();
 
+    int volume;
 #if PBC_MULTI
     show_stats = pbc_launch_stats();
     video_set_mode((int)pbc_launch_video());
+    volume = launch->sound ? launch->volume : 0;
 #else
     show_stats = SHOW_FPS;
     video_set_mode(VIDEO_FIT);
+    volume = AUDIO_VOLUME;          /* no options menu in this firmware */
 #endif
+    audio_enabled = sn76489_enabled = volume > 0;
 
     ROM_DATA = (unsigned char *)rom_store_data();
     ssf2_init();                    /* Super Street Fighter II: bank switching */
@@ -583,7 +662,11 @@ int main(void)
     menu_wait_release();
 
     overclock();
+    audio_pwm_init();               /* after the clock change: PWM carrier */
+    audio_pwm_set_volume(volume);
     genesis_init();
+    if (audio_enabled)
+        ym_core1_init();
     multicore_launch_core1(core1_main);
 
     emulation_loop();

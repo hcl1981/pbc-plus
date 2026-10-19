@@ -13,12 +13,13 @@ der PBC+. Deshalb ist hier alles drumherum ersetzt:
 | ROM im PSRAM (4 MB) | ROM im **Flash**, wird direkt per XIP ausgeführt |
 | ROMs von SD-Karte | ROMs per **USB-Stick-Modus** in eine FatFs-Partition im Flash (aus [PicoBoyGB](../picoboygb/)) |
 | HDMI 320×240 | **ST7789**: Bild auf 240 Pixel Breite verkleinert, wird schon während des Zeichnens per DMA gesendet |
-| YM2612 + SN76489 über I2S | **kein Ton**: Klangerzeugung abgeschaltet, Z80 und YM2612-Timer laufen weiter |
+| YM2612 + SN76489 über I2S | Ton über den **PWM-Lautsprecher**, synthetisiert auf Core 1 |
 | Einstellungsmenü, SNES-Pad, USB-HID | entfallen |
 
-**Stand:** läuft auf dem Gerät mit 101 % Tempo bei 300 MHz (~34 gezeichnete Bilder/s).
-Ein Versuch mit Ton über den PWM-Lautsprecher lief langsamer und instabil und
-wurde wieder entfernt.
+**Stand:** läuft auf dem Gerät mit Ton bei 200 MHz in vollem Tempo; Sonic 2:
+`47fps 100% CPU99% Z13 V27 S47`. Ohne Ton (in PBCemu abschaltbar) rund 55 %
+Last. Mit Ton bei 300 MHz / 1,30 V startete das Gerät neu (Spannungswandler,
+siehe unten), bei 200 MHz / 1,15 V nicht.
 
 Die Oberfläche auf dem Gerät ist englisch (Menüs, Optionen, Meldungen, Hilfedatei auf dem Laufwerk).
 
@@ -60,11 +61,21 @@ B für die Kombinationen reserviert: **C gleichzeitig mit A oder B geht nicht.**
 
 Zurück zur Spieleliste geht es mit RESET.
 
-Mit `-DSHOW_FPS=1` gebaut, steht unter dem Bild z. B. `34fps 101% CPU93%`: gezeichnete Bilder pro
-Sekunde, Emulationstempo (100 % = Originalgeschwindigkeit) und wie viel der
-Zeit Kern 0 arbeitet statt auf das nächste Bild zu warten. Bleibt CPU deutlich
-unter 100 %, ist Luft zum Heruntertakten. In PBCemu schaltet man die Anzeige
-in den Einstellungen des Starters ein.
+Mit `-DSHOW_FPS=1` gebaut, steht unter dem Bild z. B. `47fps 100% CPU99% Z13 V27 S47`:
+gezeichnete Bilder pro Sekunde, Emulationstempo (100 % = Originalgeschwindigkeit),
+wie viel der Zeit Kern 0 arbeitet statt auf das nächste Bild zu warten, davon
+Z im Z80 und V im Warten auf Kern 1 bzw. beim selbst Zeichnen einer Zeile;
+S ist der Anteil von Kern 1 für den Ton. Bleibt CPU deutlich unter 100 %, ist
+Luft zum Heruntertakten. In PBCemu schaltet man die Anzeige in den
+Einstellungen des Starters ein.
+
+**Ton:** in PBCemu in den Optionen ein-/ausschaltbar, mit Lautstärke. Die
+Einzel-Firmware hat kein Optionsmenü und spielt mit Lautstärke 8
+(`-DAUDIO_VOLUME=0` schaltet den Ton ab).
+
+**Absturzanzeige:** Läuft ein Kern auf einen Fehler, zeigt das Display
+`CRASH on core …` mit PC, LR und CFSR, statt still neu zu starten. Die
+Adressen lassen sich in `build/pbc_megadrive.elf` nachschlagen.
 
 **Anzeigemodi** (in PBCemu wählbar, die Einzel-Firmware nutzt „Fit width“):
 
@@ -78,7 +89,7 @@ in den Einstellungen des Starters ein.
 ```bash
 ./build.sh                       # -> ../dist/megadrive.uf2
 ./build.sh clean                 # Bauordner neu anlegen
-./build.sh -DCPU_MHZ=336 -DCPU_VREG=VREG_VOLTAGE_1_35
+./build.sh -DCPU_MHZ=250 -DCPU_VREG=VREG_VOLTAGE_1_25
 ```
 
 Werkzeuge und SDK wie bei allen Projekten dieses Repos, siehe
@@ -89,11 +100,12 @@ statt der sonst üblichen MinSizeRel-Vorgabe.
 
 | Option | Vorgabe | Bedeutung |
 |---|---|---|
-| `CPU_MHZ` | 300 | Systemtakt |
-| `CPU_VREG` | `VREG_VOLTAGE_1_30` | Kernspannung. Über 1,30 V wird die Sperre des RP2350 aufgehoben |
-| `FLASH_MAX_FREQ_MHZ` | 88 | Obergrenze für den Flash-Takt (bei 300 MHz: 75 MHz) |
-| `PBC_SPI_HZ` | 62 500 000 | Display-SPI. Der Teiler hängt vom Systemtakt ab: bei 300 MHz werden daraus 50 MHz, mit `75000000` 75 MHz |
+| `CPU_MHZ` | 200 | Systemtakt (unter 150 wird heruntergetaktet) |
+| `CPU_VREG` | `VREG_VOLTAGE_1_15` | Kernspannung. Über 1,30 V wird die Sperre des RP2350 aufgehoben |
+| `FLASH_MAX_FREQ_MHZ` | 100 | Obergrenze für den Flash-Takt (bei 200 und 300 MHz: 100 MHz) |
+| `PBC_SPI_HZ` | 75 000 000 | Display-SPI. Der Teiler hängt vom Systemtakt ab: 200 MHz ergibt 50 MHz, 150 und 300 MHz ergeben 75 MHz (über dem Datenblattwert, läuft auf dem Gerät sauber) |
 | `SHOW_FPS` | 0 | Anzeige unter dem Bild (fps, Tempo, Last) |
+| `AUDIO_VOLUME` | 8 | Lautstärke der Einzel-Firmware, 0 = aus |
 | `Z80_SLICE_LINES` | 16 | Z80 alle N Zeilen ausführen |
 
 **Vorsicht beim Takt:** Der Spannungswandler des PBC+ ist klein (150–250 mA).
@@ -120,15 +132,49 @@ src/display.c     ST7789-Treiber (DMA-Strom + Text), wie in ../spout und ../noiz
 src/input.c       Tastenbelegung mit Mitte als C/Modifier
 src/menu.c        Spieleliste, Meldungen, Fortschrittsbalken
 src/rom_store.c   ROM aus FatFs in den Flash schreiben (inkl. .smd), prüfen
+src/ym_core1.c    Ton auf Core 1: Schreibprotokoll abspielen, mischen, auf 22 kHz
+src/ym2612_synth.c  zweite Übersetzung von core/sound/ym2612.c für Core 1
+src/audio_pwm.c   PWM-Lautsprecher, wie in ../sms
+tools/m68k_dispatch.py  packt die 68000-Befehlstabellen für den RAM
 src/HDMI.h        Ersatz für den HDMI-Header, den der VDP-Kern einbindet
 src/flash_fs.*, usb_*.c, tusb_config.h, fatfs/   aus ../picoboygb
 core/             Emulatorkern aus frank-genesis
 ```
 
-Änderungen am Kern sind auf zwei Stellen beschränkt, beide hinter
-`PBC_NO_AUDIO`: `ym2612_run()` erzeugt keine Samples mehr, lässt aber Timer A/B
-weiterlaufen (Soundtreiber fragen deren Überlauf-Bits ab), und
-`gwenesis_SN76489_run()` zählt nur noch die Zeit weiter.
+### Änderungen am Kern
+
+Fast alles betrifft die Geschwindigkeit. Der Flash hat nur 16 KB Cache, und
+aus ihm kommen Spiel-ROM und Emulatorcode zugleich; alles, was pro Befehl
+oder pro Sample gebraucht wird, liegt deshalb im RAM.
+
+- **68000:** Die Befehlstabelle (Routine je Opcode) und die Taktzahltabelle
+  lagen mit zusammen 320 KB im Flash; jeder Befehl verfehlte meist den Cache.
+  Die Taktzahl hängt nur von der Routine ab, und viele 32er-Abschnitte der
+  Tabelle wiederholen sich. `tools/m68k_dispatch.py` packt beides deshalb
+  verlustfrei in drei Tabellen mit zusammen 42 KB
+  (`core/cpus/M68K/m68ki_dispatch.h`), die im RAM liegen, ebenso
+  `m68k_run()`. Nebenbei gefunden: Die alte Tabelle endete bei $EFBF,
+  Line-F-Opcodes lasen dahinter einen falschen Sprungzeiger.
+- **Z80:** Der Assembler-Kern aus frank-genesis war ein Zwischenstand. Er
+  verglich jeden Opcode der Reihe nach mit bis zu 240 Werten und gab beim
+  ersten fehlenden an den C-Kern im Flash ab. Jetzt läuft nur der C-Kern,
+  samt Tabellen im RAM (`PBC_Z80_IN_RAM`). Z-Anteil bei Sonic 2: 61 % → 8 %.
+- **ROM-Zwischenspeicher entfernt:** frank-genesis kopierte ROM-Seiten (68000)
+  und 32-KB-Bänke (Z80) aus dem PSRAM in den RAM. Aus dem Flash ist das nur
+  eine Kopie des XIP-Caches; die Z80-Bänke kosteten bei jedem Wechsel 32 KB
+  Kopie, und bei SSF2 hätten die ROM-Seiten nach einem Bankwechsel veraltet
+  sein können. Beide lesen jetzt direkt; das macht 96 KB RAM frei.
+- **VDP:** `gwenesis_vdp_render_line()` und `gwenesis_vdp_write_memory_16()`
+  im RAM.
+- **Ton:** Ist er aus, erzeugt `ym2612_run()` keine Samples, lässt aber Timer
+  A/B weiterlaufen (Soundtreiber fragen deren Überlauf-Bits ab), und
+  `gwenesis_SN76489_run()` zählt nur die Zeit weiter. Ist er an, schreibt
+  Kern 0 jeden YM2612-/PSG-Zugriff mit Zeitstempel in einen Ring
+  (`PBC_YM_CORE1`); seine eigene YM2612-Kopie führt nur Timer und Status.
+  Kern 1 spielt den Ring zwischen den Zeilen in kleinen Schritten in eine
+  zweite Kopie (`src/ym2612_synth.c`) und den PSG ein, mittelt die 53 kHz
+  des Chips auf 22 kHz und gibt jedes Bild an den Lautsprecher. Die
+  Synthese und ihre kleinen Tabellen liegen im RAM.
 
 ### Wie das Bild aufs Display kommt
 

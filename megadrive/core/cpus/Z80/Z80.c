@@ -12,8 +12,18 @@
 /**     commercially. Please, notify me, if you make any    **/   
 /**     changes to this file.                               **/
 /*************************************************************/
-#if GNW_TARGET_MARIO !=0 || GNW_TARGET_ZELDA!=0
+#if GNW_TARGET_MARIO !=0 || GNW_TARGET_ZELDA!=0 || defined(PBC_Z80_IN_RAM)
   #pragma GCC optimize("Ofast")
+#endif
+
+/* PBC: the interpreter and its small tables run from RAM; from flash they
+ * fought the 68K core and the game ROM for the XIP cache. */
+#ifdef PBC_Z80_IN_RAM
+#define Z80_RAM_FUNC __attribute__((section(".time_critical.z80")))
+#define Z80_RAM_DATA __attribute__((section(".data.z80")))
+#else
+#define Z80_RAM_FUNC
+#define Z80_RAM_DATA const
 #endif
 
 #define GENESIS 1
@@ -339,7 +349,7 @@ enum CodesED
   DB_F8,DB_F9,DB_FA,DB_FB,DB_FC,DB_FD,DB_FE,DB_FF
 };
 
-static void CodesCB(register Z80 *R)
+static Z80_RAM_FUNC void CodesCB(register Z80 *R)
 {
   register byte I;
 
@@ -358,7 +368,7 @@ static void CodesCB(register Z80 *R)
   }
 }
 
-static void CodesDDCB(register Z80 *R)
+static Z80_RAM_FUNC void CodesDDCB(register Z80 *R)
 {
   register pair J;
   register byte I;
@@ -381,7 +391,7 @@ static void CodesDDCB(register Z80 *R)
 #undef XX
 }
 
-static void CodesFDCB(register Z80 *R)
+static Z80_RAM_FUNC void CodesFDCB(register Z80 *R)
 {
   register pair J;
   register byte I;
@@ -404,7 +414,7 @@ static void CodesFDCB(register Z80 *R)
 #undef XX
 }
 
-static void CodesED(register Z80 *R)
+static Z80_RAM_FUNC void CodesED(register Z80 *R)
 {
   register byte I;
   register pair J;
@@ -426,7 +436,7 @@ static void CodesED(register Z80 *R)
   }
 }
 
-static void CodesDD(register Z80 *R)
+static Z80_RAM_FUNC void CodesDD(register Z80 *R)
 {
   register byte I;
   register pair J;
@@ -453,7 +463,7 @@ static void CodesDD(register Z80 *R)
 #undef XX
 }
 
-static void CodesFD(register Z80 *R)
+static Z80_RAM_FUNC void CodesFD(register Z80 *R)
 {
   register byte I;
   register pair J;
@@ -519,7 +529,7 @@ int GetRunCyclesZ80(register Z80 *R)
 {
   return(R->ICount - R->RunCycles);
 }
-int ExecZ80(register Z80 *R,register int RunCycles)
+Z80_RAM_FUNC int ExecZ80(register Z80 *R,register int RunCycles)
 {
   register byte I;
   register pair J;
@@ -575,7 +585,7 @@ int ExecZ80(register Z80 *R,register int RunCycles)
 /** IntZ80() *************************************************/
 /** This function will generate interrupt of given vector.  **/
 /*************************************************************/
-void IntZ80(Z80 *R,word Vector)
+Z80_RAM_FUNC void IntZ80(Z80 *R,word Vector)
 {
   /* If HALTed, take CPU off HALT instruction */
   if(R->IFF&IFF_HALT) { R->PC.W++;R->IFF&=~IFF_HALT; }

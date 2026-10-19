@@ -130,13 +130,12 @@ static void m68k_op_1010(void)
   m68ki_exception_1010();
 }
 
-#ifdef TABLES_FULL
-
+/* PBC: always built; the short table stopped at 0xEFBF and line-F
+ * opcodes read past its end, the packed one covers all 64K. */
 static void m68k_op_1111(void)
 {
   m68ki_exception_1111();
 }
-#endif
 
 static void m68k_op_abcd_8_rr(void)
 {
@@ -23672,11 +23671,8 @@ static void m68k_op_unlk_32(void)
 
 #ifndef BUILD_TABLES
 
-  #ifndef TABLES_FULL
-    #include "m68ki_instruction_jump_table.h"
-  #else
-    #include "m68ki_instruction_jump_table_full.h"
-  #endif
+  /* PBC: packed into RAM, see tools/m68k_dispatch.py */
+  #include "m68ki_dispatch.h"
 #else
 
 /* This is used to generate the opcode handler jump table */

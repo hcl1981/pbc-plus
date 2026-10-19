@@ -32,7 +32,7 @@ getestet, auch nicht der Sprung vom Starter in die Emulatoren.
 
 | Zeile | Wirkung |
 |---|---|
-| Sound / Volume | Ton und Lautstärke, für alle Systeme außer Mega Drive (der Emulator hat keinen Ton) |
+| Sound / Volume | Ton und Lautstärke, für alle Systeme |
 | Display | Anzeigemodus des Systems (gemerkt je System) |
 | Show FPS | blendet im Spiel Bilder/s, Tempo in % des Originals und Auslastung von Kern 0 ein, z. B. `60fps 100% CPU71%` |
 | Joystick / Program | nur bei C64-Spielen: Port und Programm auf der Diskette |

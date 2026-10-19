@@ -70,94 +70,22 @@ unsigned char M68K_RAM[MAX_RAM_SIZE];    // 68K RAM
 #endif
 
 /*******************************************************************************
- * M68K ROM Page Cache - caches hot ROM pages in fast SRAM
- * Uses 60KB (15 x 4KB pages) with direct-mapped addressing
+ * M68K ROM data reads
+ *
+ * PBC: the ROM sits in XIP flash, so a data read goes straight to it. The
+ * 32 KB page cache that frank-genesis kept here (copies out of PSRAM) only
+ * duplicated the XIP cache and is better spent on the opcode tables; with
+ * SSF2 it would also have kept stale pages across bank switches.
  ******************************************************************************/
-#define ROM_CACHE_PAGE_SIZE     4096    /* 4KB per page */
-#define ROM_CACHE_PAGE_SHIFT    12      /* log2(4096) */
-/* Must be a power of two: the slot index is (page_num & MASK), so with
- * 15 pages the mask was 14, which clears bit 0 — adjacent 4 KB ROM pages
- * then shared a slot and evicted each other, and only 8 of the 15 slots
- * were ever used. Each eviction copies 4 KB out of PSRAM. */
-#ifndef ROM_CACHE_NUM_PAGES
-/* 8 pages = 32 KB. The broken mask meant only 8 slots were ever
- * reachable, so this is no smaller than what actually shipped, is
- * indexed correctly, and returns 32 KB of SRAM. It measured zero hits
- * and zero misses on Comix Zone — the 68K reaches ROM through the inline
- * FETCH macros — so it is worth removing outright once another game
- * confirms this path is genuinely unused. */
-#define ROM_CACHE_NUM_PAGES     8
-#endif
-#if (ROM_CACHE_NUM_PAGES & (ROM_CACHE_NUM_PAGES - 1)) != 0
-#error "ROM_CACHE_NUM_PAGES must be a power of two"
-#endif
-#define ROM_CACHE_PAGE_MASK     (ROM_CACHE_NUM_PAGES - 1)
-
-/* Hit/miss accounting: a miss copies 4 KB out of PSRAM, so the miss rate
- * is what decides how much of a frame the 68K spends waiting on memory. */
-uint32_t rom_cache_hits, rom_cache_misses;
-
-static uint8_t __attribute__((aligned(4))) rom_page_cache[ROM_CACHE_NUM_PAGES][ROM_CACHE_PAGE_SIZE];
-static uint32_t rom_cache_tags[ROM_CACHE_NUM_PAGES];  /* Upper address bits for validation */
-static uint8_t rom_cache_valid[ROM_CACHE_NUM_PAGES];  /* Valid flags */
-
-/* Initialize ROM cache (call on game load) */
 void rom_cache_init(void) {
-    for (int i = 0; i < ROM_CACHE_NUM_PAGES; i++) {
-        rom_cache_valid[i] = 0;
-    }
 }
 
-/* Get cached ROM byte - returns from cache or fills cache line */
 static inline uint8_t rom_cache_read_8(uint32_t address) {
-    uint32_t page_num = address >> ROM_CACHE_PAGE_SHIFT;
-    uint32_t cache_slot = page_num & ROM_CACHE_PAGE_MASK;
-    uint32_t page_offset = address & (ROM_CACHE_PAGE_SIZE - 1);
-    
-    /* Check cache hit */
-    if (rom_cache_valid[cache_slot] && rom_cache_tags[cache_slot] == page_num) {
-        rom_cache_hits++;
-        return rom_page_cache[cache_slot][page_offset ^ 1];  /* Byte swap for big-endian */
-    }
-    rom_cache_misses++;
-    
-    /* Cache miss - fill the page */
-    uint32_t page_base = page_num << ROM_CACHE_PAGE_SHIFT;
-    const uint32_t *src = (const uint32_t *)(ROM_DATA + page_base);
-    uint32_t *dst = (uint32_t *)rom_page_cache[cache_slot];
-    for (int i = 0; i < ROM_CACHE_PAGE_SIZE / 4; i++) {
-        dst[i] = src[i];
-    }
-    rom_cache_tags[cache_slot] = page_num;
-    rom_cache_valid[cache_slot] = 1;
-    
-    return rom_page_cache[cache_slot][page_offset ^ 1];
+    return ROM_DATA[address ^ 1];                /* byte-swapped image */
 }
 
-/* Get cached ROM word (16-bit) */
 static inline uint16_t rom_cache_read_16(uint32_t address) {
-    uint32_t page_num = address >> ROM_CACHE_PAGE_SHIFT;
-    uint32_t cache_slot = page_num & ROM_CACHE_PAGE_MASK;
-    uint32_t page_offset = address & (ROM_CACHE_PAGE_SIZE - 1);
-    
-    /* Check cache hit */
-    if (rom_cache_valid[cache_slot] && rom_cache_tags[cache_slot] == page_num) {
-        rom_cache_hits++;
-        return *(uint16_t *)&rom_page_cache[cache_slot][page_offset];
-    }
-    rom_cache_misses++;
-    
-    /* Cache miss - fill the page */
-    uint32_t page_base = page_num << ROM_CACHE_PAGE_SHIFT;
-    const uint32_t *src = (const uint32_t *)(ROM_DATA + page_base);
-    uint32_t *dst = (uint32_t *)rom_page_cache[cache_slot];
-    for (int i = 0; i < ROM_CACHE_PAGE_SIZE / 4; i++) {
-        dst[i] = src[i];
-    }
-    rom_cache_tags[cache_slot] = page_num;
-    rom_cache_valid[cache_slot] = 1;
-    
-    return *(uint16_t *)&rom_page_cache[cache_slot][page_offset];
+    return *(const uint16_t *)(ROM_DATA + address);
 }
 
 // Setup Z80 Memory

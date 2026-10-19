@@ -255,11 +255,8 @@ static void options_screen(void (*under)(void *), void *arg, const char *title,
 static void options(void (*under)(void *), void *arg, int device, const char *game, uint32_t accent)
 {
     opt_t o = { .device = device };
-    /* the Mega Drive emulator is built without sound */
-    if (device < 0 || devices[device].app != APP_MD) {
-        o.rows[o.nrows++] = ROW_SOUND;
-        o.rows[o.nrows++] = ROW_VOLUME;
-    }
+    o.rows[o.nrows++] = ROW_SOUND;
+    o.rows[o.nrows++] = ROW_VOLUME;
     if (device >= 0 && mode_count(device) > 1)
         o.rows[o.nrows++] = ROW_DISPLAY;
     if (device >= 0 && devices[device].app != APP_NONE)
