@@ -119,8 +119,8 @@ Werkzeuge und SDK wie bei allen Projekten dieses Repos, siehe
 
 | Option | Vorgabe | Bedeutung |
 |---|---|---|
-| `CPU_MHZ` | 250 | Systemtakt (wie PicoBoyGB) |
-| `CPU_VREG` | `VREG_VOLTAGE_1_25` | Kernspannung |
+| `CPU_MHZ` | 200 | Systemtakt (wie C64, PC Engine und GBC; vorher 250 MHz) |
+| `CPU_VREG` | `VREG_VOLTAGE_1_15` | Kernspannung |
 | `FLASH_MAX_FREQ_MHZ` | 88 | Obergrenze für den Flash-Takt |
 | `PBC_SPI_HZ` | 62 500 000 | Display-SPI |
 | `SHOW_FPS` | 0 | Leistungsanzeige (fps, Tempo, Last) in der Einzel-Firmware; im Verbund schaltet sie der Starter |

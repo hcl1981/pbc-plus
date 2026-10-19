@@ -79,7 +79,7 @@ Kein Modus verzerrt das Bild. Es sitzt senkrecht mittig, der Rest bleibt schwarz
 QuickNES zeichnet abwechselnd in zwei Pixelpuffer. Kern 0 übergibt ein fertiges
 Bild samt Palette an Kern 1. Der rechnet es Zeile für Zeile in BGR565 um und
 schickt es per DMA, während Kern 0 schon das nächste Bild in den anderen Puffer
-emuliert. Bei 250 MHz läuft der SPI mit 62,5 MHz; ein Bild braucht rund 15 ms.
+emuliert. Bei 200 MHz läuft der SPI mit 50 MHz; ein Bild braucht rund 18 ms.
 
 ## Ton
 
@@ -117,8 +117,8 @@ Werkzeuge und SDK wie bei allen Projekten dieses Repos, siehe
 
 | Option | Vorgabe | Bedeutung |
 |---|---|---|
-| `CPU_MHZ` | 250 | Systemtakt (wie PicoBoyGB) |
-| `CPU_VREG` | `VREG_VOLTAGE_1_25` | Kernspannung |
+| `CPU_MHZ` | 200 | Systemtakt (wie C64, PC Engine und GBC; vorher 250 MHz) |
+| `CPU_VREG` | `VREG_VOLTAGE_1_15` | Kernspannung |
 | `FLASH_MAX_FREQ_MHZ` | 88 | Obergrenze für den Flash-Takt |
 | `PBC_SPI_HZ` | 62 500 000 | Display-SPI |
 | `SHOW_FPS` | 0 | Leistungsanzeige in der Einzel-Firmware (in PBCemu: Einstellung im Starter) |
