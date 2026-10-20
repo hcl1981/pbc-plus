@@ -106,7 +106,7 @@ statt der sonst üblichen MinSizeRel-Vorgabe.
 | `PBC_SPI_HZ` | 75 000 000 | Display-SPI. Im Spiel kommt `clk_peri` aus der USB-PLL (150 MHz, USB wird dann nicht gebraucht), daher 75 MHz bei jedem Systemtakt (über dem Datenblattwert, läuft auf dem Gerät sauber) |
 | `SHOW_FPS` | 0 | Anzeige unter dem Bild (fps, Tempo, Last) |
 | `AUDIO_VOLUME` | 8 | Lautstärke der Einzel-Firmware, 0 = aus |
-| `TEST_SONIC2_ZONE` | -1 | Nur zum Testen: drückt START, bis ein Level läuft, und startet Sonic 2 in dieser Zone/diesem Akt (z. B. `0x0D01` = Chemical Plant 2, `0x0F00` = Aquatic Ruin 1). Stört andere Spiele |
+| `TEST_SONIC2_ZONE` | -1 | Nur zum Testen: drückt START, bis ein Level läuft, und startet Sonic 2 in dieser Zone/diesem Akt (z. B. `0x0D01` = Chemical Plant 2, `0x0F00` = Aquatic Ruin 1, `0x1000` = Spezialstufe nach 100 Bildern im ersten Level). Stört andere Spiele |
 | `Z80_SLICE_LINES` | 16 | Z80 alle N Zeilen ausführen |
 
 **Vorsicht beim Takt:** Der Spannungswandler des PBC+ ist klein (150–250 mA).

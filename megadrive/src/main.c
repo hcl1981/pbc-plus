@@ -411,6 +411,17 @@ static void __attribute__((noreturn)) emulation_loop(void)
         /* Test build for Sonic 2: press START through title and menu until
          * a level runs (Game_Mode $FFF600 is $0C, or $8C while loading). */
         static int test_frames, test_level_frames;
+#if TEST_SONIC2_ZONE == 0x1000
+        /* 0x1000: from the first level on to the special stage (Game_Mode
+         * $10, what a star post with 50 rings sets), once */
+        static bool test_special;
+        if (test_special) {
+            test_level_frames = 2;
+        } else if (test_level_frames == 100) {
+            M68K_RAM[0xF600 ^ 1] = 0x10;
+            test_special = true;
+        } else
+#endif
         if ((M68K_RAM[0xF600 ^ 1] & 0x7F) == 0x0C) {
             test_level_frames++;
         } else {
@@ -482,7 +493,7 @@ static void __attribute__((noreturn)) emulation_loop(void)
 #if TEST_SONIC2_ZONE >= 0
             /* ... and keep Current_ZoneAndAct ($FFFE10) on the test zone
              * until the level code has read it. */
-            if (test_level_frames < 2) {
+            if (test_level_frames < 2 && TEST_SONIC2_ZONE != 0x1000) {
                 M68K_RAM[0xFE10 ^ 1] = (uint8_t)(TEST_SONIC2_ZONE >> 8);
                 M68K_RAM[0xFE11 ^ 1] = (uint8_t)TEST_SONIC2_ZONE;
             }

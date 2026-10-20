@@ -9,11 +9,14 @@
  * timing between the two cores (core 1 converting rows late), sound.
  * Keep the loop in step with src/main.c when that changes.
  *
- *   mdhost ROM FRAMES [-z ZONE] [-d FROM[:EVERY]] [-o DIR] [-p]
+ *   mdhost ROM FRAMES [-z ZONE [-s]] [-d FROM[:EVERY]] [-o DIR] [-p]
  *
  *   -z ZONE   Sonic 2: press START until a level runs, start it in this
  *             zone/act (0x0D01 = Chemical Plant 2), then run right and
  *             jump. Without -z: START every two seconds for 20 seconds.
+ *   -s        ... and 100 frames into the level on to the special stage
+ *             (Game_Mode $10, as a star post with 50 rings sets it);
+ *             MDHOST_TIME=1 prints the time each frame takes
  *   -d        write frames from FROM on, every EVERY-th (default 1), as
  *             DIR/fNNNNN.ppm (default: only the last frame)
  *   -p        print per frame from which line how many of the 64 colours
@@ -24,6 +27,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <time.h>
 #include "bus/gwenesis_bus.h"
 #include "io/gwenesis_io.h"
 #include "vdp/gwenesis_vdp.h"
@@ -157,7 +161,7 @@ static void report_splits(int frame)
 
 static void usage(void)
 {
-    fprintf(stderr, "mdhost ROM FRAMES [-z ZONE] [-d FROM[:EVERY]] [-o DIR] [-p]\n");
+    fprintf(stderr, "mdhost ROM FRAMES [-z ZONE [-s]] [-d FROM[:EVERY]] [-o DIR] [-p]\n");
     exit(2);
 }
 
@@ -167,7 +171,7 @@ int main(int argc, char **argv)
     const char *rom_path = argv[1];
     int frames = atoi(argv[2]);
     int zone = -1, dump_from = frames - 1, dump_every = 1;
-    bool splits = false;
+    bool splits = false, special = false;
     const char *dir = ".";
     for (int i = 3; i < argc; i++) {
         if (!strcmp(argv[i], "-z") && i + 1 < argc) zone = (int)strtol(argv[++i], NULL, 0);
@@ -178,6 +182,7 @@ int main(int argc, char **argv)
         }
         else if (!strcmp(argv[i], "-o") && i + 1 < argc) dir = argv[++i];
         else if (!strcmp(argv[i], "-p")) splits = true;
+        else if (!strcmp(argv[i], "-s")) special = true;
         else usage();
     }
 
@@ -217,7 +222,10 @@ int main(int argc, char **argv)
         uint8_t pad = 0xFF;                          /* active low: S A C B R L D U */
         if (zone >= 0) {
             level_frames = S2_IN_LEVEL ? level_frames + 1 : 0;
-            if (!level_frames && fr % 60 < 5) pad &= ~0x80;              /* START */
+            if (!level_frames && fr % 60 < 5 && !(special && S2_GAME_MODE == 0x10))
+                pad &= ~0x80;                                             /* START */
+            if (special && level_frames == 100)
+                S2_GAME_MODE = 0x10;                                      /* special stage */
             if (level_frames > 200) {
                 pad &= ~0x08;                                             /* right */
                 if (fr % 90 < 25) pad &= ~0x40;                           /* A: jump */
@@ -290,6 +298,15 @@ int main(int argc, char **argv)
         frame_counter++;
         m68k.cycles -= system_clock;
 
+        {
+            static struct timespec t0;
+            struct timespec t1;
+            clock_gettime(CLOCK_MONOTONIC, &t1);
+            if (getenv("MDHOST_TIME") && fr)
+                printf("frame %d mode %02x %ld us\n", fr, S2_GAME_MODE,
+                       (t1.tv_sec - t0.tv_sec) * 1000000 + (t1.tv_nsec - t0.tv_nsec) / 1000);
+            t0 = t1;
+        }
         if (fr >= dump_from && (fr - dump_from) % dump_every == 0) {
             save_ppm(dir, fr);
             if (splits)
