@@ -106,6 +106,7 @@ statt der sonst üblichen MinSizeRel-Vorgabe.
 | `PBC_SPI_HZ` | 75 000 000 | Display-SPI. Im Spiel kommt `clk_peri` aus der USB-PLL (150 MHz, USB wird dann nicht gebraucht), daher 75 MHz bei jedem Systemtakt (über dem Datenblattwert, läuft auf dem Gerät sauber) |
 | `SHOW_FPS` | 0 | Anzeige unter dem Bild (fps, Tempo, Last) |
 | `AUDIO_VOLUME` | 8 | Lautstärke der Einzel-Firmware, 0 = aus |
+| `TEST_SONIC2_ZONE` | -1 | Nur zum Testen: drückt START, bis ein Level läuft, und startet Sonic 2 in dieser Zone/diesem Akt (z. B. `0x0D01` = Chemical Plant 2, `0x0F00` = Aquatic Ruin 1). Stört andere Spiele |
 | `Z80_SLICE_LINES` | 16 | Z80 alle N Zeilen ausführen |
 
 **Vorsicht beim Takt:** Der Spannungswandler des PBC+ ist klein (150–250 mA).
@@ -173,6 +174,28 @@ oder pro Sample gebraucht wird, liegt deshalb im RAM.
   einer Bau-.elf neu laufen lassen.
 - **VDP:** `gwenesis_vdp_render_line()` und `gwenesis_vdp_write_memory_16()`
   im RAM.
+- **VBlank-Interrupt:** kommt jetzt wie in Genesis Plus GX 788 Takte nach
+  Beginn von Zeile 224 statt an ihrem Anfang. Vorher wurden ein
+  Zeilen-Interrupt aus Zeile 223 und der VBlank-Interrupt gleichzeitig
+  ausgelöst, und der VBlank-Handler lief zuerst. Sonic 2 (Aquatic Ruin)
+  lädt bei Wasser unterhalb des Bildes in Zeile 223 die Unterwasserpalette
+  und im VBlank die normale; in falscher Reihenfolge blieb das nächste Bild
+  „unter Wasser“, im Wechsel mit normalen Bildern (Flackern).
+- **Palette mitten im Bild:** Jede Zeile bekommt die Palette vom
+  Zeilenanfang (wie Genesis Plus GX), nicht vom Zeilenende. Eine
+  Palettenübertragung, die über mehrere Zeilen läuft und dabei lauter
+  verschiedene Einträge schreibt, zählt als ein Wechsel. Sonic 2 schreibt
+  die 64 Unterwasserfarben über zwei Zeilen; die erste zeigte halb alte,
+  halb neue Farben, eine lila Linie an der Wasseroberfläche. Schreibt ein
+  Spiel denselben Eintrag Zeile für Zeile neu (Farbverlauf), bleibt jede
+  Zeile ein eigener Wechsel.
+  Zu Beginn der Bildpause friert `video_palette_freeze()` die Farbtabelle
+  für die Zeilen ein, die Kern 1 noch umrechnet: Sonic 2 lädt die
+  Unterwasserfarben auch bei Wasser unterhalb des Bildes, in der
+  Bildpause, und die letzten Zeilen bekamen sie sonst ab (eine springende
+  lila Linie unten im Bild).
+- **PSG-Zeitstempel vom Z80:** `z80_mem_opt.S` rechnete die restlichen
+  Z80-Takte mal 2 statt mal 15 in Master-Takte um.
 - **Display-Takt:** Der SPI-Takt ist `clk_peri` geteilt durch eine gerade
   Zahl, und `clk_peri` folgt dem Systemtakt; bei 200 MHz blieben 50 MHz.
   Im Spiel versorgt deshalb die USB-PLL mit 150 MHz `clk_peri` allein

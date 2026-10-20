@@ -74,6 +74,9 @@
 /* fps/speed/CPU line: SHOW_FPS on its own, the launcher's setting in the
  * combined firmware. */
 static bool show_stats;
+#ifndef TEST_SONIC2_ZONE
+#define TEST_SONIC2_ZONE -1
+#endif
 #ifndef Z80_SLICE_LINES
 #define Z80_SLICE_LINES 16
 #endif
@@ -404,6 +407,18 @@ static void __attribute__((noreturn)) emulation_loop(void)
         /* ---- input ---- */
         genesis_input_t in = input_poll_genesis();
         button_state[0] = in.pad;
+#if TEST_SONIC2_ZONE >= 0
+        /* Test build for Sonic 2: press START through title and menu until
+         * a level runs (Game_Mode $FFF600 is $0C, or $8C while loading). */
+        static int test_frames, test_level_frames;
+        if ((M68K_RAM[0xF600 ^ 1] & 0x7F) == 0x0C) {
+            test_level_frames++;
+        } else {
+            test_level_frames = 0;
+            if ((++test_frames % 60) < 5)
+                button_state[0] &= (uint8_t)~0x80;
+        }
+#endif
         button_state[1] = 0xFF;
         button_state[2] = 0xFF;
         uint64_t frame_start = time_us_64();
@@ -445,6 +460,33 @@ static void __attribute__((noreturn)) emulation_loop(void)
         ym2612_clock = ym2612_index = 0;
 
         while (scan_line < (int)lines_per_frame) {
+            /* The palette in force when the line starts, as Genesis Plus
+             * GX draws it: CRAM writes during the line (a raster split)
+             * show from the next line on. */
+            const uint8_t *line_lut = vdp_palette_current_lut();
+            if (scan_line == screen_height) {
+                /* VBlank interrupt about 788 master cycles into the line,
+                 * as in Genesis Plus GX, not at its start: a line interrupt
+                 * from the last visible line is then taken first, as on the
+                 * console. Raised together, the VBlank handler ran first
+                 * and the line handler after it; in Sonic 2 that left the
+                 * underwater palette in place for the next frame. */
+                if (render)
+                    video_palette_freeze();
+                m68k_run(system_clock + 788);
+                if (REG1_VBLANK_INTERRUPT != 0) {
+                    gwenesis_vdp_status |= STATUS_VIRQPENDING;
+                    m68k_set_irq(6);
+                }
+            }
+#if TEST_SONIC2_ZONE >= 0
+            /* ... and keep Current_ZoneAndAct ($FFFE10) on the test zone
+             * until the level code has read it. */
+            if (test_level_frames < 2) {
+                M68K_RAM[0xFE10 ^ 1] = (uint8_t)(TEST_SONIC2_ZONE >> 8);
+                M68K_RAM[0xFE11 ^ 1] = (uint8_t)TEST_SONIC2_ZONE;
+            }
+#endif
             m68k_run(system_clock + VDP_CYCLES_PER_LINE);
 
             /* Z80 in slices; always on the VBlank IRQ edges so the sound
@@ -472,22 +514,15 @@ static void __attribute__((noreturn)) emulation_loop(void)
             }
 
             if (render && scan_line < screen_height) {
-                /* Palette in force for this line, before the next line's
-                 * emulation can split it. */
-                hdmi_line_lut[scan_line] = vdp_palette_current_lut();
+                hdmi_line_lut[scan_line] = line_lut;
                 uint32_t t = timer_hw->timerawl;
                 vdp_pipeline_post(scan_line);
                 stat_vdp_us += timer_hw->timerawl - t;
             }
             scan_line++;
 
-            if (scan_line == screen_height) {
-                if (REG1_VBLANK_INTERRUPT != 0) {
-                    gwenesis_vdp_status |= STATUS_VIRQPENDING;
-                    m68k_set_irq(6);
-                }
+            if (scan_line == screen_height)
                 sound_z80_irq(1);
-            }
             if (scan_line == screen_height + 1)
                 sound_z80_irq(0);
 

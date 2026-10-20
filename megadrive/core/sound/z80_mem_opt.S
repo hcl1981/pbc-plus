@@ -189,7 +189,8 @@ WrZ80:
     
     ldr     r1, =cpu
     ldr     r3, [r1, #Z80_ICOUNT_OFFSET]  /* r3 = cpu.ICount */
-    lsl     r3, r3, #1          /* r3 = cpu.ICount * 2 */
+    mov     r1, #Z80_FREQ_DIVISOR
+    mul     r3, r3, r1          /* r3 = cpu.ICount * Z80_FREQ_DIVISOR (PBC: was * 2) */
     sub     r1, r2, r3          /* r1 = timing */
     
     bl      gwenesis_SN76489_Write

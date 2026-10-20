@@ -26,6 +26,7 @@ set(PBC_SPI_HZ "75000000" CACHE STRING "ST7789 SPI clock request in Hz")
 set(SHOW_FPS "0" CACHE STRING "Show fps and speed under the picture: 0/1")
 set(AUDIO_VOLUME "8" CACHE STRING "Volume of the stand-alone firmware: 0 = off, 1..12")
 set(Z80_SLICE_LINES "16" CACHE STRING "Run the Z80 every N scanlines")
+set(TEST_SONIC2_ZONE "-1" CACHE STRING "Test build: start Sonic 2 in this zone/act (0x0F00 = Aquatic Ruin 1), -1 = off")
 
 include(pico_sdk_import.cmake)
 
@@ -113,6 +114,7 @@ target_compile_definitions(pbc_megadrive PRIVATE
     SHOW_FPS=${SHOW_FPS}
     AUDIO_VOLUME=${AUDIO_VOLUME}
     Z80_SLICE_LINES=${Z80_SLICE_LINES}
+    TEST_SONIC2_ZONE=${TEST_SONIC2_ZONE}
     PBC_Z80_IN_RAM=1
     PBC_YM_CORE1=1
     # Gwenesis / frank-genesis configuration

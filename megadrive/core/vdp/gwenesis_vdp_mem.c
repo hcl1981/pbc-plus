@@ -112,7 +112,8 @@ uint32_t vdp_palette_alt_used, vdp_palette_alt_exhausted, vdp_palette_states_max
 static uint8_t pal_lut[PAL_MAX_STATES][256];
 static int     pal_state;               /* which table the beam is under */
 static int     pal_alt_next;            /* next free spare entry */
-static int     pal_split_line;          /* scanline the current state began */
+static int     pal_split_line;          /* last scanline written in this state */
+static uint64_t pal_burst_mask;         /* entries written in this state */
 
 const uint8_t *vdp_palette_current_lut(void) { return pal_lut[pal_state]; }
 
@@ -134,6 +135,7 @@ void vdp_palette_frame_begin(void) {
     pal_state      = 0;
     pal_alt_next   = 0;
     pal_split_line = -1;
+    pal_burst_mask = 0;
 }
 
 /* A CRAM entry changed while the beam was inside the visible field. */
@@ -141,16 +143,26 @@ static void vdp_palette_split(uint8_t addr, uint16_t value)
 {
     extern int scan_line;
 
-    /* Several entries can change on one scanline — that is one split. */
-    if (scan_line != pal_split_line) {
+    /* Several entries can change on one scanline — that is one split.
+     * PBC: so can a palette upload that runs on into the next line(s)
+     * (Sonic 2 writes its 64 underwater colours over two lines from the
+     * water-line interrupt): as long as each line goes on writing entries
+     * not yet written, it stays the same split, so no line shows half of
+     * one palette and half of the other. An entry written again (a
+     * gradient changing the same colour line by line) starts a new one. */
+    uint64_t bit = 1ull << (addr & 63);
+    bool burst = scan_line == pal_split_line + 1 && !(pal_burst_mask & bit);
+    if (scan_line != pal_split_line && !burst) {
+        pal_burst_mask = 0;
         if (pal_state + 1 < PAL_MAX_STATES) {
             memcpy(pal_lut[pal_state + 1], pal_lut[pal_state], 256);
             pal_state++;
             if ((uint32_t)pal_state > vdp_palette_states_max)
                 vdp_palette_states_max = (uint32_t)pal_state;
         }
-        pal_split_line = scan_line;
     }
+    pal_split_line = scan_line;
+    pal_burst_mask |= bit;
 
     if (pal_alt_next >= PAL_ALT_SLOTS) {
         /* Out of spares: fall back to changing the base entry, which is

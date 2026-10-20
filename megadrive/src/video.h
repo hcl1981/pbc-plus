@@ -36,6 +36,10 @@ void video_frame_begin(int src_w, int src_h);
  * always completed in order. */
 void video_line_done(int line);
 
+/* Core 0, at the start of VBlank of a drawn frame: its remaining rows
+ * keep the colours it was drawn with. */
+void video_palette_freeze(void);
+
 /* Core 1, polled from its idle loop: sends every output row whose source
  * lines are ready. Never blocks on the SPI. */
 void video_service(void);

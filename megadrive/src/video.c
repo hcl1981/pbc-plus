@@ -17,6 +17,20 @@
 uint8_t __aligned(4) video_screen[VIDEO_SRC_H][VIDEO_SRC_W];
 
 uint16_t pbc_palette[256];
+
+/* The palette core 1 converts with: the live one while the frame is being
+ * drawn, a copy from the start of VBlank on. Games load colours in VBlank
+ * (Sonic 2 even the underwater palette, below the picture); core 1 is
+ * then often still on the last rows, which got those colours. */
+static uint16_t frozen_palette[256];
+static const uint16_t *volatile video_pal = pbc_palette;
+
+void video_palette_freeze(void)
+{
+    memcpy(frozen_palette, pbc_palette, sizeof frozen_palette);
+    __dmb();
+    video_pal = frozen_palette;
+}
 const uint8_t *hdmi_line_lut[HDMI_MAX_LINES];
 uint8_t hdmi_identity_lut[256];
 
@@ -135,6 +149,7 @@ void video_frame_begin(int w, int h)
         need_clear = true;
     }
     lines_ready = 0;
+    video_pal = pbc_palette;
     __dmb();
     frame_seq = frame_seq + 1;
 }
@@ -158,7 +173,7 @@ static void __not_in_flash_func(convert_row)(int r, uint16_t *out)
     int y0 = ya[r], y1 = yb[r];
     const uint8_t *ra = base + y0 * src_w;
     const uint8_t *la = hdmi_line_lut[y0];
-    const uint16_t *pal = pbc_palette;
+    const uint16_t *pal = video_pal;
 
     if (y0 == y1) {
         for (int x = 0; x < OUT_W; x++) {

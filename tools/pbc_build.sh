@@ -226,9 +226,9 @@ pbc_sdk() {
 pbc_cmake_build() {   # <quelle> <bauordner> [-D...]
     local src="$1" bdir="$2"; shift 2
     mkdir -p "$(dirname "${bdir}")"
-    # -U: Takt, Spannung, Display-SPI und Flash-Takt aus der CMakeLists des Projekts nehmen, nicht
+    # -U: Takt, Spannung, Display-SPI, Flash-Takt und Testschalter aus der CMakeLists des Projekts nehmen, nicht
     # einen älteren Wert aus dem CMake-Cache des Bauordners (-D gewinnt)
-    if ! cmake -S "${src}" -B "${bdir}" "${PBC_GEN[@]}" -UCPU_MHZ -UCPU_VREG -UPBC_SPI_HZ -UFLASH_MAX_FREQ_MHZ \
+    if ! cmake -S "${src}" -B "${bdir}" "${PBC_GEN[@]}" -UCPU_MHZ -UCPU_VREG -UPBC_SPI_HZ -UFLASH_MAX_FREQ_MHZ -UTEST_SONIC2_ZONE \
                -DCMAKE_BUILD_TYPE=MinSizeRel -DPICO_SDK_PATH="${PICO_SDK_PATH}" "$@" \
                >"${bdir}.cmake.log" 2>&1; then
         pbc_err "cmake konnte das Projekt nicht einrichten."

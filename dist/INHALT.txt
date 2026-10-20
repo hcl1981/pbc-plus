@@ -13,12 +13,12 @@ c64.uf2                                      564K  ff59b1e0100bbdf8
 gbc.uf2                                      164K  1540ffd9ecadfbb2
 i2collection.uf2                             352K  06caddf8420545ef
 jumpnbump.uf2                                1.1M  d8f26ad7455a2dac
-megadrive.uf2                                1.3M  7ec6d77e835cd8fa
+megadrive.uf2                                1.3M  4f7b61a7004e5b3f
 micropolis.uf2                               2.0M  d817994650e66e23
 micropython-PBC_PLUS.uf2                     748K  81dba5cdff9350f4
 nes.uf2                                      352K  43a1186385719136
 noiz2sa.uf2                                  120K  597e5833290d22a1
-pbcemu.uf2                                   3.3M  7d035aade674f463
+pbcemu.uf2                                   3.3M  e0c62d73212dd4ea
 pce.uf2                                      224K  b4d6e9967d552e83
 picoboygb.uf2                                128K  93672907ee58848e
 sms.uf2                                      584K  69928970bdaf1f63
