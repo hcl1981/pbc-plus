@@ -101,6 +101,12 @@ static void write_launch(int device, const char *game)
 
 static void __attribute__((noreturn)) launch(uint32_t offset)
 {
+    /* fade out; the emulator fades in again (common/pbc_loading.c), which
+     * hides the panel's reset and clearing in between */
+    for (int i = 24; i >= 0; i--) {
+        pbc_display_backlight((uint8_t)(200 * i / 25));
+        sleep_ms(10);
+    }
     watchdog_hw->scratch[0] = PBC_JUMP_MAGIC;
     watchdog_hw->scratch[1] = offset;
     watchdog_reboot(0, 0, 10);

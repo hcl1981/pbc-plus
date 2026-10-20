@@ -73,6 +73,7 @@ void menu_message(const char *title, const char *l1, const char *l2, const char 
         pbc_loading_message(title, l1, l2, l3);
         return;
     }
+    pbc_display_backlight(PBC_BACKLIGHT);
 #endif
     header(title);
     if (l1) pbc_display_text_centered(110, l1, COL_TEXT, COL_BG, 1);

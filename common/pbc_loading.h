@@ -9,6 +9,14 @@
 #define PBC_LOADING_H
 
 #include <stdint.h>
+#include <stdbool.h>
+
+/* The launcher fades the backlight out before it hands over; the emulator
+ * starts dark and fades in once there is something on the panel: the
+ * first screen below, or the game (call before its loop; returns at once
+ * and fades in the background). Only the first call does anything. */
+#define PBC_BACKLIGHT 200
+void pbc_fade_in(bool wait);
 
 /* "Loading game": the game being copied into the flash, with a bar. */
 void pbc_loading_begin(const char *game);

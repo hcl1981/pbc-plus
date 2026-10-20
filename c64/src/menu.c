@@ -11,6 +11,9 @@
 #include "settings.h"
 #include "d64_dir.h"
 #include "menu.h"
+#if PBC_MULTI
+#include "pbc_loading.h"
+#endif
 
 #define MAX_FILES    64          /* programs listed per disk */
 #define MAX_ROMS     200
@@ -67,6 +70,9 @@ static void header(const char *title)
 
 void menu_message(const char *title, const char *l1, const char *l2, const char *l3)
 {
+#if PBC_MULTI
+    pbc_display_backlight(PBC_BACKLIGHT);   /* dark until pbc_fade_in() */
+#endif
     header(title);
     if (l1) pbc_display_text_centered(110, l1, COL_TEXT, COL_BG, 1);
     if (l2) pbc_display_text_centered(126, l2, COL_TEXT, COL_BG, 1);

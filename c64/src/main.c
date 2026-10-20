@@ -40,6 +40,9 @@
 #include "display.h"
 #include "input.h"
 #include "menu.h"
+#if PBC_MULTI
+#include "pbc_loading.h"
+#endif
 #include "audio_pwm.h"
 #include "settings.h"
 #include "c64_glue.h"
@@ -407,7 +410,9 @@ int main(void)
     input_init();
     settings_load();
     pbc_display_init();
-    pbc_display_backlight(200);
+#if !PBC_MULTI
+    pbc_display_backlight(200);     /* combined firmware: pbc_fade_in() */
+#endif
 
 #if PBC_MULTI
     /* Combined firmware: the launcher has picked the game and owns the
@@ -476,5 +481,8 @@ int main(void)
     static char file[SETTINGS_FILE_MAX + 1];
     snprintf(path, sizeof path, "/%s", game);
     settings_file(game, file);
+#if PBC_MULTI
+    pbc_fade_in(false);             /* over the first frames */
+#endif
     emulation_loop(path, file);
 }

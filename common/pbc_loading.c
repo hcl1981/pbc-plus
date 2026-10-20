@@ -16,6 +16,7 @@
 #define DIM        0x8d96ab
 #define FAINT      0x485168
 
+#define FADE_STEPS 25                   /* x 10 ms */
 #define STRIP      2                    /* rows drawn at a time, on the stack */
 #define BAR_X      30
 #define BAR_Y      142
@@ -52,6 +53,32 @@ static void render(int y0, int y1, void (*draw)(void))
         pbc_display_end();
     }
     gfx_noclip();
+}
+
+/* ---- backlight ---------------------------------------------------------------- */
+
+static repeating_timer_t fade_timer;
+static int fade_step = -1;              /* -1: not started */
+
+static bool fade_tick(repeating_timer_t *t)
+{
+    (void)t;
+    fade_step++;
+    pbc_display_backlight((uint8_t)(PBC_BACKLIGHT * fade_step / FADE_STEPS));
+    return fade_step < FADE_STEPS;
+}
+
+void pbc_fade_in(bool wait)
+{
+    if (fade_step >= 0)
+        return;
+    fade_step = 0;
+    if (wait) {
+        while (fade_tick(NULL))
+            sleep_ms(10);
+    } else if (!add_repeating_timer_ms(10, fade_tick, NULL, &fade_timer)) {
+        pbc_display_backlight(PBC_BACKLIGHT);
+    }
 }
 
 /* ---- loading ----------------------------------------------------------------- */
@@ -93,6 +120,7 @@ void pbc_loading_begin(const char *game)
     game_title = fit;
     render(0, GFX_H, loading_screen);
     game_title = NULL;
+    pbc_fade_in(true);
 }
 
 void pbc_loading_progress(uint32_t done, uint32_t total)
@@ -133,4 +161,5 @@ void pbc_loading_message(const char *title, const char *l1, const char *l2, cons
         msg[i] = fit[i];
     }
     render(0, GFX_H, message_screen);
+    pbc_fade_in(true);
 }

@@ -41,6 +41,9 @@
 #include "display.h"
 #include "input.h"
 #include "menu.h"
+#if PBC_MULTI
+#include "pbc_loading.h"
+#endif
 #include "rom_store.h"
 #include "ssf2.h"
 #include "video.h"
@@ -616,6 +619,7 @@ void __attribute__((used, noreturn)) hardfault_report(const uint32_t *frame)
     pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
     for (int i = 0; i < 4; i++)
         pbc_display_text(16, 80 + i * 24, l[i], i ? PBC_WHITE : PBC_RED, PBC_BLACK, 2);
+    pbc_display_backlight(200);         /* also before or during the fade-in */
     for (;;)
         tight_loop_contents();
 }
@@ -652,7 +656,9 @@ int main(void)
 {
     input_init();
     pbc_display_init();
-    pbc_display_backlight(200);
+#if !PBC_MULTI
+    pbc_display_backlight(200);     /* combined firmware: pbc_fade_in() */
+#endif
 
 #if PBC_MULTI
     /* Combined firmware: the launcher has picked the game and owns the
@@ -730,5 +736,8 @@ int main(void)
         ym_core1_init();
     multicore_launch_core1(core1_main);
 
+#if PBC_MULTI
+    pbc_fade_in(false);             /* over the first frames */
+#endif
     emulation_loop();
 }
