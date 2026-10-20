@@ -204,6 +204,13 @@ oder pro Sample gebraucht wird, liegt deshalb im RAM.
 - **Ton per DMA:** Ein DMA-Kanal mit DMA-Timer schiebt alle 45 µs ein Sample
   in den PWM-Vergleichswert; vorher lief dafür 22222-mal pro Sekunde ein
   Timer-Interrupt, zum Teil aus dem Flash.
+- **Region:** Die Firmware lädt das ROM nicht über `load_cartridge()`, die
+  Regionserkennung des Kerns lief deshalb nie, und jede Konsole war
+  NTSC-USA. Jetzt wählt `set_region()` sie nach dem Header (USA vor Europa
+  vor Japan). Reine PAL-Spiele wie Sonic 3 (Europe) laufen so auf einer
+  PAL-Konsole: PAL-Bit im VDP-Status, 313 Zeilen und 50 Bilder pro Sekunde.
+  Die Zeilenzahl richtet sich nach der Region, nicht mehr nach dem
+  240-Zeilen-Modus des Spiels.
 - **Ton:** Ist er aus, erzeugt `ym2612_run()` keine Samples, lässt aber Timer
   A/B weiterlaufen (Soundtreiber fragen deren Überlauf-Bits ab), und
   `gwenesis_SN76489_run()` zählt nur die Zeit weiter. Ist er an, schreibt

@@ -212,6 +212,11 @@ int main(int argc, char **argv)
     hdmi_line_lut_reset();
     gwenesis_vdp_reset();
     gwenesis_vdp_set_buffer(&screen[0][0]);
+    set_region();
+    extern unsigned char io_reg[];
+    bool region_pal = (io_reg[0] & 0x40) != 0;
+    if (region_pal)
+        gwenesis_vdp_status |= 1;
     screen_width = 320;
     screen_height = 224;
     gwenesis_vdp_render_config();
@@ -242,7 +247,7 @@ int main(int argc, char **argv)
         int hint_counter = gwenesis_vdp_regs[10];
         screen_width = REG12_MODE_H40 ? 320 : 256;
         screen_height = REG1_PAL ? 240 : 224;
-        lines_per_frame = REG1_PAL ? LINES_PER_FRAME_PAL : LINES_PER_FRAME_NTSC;
+        lines_per_frame = region_pal ? LINES_PER_FRAME_PAL : LINES_PER_FRAME_NTSC;
         if (screen_width != last_w || screen_height != last_h) {
             gwenesis_vdp_render_config();
             last_w = screen_width;

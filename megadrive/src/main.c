@@ -359,6 +359,11 @@ static void core1_main(void)
 
 /* ---- emulator ------------------------------------------------------------ */
 
+/* The console's region, from the cartridge header (set_region() in the
+ * core: USA before Europe before Japan). A European-only game such as
+ * Sonic 3 (Europe) refuses to run on an NTSC console. */
+static bool region_pal;
+
 static void genesis_init(void)
 {
     memset(M68K_RAM, 0, MAX_RAM_SIZE);
@@ -385,6 +390,12 @@ static void genesis_init(void)
     gwenesis_vdp_reset();
     gwenesis_vdp_set_buffer(&video_screen[0][0]);
     memset(video_screen, 0, sizeof video_screen);
+
+    set_region();                       /* version register $A10001 */
+    extern unsigned char io_reg[];
+    region_pal = (io_reg[0] & 0x40) != 0;
+    if (region_pal)
+        gwenesis_vdp_status |= 1;       /* PAL bit of the VDP status */
 }
 
 static void __attribute__((noreturn)) emulation_loop(void)
@@ -439,9 +450,11 @@ static void __attribute__((noreturn)) emulation_loop(void)
 
         /* ---- frame geometry ---- */
         int hint_counter = gwenesis_vdp_regs[10];
-        bool is_pal = REG1_PAL;
+        /* 313 lines and 50 frames a second on a PAL console, in either
+         * screen mode; the 240-line mode (V30) is a matter of the picture */
+        bool is_pal = region_pal;
         screen_width = REG12_MODE_H40 ? 320 : 256;
-        screen_height = is_pal ? 240 : 224;
+        screen_height = REG1_PAL ? 240 : 224;
         lines_per_frame = is_pal ? LINES_PER_FRAME_PAL : LINES_PER_FRAME_NTSC;
         uint32_t period = is_pal ? 20000u : 16667u;
 
