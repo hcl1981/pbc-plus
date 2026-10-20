@@ -10,6 +10,9 @@
 #include "input.h"
 #include "rom_store.h"
 #include "menu.h"
+#if PBC_MULTI
+#include "pbc_loading.h"        /* the launcher's look */
+#endif
 
 #define MAX_ROMS     200
 #define ROW_H        12
@@ -63,6 +66,14 @@ static void header(const char *title)
 
 void menu_message(const char *title, const char *l1, const char *l2, const char *l3)
 {
+#if PBC_MULTI
+    /* not for a crash: that can come from a stack overflow, and the
+     * launcher's look needs about 1 KB of stack */
+    if (strcmp(title, "CRASH") != 0) {
+        pbc_loading_message(title, l1, l2, l3);
+        return;
+    }
+#endif
     header(title);
     if (l1) pbc_display_text_centered(110, l1, COL_TEXT, COL_BG, 1);
     if (l2) pbc_display_text_centered(126, l2, COL_TEXT, COL_BG, 1);
@@ -84,6 +95,10 @@ static void shorten(const char *src, char *dst, int max_chars)
 
 void menu_progress_begin(const char *name)
 {
+#if PBC_MULTI
+    pbc_loading_begin(name);
+    return;
+#endif
     char shortname[NAME_CHARS + 1];
     shorten(name, shortname, NAME_CHARS);
     header("LOADING GAME");
@@ -95,6 +110,10 @@ void menu_progress_begin(const char *name)
 
 void menu_progress(uint32_t done, uint32_t total)
 {
+#if PBC_MULTI
+    pbc_loading_progress(done, total);
+    return;
+#endif
     int w = total ? (int)((uint64_t)done * 196 / total) : 0;
     pbc_display_fill(22, 132, w, 8, COL_TITLE);
 }

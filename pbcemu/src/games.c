@@ -6,6 +6,7 @@
 #include "ff.h"
 #include "games.h"
 #include "devices.h"
+#include "pbc_launch.h"
 
 #define GAMES_MAX 400
 
@@ -57,22 +58,5 @@ int games_list(int device, char (**out)[GAME_NAME_MAX])
 
 void games_title(const char *file, char *title, char *tags, int size)
 {
-    snprintf(title, (size_t)size, "%s", file);
-    char *dot = strrchr(title, '.');
-    if (dot && dot != title)
-        *dot = 0;
-    for (char *p = title; *p; p++)
-        if (*p == '_')
-            *p = ' ';
-    tags[0] = 0;
-    /* region and dump tags go into the second, dimmer part */
-    char *t = title;
-    while ((t = strpbrk(t, "([")) != NULL) {
-        if (t > title && t[-1] == ' ') {
-            snprintf(tags, (size_t)size, "%s", t);
-            t[-1] = 0;
-            break;
-        }
-        t++;
-    }
+    pbc_game_title(file, title, tags, size);
 }

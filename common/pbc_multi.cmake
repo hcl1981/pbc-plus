@@ -35,4 +35,15 @@ function(pbc_multi target)
         ROM_INFO_OFFSET=0xFF8000u
         PBGB_FS_FLASH_OFFSET=0x700000u
     )
+    # Loading screen and messages in the launcher's look (pbc_loading.c),
+    # drawn with its gfx.c and fonts; the linker keeps only what is used.
+    set(launcher ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../pbcemu/src)
+    target_sources(${target} PRIVATE
+        ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/pbc_loading.c
+        ${launcher}/gfx.c
+        ${launcher}/assets.c)
+    set_source_files_properties(${CMAKE_CURRENT_FUNCTION_LIST_DIR}/pbc_loading.c
+        PROPERTIES INCLUDE_DIRECTORIES ${launcher})
+    set_source_files_properties(${launcher}/gfx.c
+        PROPERTIES COMPILE_DEFINITIONS GFX_STRIP COMPILE_OPTIONS -O3)
 endfunction()

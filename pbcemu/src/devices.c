@@ -2,6 +2,7 @@
 #include <string.h>
 #include <strings.h>
 #include "devices.h"
+#include "pbc_devices.h"
 /* Offsets of the emulators: build.sh writes pbc_apps.h into the build
  * directory. Built on its own, the launcher has none. */
 #if __has_include("pbc_apps.h")
@@ -46,17 +47,11 @@ static const char *const m_md[]  = { "Fit width", "Crop 1:1", NULL };
 static const char *const m_gg[]  = { "Scale 1.5x", "Original", NULL };
 static const char *const m_gbc[] = { "Scale 1.5x", "Original", NULL };
 
-/* In order of their release. */
-const device_t devices[] = {
-    { "Commodore 64",   "Commodore  \xfa  1982", ".d64.prg",        APP_C64, 0xd9a55b, &pic_c64, &icon_c64, c_c64, m_c64 },
-    { "NES",            "Nintendo  \xfa  1983",  ".nes",            APP_NES, 0xe5483c, &pic_nes, &icon_nes, c_nes, m_nes },
-    { "Master System",  "Sega  \xfa  1985",      ".sms",            APP_SMS, 0x3d8bfd, &pic_sms, &icon_sms, c_sms, m_sms },
-    { "PC Engine",      "NEC  \xfa  1987",       ".pce",            APP_PCE, 0xff8a3d, &pic_pce, &icon_pce, c_pce, m_pce },
-    { "Mega Drive",     "Sega  \xfa  1988",      ".md.gen.smd.bin", APP_MD,  0xe0407a, &pic_md,  &icon_md,  c_md,  m_md  },
-    { "Game Gear",      "Sega  \xfa  1990",      ".gg",             APP_SMS, 0x2cc6d8, &pic_gg,  &icon_gg,  c_gg,  m_gg  },
-    { "Game Boy Color", "Nintendo  \xfa  1998",  ".gbc.gb",         APP_GBC, 0xa56cf5, &pic_gbc, &icon_gbc, c_gbc, m_gbc },
-    { "Add Games",      "USB drive",             "",                APP_NONE, 0x4ea1ff, &pic_usb, &icon_usb, c_none, NULL },
-};
+/* The list itself is in common/pbc_devices.h: the emulators' loading
+ * screen takes name, colour and icon from it by the same index. */
+#define DEVICE(name, maker, exts, app, accent, pic, icon, controls, modes) \
+    { name, maker, exts, app, accent, &pic, &icon, controls, modes },
+const device_t devices[] = { PBC_DEVICES(DEVICE) };
 const int device_count = sizeof devices / sizeof devices[0];
 
 bool device_has_ext(const device_t *d, const char *filename)

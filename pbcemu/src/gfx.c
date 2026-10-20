@@ -6,12 +6,17 @@
 #include "display.h"
 #endif
 
+static int cx0, cy0, cx1 = GFX_W, cy1 = GFX_H;
+
+#ifdef GFX_STRIP
+/* In the emulators (common/pbc_loading.c) there is no room for a frame
+ * buffer: the caller points gfx_fb at a few rows and clips to them. */
+uint16_t *gfx_fb;
+#else
 static uint16_t fbs[2][GFX_W * GFX_H];
 static int back;                    /* index of the buffer being drawn */
 static bool sending;
 uint16_t *gfx_fb = fbs[0];
-
-static int cx0, cy0, cx1 = GFX_W, cy1 = GFX_H;
 
 void gfx_init(void)
 {
@@ -19,8 +24,10 @@ void gfx_init(void)
     gfx_fb = fbs[0];
     gfx_noclip();
 }
+#endif
 
-#ifdef PBC_HOST
+#ifdef GFX_STRIP
+#elif defined(PBC_HOST)
 /* host preview: the preview program takes each frame from gfx_fb */
 void host_frame(void);
 void gfx_present(void) { host_frame(); }
@@ -100,10 +107,10 @@ static inline void put(int x, int y, uint16_t c, unsigned a)
 
 void gfx_background(uint32_t top, uint32_t bottom)
 {
-    for (int y = 0; y < GFX_H; y++) {
+    for (int y = cy0; y < cy1; y++) {
         uint16_t c = panel(gfx_mix(top, bottom, y * 255 / (GFX_H - 1)));
         uint16_t *p = &gfx_fb[y * GFX_W];
-        for (int x = 0; x < GFX_W; x++)
+        for (int x = cx0; x < cx1; x++)
             p[x] = c;
     }
 }

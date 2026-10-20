@@ -25,6 +25,8 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <stdio.h>
+#include <string.h>
 #include "hardware/regs/addressmap.h"
 
 #define PBC_LAUNCH_OFFSET   0xFF6000u
@@ -86,6 +88,30 @@ static inline bool pbc_launch_stats(void)
 {
     const pbc_launch_t *l = pbc_launch_get();
     return l && (l->flags & PBC_LAUNCH_STATS);
+}
+
+/* "Sonic_2 (World).md" -> title "Sonic 2", tags "(World)": the launcher's
+ * list and the emulators' loading screen show games this way. */
+static inline void pbc_game_title(const char *file, char *title, char *tags, int size)
+{
+    snprintf(title, (size_t)size, "%s", file);
+    char *dot = strrchr(title, '.');
+    if (dot && dot != title)
+        *dot = 0;
+    for (char *p = title; *p; p++)
+        if (*p == '_')
+            *p = ' ';
+    tags[0] = 0;
+    /* region and dump tags go into the second, dimmer part */
+    char *t = title;
+    while ((t = strpbrk(t, "([")) != NULL) {
+        if (t > title && t[-1] == ' ') {
+            snprintf(tags, (size_t)size, "%s", t);
+            t[-1] = 0;
+            break;
+        }
+        t++;
+    }
 }
 
 #endif /* PBC_LAUNCH_H */
