@@ -138,6 +138,7 @@ src/ym2612_synth.c  zweite Übersetzung von core/sound/ym2612.c für Core 1
 src/audio_pwm.c   PWM-Lautsprecher per DMA, wie in ../sms
 tools/m68k_dispatch.py  packt die 68000-Befehlstabellen für den RAM
 tools/m68k_hot.py       wählt die 68000-Befehlsroutinen für den RAM aus
+tools/host/       mdhost: der Kern als PC-Programm, für Bildfehler (eigene README)
 src/HDMI.h        Ersatz für den HDMI-Header, den der VDP-Kern einbindet
 src/flash_fs.*, usb_*.c, tusb_config.h, fatfs/   aus ../picoboygb
 core/             Emulatorkern aus frank-genesis
