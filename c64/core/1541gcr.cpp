@@ -38,6 +38,8 @@
 
 #include "sysdeps.h"
 
+#include <new>
+
 #include "1541gcr.h"
 #include "CPU1541.h"
 #include "IEC.h"
@@ -97,9 +99,11 @@ GCRDisk::GCRDisk(uint8_t *ram1541) : ram(ram1541), the_file(nullptr)
 	byte_ready = false;
 
 	for (unsigned i = 0; i < MAX_NUM_HALFTRACKS; ++i) {
-		gcr_data[i] = nullptr;
 		gcr_track_length[i] = 0;
+		gcr_file_offset[i] = 0;
 	}
+	cache = nullptr;
+	cache_halftrack = -1;
 
 	if (ThePrefs.Emul1541Proc) {
 		open_image_file(ThePrefs.DrivePath[0]);
@@ -208,10 +212,25 @@ void GCRDisk::open_image_file(const std::string & filepath)
 		ok = load_image_file();
 	}
 
+	// One buffer for the longest half-track
+	size_t longest = 0;
+	for (unsigned i = 0; i < MAX_NUM_HALFTRACKS; ++i) {
+		if (gcr_track_length[i] > longest)
+			longest = gcr_track_length[i];
+	}
+	if (ok && longest > 0) {
+		cache = new (std::nothrow) uint8_t[longest];
+		ok = cache != nullptr;
+	}
+	cache_halftrack = -1;
+
 	if (ok) {
 		// Set write protect status
 		write_protected = read_only;
 	} else {
+		for (unsigned i = 0; i < MAX_NUM_HALFTRACKS; ++i) {
+			gcr_track_length[i] = 0;
+		}
 		fclose(the_file);
 		the_file = nullptr;
 	}
@@ -226,10 +245,12 @@ void GCRDisk::close_image_file()
 {
 	// Deallocate GCR data
 	for (unsigned i = 0; i < MAX_NUM_HALFTRACKS; ++i) {
-		delete[] gcr_data[i];
-		gcr_data[i] = nullptr;
 		gcr_track_length[i] = 0;
+		gcr_file_offset[i] = 0;
 	}
+	delete[] cache;
+	cache = nullptr;
+	cache_halftrack = -1;
 
 	// Close file
 	if (the_file != nullptr) {
@@ -318,19 +339,10 @@ bool GCRDisk::load_image_file()
 	disk_id1 = bam[162];
 	disk_id2 = bam[163];
 
-	// Create GCR encoded disk data from image
+	// GCR encoded tracks: made from the image when the head gets there
 	for (unsigned track = 1; track <= num_tracks; ++track) {
-
-		// Allocate GCR data
 		unsigned halftrack = (track - 1) * 2;
-
 		gcr_track_length[halftrack] = GCR_SECTOR_SIZE * num_sectors[track];
-		gcr_data[halftrack] = new uint8_t[gcr_track_length[halftrack]];
-
-		// Convert track
-		for (unsigned sector = 0; sector < num_sectors[track]; ++sector) {
-			sector2gcr(track, sector, gcr_data[halftrack] + GCR_SECTOR_SIZE * sector);
-		}
 	}
 
 	return true;
@@ -376,8 +388,7 @@ bool GCRDisk::load_gcr_file()
 		uint16_t length = len[0] | (len[1] << 8);
 
 		gcr_track_length[halftrack] = length;
-		gcr_data[halftrack] = new uint8_t[length];
-		fread(gcr_data[halftrack], length, 1, the_file);
+		gcr_file_offset[halftrack] = offset + 2;	// read when the head gets there
 	}
 
 	return true;
@@ -396,8 +407,8 @@ void GCRDisk::WriteSector()
 	uint16_t buf = ram[0x30] | (ram[0x31] << 8);
 
 	if (buf <= 0x0700) {
-		if (write_sector(track, sector, ram + buf)) {
-			sector2gcr(track, sector, gcr_data[halftrack] + GCR_SECTOR_SIZE * sector);
+		if (write_sector(track, sector, ram + buf) && (int)halftrack == cache_halftrack) {
+			sector2gcr(track, sector, cache + GCR_SECTOR_SIZE * sector);
 		}
 	}
 }
@@ -424,8 +435,8 @@ void GCRDisk::FormatTrack()
 
 	// Write block to all sectors on track
 	for (unsigned sector = 0; sector < num_sectors[track]; ++sector) {
-		if (write_sector(track, sector, buf)) {
-			sector2gcr(track, sector, gcr_data[halftrack] + GCR_SECTOR_SIZE * sector);
+		if (write_sector(track, sector, buf) && (int)halftrack == cache_halftrack) {
+			sector2gcr(track, sector, cache + GCR_SECTOR_SIZE * sector);
 		}
 	}
 
@@ -719,6 +730,31 @@ void GCRDisk::advance_disk_change_seq(uint32_t cycle_counter)
 
 
 /*
+ *  GCR data of a half-track, nullptr if not present. Made from the image
+ *  file when the head arrives on it (a D64 sector by sector, a G64 read).
+ */
+
+const uint8_t * GCRDisk::track_data(unsigned halftrack)
+{
+	if (halftrack >= MAX_NUM_HALFTRACKS || gcr_track_length[halftrack] == 0 || cache == nullptr)
+		return nullptr;
+	if ((int)halftrack != cache_halftrack) {
+		if (gcr_file_offset[halftrack] != 0) {
+			fseek(the_file, gcr_file_offset[halftrack], SEEK_SET);
+			fread(cache, gcr_track_length[halftrack], 1, the_file);
+		} else {
+			unsigned track = halftrack / 2 + 1;
+			for (unsigned sector = 0; sector < num_sectors[track]; ++sector) {
+				sector2gcr(track, sector, cache + GCR_SECTOR_SIZE * sector);
+			}
+		}
+		cache_halftrack = halftrack;
+	}
+	return cache;
+}
+
+
+/*
  *  Rotate disk (virtually)
  */
 
@@ -726,7 +762,11 @@ void GCRDisk::rotate_disk(uint32_t cycle_counter)
 {
 	advance_disk_change_seq(cycle_counter);
 
-	if (motor_on && disk_change_seq == 0 && gcr_data[current_halftrack] != nullptr) {
+	const uint8_t * data = nullptr;
+	if (motor_on && disk_change_seq == 0) {
+		data = track_data(current_halftrack);
+	}
+	if (data != nullptr) {
 
 		uint32_t elapsed = cycle_counter - last_byte_cycle;
 		uint32_t advance = elapsed / cycles_per_byte;
@@ -739,13 +779,13 @@ void GCRDisk::rotate_disk(uint32_t cycle_counter)
 				gcr_offset -= track_length;
 			}
 
-			const uint8_t * p = gcr_data[current_halftrack] + gcr_offset;
+			const uint8_t * p = data + gcr_offset;
 
 			// Sync = ten "1" bits
 			if (gcr_offset != 0) {
 				on_sync = ((p[-1] & 0x03) == 0x03) && (p[0] == 0xff);
 			} else {
-				on_sync = ((gcr_data[current_halftrack][track_length - 1] & 0x03) == 0x03) && (p[0] == 0xff);
+				on_sync = ((data[track_length - 1] & 0x03) == 0x03) && (p[0] == 0xff);
 			}
 
 			// Byte is ready if not on sync

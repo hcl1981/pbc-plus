@@ -42,8 +42,8 @@ Vor jedem Spielstart zeigt ein Kasten zwei Sekunden lang diese Belegung.
 | Game Boy | PicoBoy |
 |---|---|
 | Steuerkreuz | Joystick |
-| A | A |
-| B | B |
+| A | B |
+| B | A |
 | START | Mitte + B |
 | SELECT | Mitte + A |
 

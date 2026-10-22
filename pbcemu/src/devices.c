@@ -18,22 +18,23 @@
 
 /* Same as the emulators map them (their input.c). */
 static const control_t c_c64[] = {
-    { "Joystick", "Joystick" }, { "Fire", "B" }, { "RETURN", "A" }, { "SPACE", "Center + A" }, { NULL } };
+    { "Joystick", "Joystick" }, { "Fire", "B" }, { "RETURN", "A" }, { "SPACE", "Center + B" },
+    { "Disk", "Center + A" }, { NULL } };
 static const control_t c_nes[] = {
-    { "D-pad", "Joystick" }, { "A", "A" }, { "B", "B" }, { "START", "Center + B" },
+    { "D-pad", "Joystick" }, { "A", "B" }, { "B", "A" }, { "START", "Center + B" },
     { "SELECT", "Center + A" }, { NULL } };
 static const control_t c_sms[] = {
     { "D-pad", "Joystick" }, { "1", "B" }, { "2", "A" }, { "PAUSE", "Center + B" }, { NULL } };
 static const control_t c_pce[] = {
-    { "D-pad", "Joystick" }, { "I", "A" }, { "II", "B" }, { "RUN", "Center + B" },
+    { "D-pad", "Joystick" }, { "I", "B" }, { "II", "A" }, { "RUN", "Center + B" },
     { "SELECT", "Center + A" }, { NULL } };
 static const control_t c_md[] = {
-    { "D-pad", "Joystick" }, { "A", "A" }, { "B", "B" }, { "C", "Center" },
+    { "D-pad", "Joystick" }, { "A", "B" }, { "B", "A" }, { "C", "Center" },
     { "START", "Center + B" }, { NULL } };
 static const control_t c_gg[] = {
     { "D-pad", "Joystick" }, { "1", "B" }, { "2", "A" }, { "START", "Center + B" }, { NULL } };
 static const control_t c_gbc[] = {
-    { "D-pad", "Joystick" }, { "A", "A" }, { "B", "B" }, { "START", "Center + B" },
+    { "D-pad", "Joystick" }, { "A", "B" }, { "B", "A" }, { "START", "Center + B" },
     { "SELECT", "Center + A" }, { NULL } };
 static const control_t c_none[] = { { NULL } };
 

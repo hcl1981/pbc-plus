@@ -77,6 +77,8 @@ private:
 	void gcr_conv4(const uint8_t * from, uint8_t * to);
 	void sector2gcr(unsigned track, unsigned sector, uint8_t * gcr);
 
+	const uint8_t * track_data(unsigned halftrack);
+
 	void advance_disk_change_seq(uint32_t cycle_counter);
 	void rotate_disk(uint32_t cycle_counter);
 
@@ -90,11 +92,16 @@ private:
 	uint8_t disk_id1, disk_id2;			// ID of disk
 	uint8_t error_info[NUM_SECTORS_40];	// Sector error information (1 byte/sector)
 
-	uint8_t * gcr_data[MAX_NUM_HALFTRACKS];			// GCR data for each half-track (nullptr = not present)
-	size_t gcr_track_length[MAX_NUM_HALFTRACKS];	// Number of GCR bytes for each half-track (nullptr = not present)
+	// PBC: the whole disk as GCR would take some 250 KB of RAM; only the
+	// half-track under the head is kept, made from the file when the head
+	// gets there (track_data()).
+	size_t gcr_track_length[MAX_NUM_HALFTRACKS];	// Number of GCR bytes for each half-track (0 = not present)
+	uint32_t gcr_file_offset[MAX_NUM_HALFTRACKS];	// G64: where the half-track's data is in the file
+	uint8_t * cache;				// GCR data of half-track cache_halftrack
+	int cache_halftrack;			// -1 = none
 
 	unsigned current_halftrack;		// Current halftrack number (0..MAX_NUM_HALFTRACKS-1)
-	size_t gcr_offset;				// Offset of GCR data byte under R/W head, relative to gcr_data[current_halftrack]
+	size_t gcr_offset;				// Offset of GCR data byte under R/W head, relative to the half-track's GCR data
 									// Note: This is never 0, so we can access the previous GCR byte for sync detection
 
 	uint32_t disk_change_cycle;	// Cycle of last disk change sequence step

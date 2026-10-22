@@ -37,4 +37,8 @@ bool c64_video_present(void);
 
 void c64_video_set_status(const char *s);
 
+/* Core 0: wait until core 1 has sent the last frame; the panel is then
+ * free until the next c64_video_present() (the disk menu draws there). */
+void c64_video_wait_idle(void);
+
 #endif /* PBC_C64_VIDEO_H */

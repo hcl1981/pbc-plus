@@ -5,7 +5,7 @@
  * Emulator core: Frodo4 (Christian Bauer) as ported in frank-c64 by
  * rh1tech, GPL-2.0-or-later, in its line-based mode. The platform layer is
  * the one from megadrive and nes:
- *   - disk images (.d64) and programs (.prg) come over USB mass storage into
+ *   - disk images (.d64), programs (.prg) and cartridges (.crt) come over USB mass storage into
  *     a flash FatFs partition (from PicoBoyGB); Frodo uses the image there
  *     directly, writes included (saved games), see flash_fs.c
  *   - no keyboard: after boot LOAD"*",8,1 is typed automatically (or the
@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
 #include "hardware/clocks.h"
@@ -51,6 +52,7 @@
 #include "fatfs_stdio.h"
 #include "openroms_syms.h"
 #include "c64_roms.h"
+#include "cart_store.h"
 
 /* ---- build-time configuration (see CMakeLists.txt) ---------------------- */
 #ifndef CPU_MHZ
@@ -65,6 +67,10 @@
 #ifndef SHOW_FPS
 #define SHOW_FPS 0
 #endif
+/* With the processor-level 1541 a second 6502 runs along: more clock, at
+ * the voltage the Mega Drive emulator runs 200 MHz with. */
+#define TRUE_DRIVE_MHZ  200
+#define TRUE_DRIVE_VREG VREG_VOLTAGE_1_15
 
 /* PAL: 312 lines x 63 cycles at 985248 Hz = 50.125 Hz */
 #define FRAME_US 19950u
@@ -101,7 +107,8 @@ static void fs_write_readme(void)
         return;
     f_puts("PBC C64 - Commodore 64 emulator for the PicoBoy Color Plus\r\n"
            "\r\n"
-           "Copy disk images (.d64) or programs (.prg) to this drive, then EJECT\r\n"
+           "Copy disk images (.d64), programs (.prg) or cartridges (.crt) to this\r\n"
+           "drive, then EJECT\r\n"
            "it. The PicoBoy restarts by itself and shows the game list. A game\r\n"
            "starts with LOAD\"*\",8,1 and RUN, typed automatically.\r\n"
            "\r\n"
@@ -112,11 +119,14 @@ static void fs_write_readme(void)
            "Built in are the free MEGA65 OpenROMs. If you own the Commodore ROMs,\r\n"
            "copy kernal.rom and basic.rom (optionally chargen.rom) here: some\r\n"
            "games only run with the original KERNAL (901227-02/-03).\r\n"
+           "Games with their own fast loader need \"True drive\" in the options\r\n"
+           "and the 1541's ROM here as 1541.rom (16 KB).\r\n"
            "\r\n"
            "Controls in game:\r\n"
            "  Joystick + B   joystick + fire\r\n"
            "  A              RETURN\r\n"
-           "  Center + A     SPACE\r\n"
+           "  Center + B     SPACE (other keys: options)\r\n"
+           "  Center + A     choose the disk in drive 8\r\n"
            "\r\n"
            "Back to the game list: RESET.\r\n", &f);
     f_close(&f);
@@ -142,7 +152,7 @@ static void diag(const char *s, uint16_t colour)
 static void __attribute__((noreturn)) usb_stick_mode(void)
 {
     menu_message("USB DRIVE MODE",
-                 "Copy disk images (.d64)",
+                 "Copy .d64, .prg or .crt",
                  "to the drive, then eject.",
                  "The PicoBoy restarts.");
     diag_y = 168;
@@ -210,19 +220,19 @@ static void __no_inline_not_in_flash_func(set_flash_timings)(int cpu_mhz)
 }
 
 /* Raised only after all flash writing is done. */
-static void overclock(void)
+static void overclock(int mhz, enum vreg_voltage vreg)
 {
     /* At 150 MHz nothing else would set the flash clock: no boot2 is
      * linked in, so the bootrom's setting would stay. Divisor 2 = 75 MHz. */
-    if (CPU_MHZ <= 150)
-        set_flash_timings(CPU_MHZ);
-    if (CPU_MHZ > 150) {
-        if (CPU_VREG > VREG_VOLTAGE_1_30)
+    if (mhz <= 150)
+        set_flash_timings(mhz);
+    if (mhz > 150) {
+        if (vreg > VREG_VOLTAGE_1_30)
             vreg_disable_voltage_limit();
-        vreg_set_voltage(CPU_VREG);
+        vreg_set_voltage(vreg);
         sleep_ms(10);
-        set_flash_timings(CPU_MHZ);
-        if (!set_sys_clock_khz(CPU_MHZ * 1000, false)) {
+        set_flash_timings(mhz);
+        if (!set_sys_clock_khz(mhz * 1000, false)) {
             set_flash_timings(250);
             set_sys_clock_khz(250000, true);
         }
@@ -251,6 +261,7 @@ static void overclock(void)
 enum { AS_BOOT, AS_TYPED, AS_LOADING, AS_DONE };
 
 static bool own_roms;       /* the player's Commodore ROMs from the drive */
+static bool true_drive;     /* processor-level 1541: the disk is in from the start */
 
 /* The screen editor waiting for a key: Commodore KERNAL at $E5CD-$E5D5,
  * OpenROMs at the addresses from its build. */
@@ -272,15 +283,21 @@ static bool is_disk(const char *path)
 
 static void autostart_step(const char *path, const char *file)
 {
-    static int state = AS_BOOT, idle_frames;
+    static int state = AS_BOOT, idle_frames, frames;
     static char cmd[40];
     static int cmd_len, cmd_pos;
     uint8_t *ram = c64_get_ram();
 
+    if (cart_store_is_cart_name(path))
+        return;                         /* a cartridge starts itself */
     idle_frames = basic_idle() ? idle_frames + 1 : 0;
+    frames++;
     switch (state) {
     case AS_BOOT:
-        if (idle_frames >= 10) {
+        /* the real 1541 boots along with the C64: give it three seconds
+         * (in frames since the start; idle_frames starts over whenever an
+         * interrupt happens to run at the sample) */
+        if (idle_frames >= 10 && (!true_drive || frames >= 150)) {
             if (is_disk(path)) {
                 c64_mount_disk(NULL, 0, path);
                 /* spelled out: OpenROMs BASIC need not know the abbreviations */
@@ -318,6 +335,75 @@ static void autostart_step(const char *path, const char *file)
     }
 }
 
+/* A message for the first seconds of the game, or NULL. */
+static const char *start_status;
+
+/* ---- changing disks -------------------------------------------------------
+ *
+ * Center + A pauses the game and lists every disk image on the drive, as
+ * the game list does; the one in drive 8 is marked. The chosen one goes in.
+ * The list lives on the heap only while it is shown. */
+#define DISK_LIST_MAX 200
+
+static char disk_now[ROM_NAME_MAX];     /* in drive 8, "" for none */
+
+static int by_name(const void *a, const void *b)
+{
+    return strcasecmp((const char *)a, (const char *)b);
+}
+
+/* The game is paused meanwhile. Returns a status line to show, or NULL. */
+static const char *disk_menu(void)
+{
+    static DIR dir;
+    static FILINFO fi;
+    char (*files)[ROM_NAME_MAX] = malloc(DISK_LIST_MAX * sizeof *files);
+    char (*shown)[ROM_NAME_MAX] = malloc(DISK_LIST_MAX * sizeof *shown);
+    const char **rows = malloc(DISK_LIST_MAX * sizeof *rows);
+    int n = 0;
+    if (files && shown && rows && f_opendir(&dir, "/") == FR_OK) {
+        while (n < DISK_LIST_MAX && f_readdir(&dir, &fi) == FR_OK && fi.fname[0]) {
+            if (fi.fattrib & (AM_DIR | AM_HID | AM_SYS) || fi.fname[0] == '.' ||
+                !is_disk(fi.fname) || strlen(fi.fname) >= ROM_NAME_MAX)
+                continue;
+            strcpy(files[n++], fi.fname);
+        }
+        f_closedir(&dir);
+    }
+    const char *status = NULL;
+    if (n == 0) {
+        status = "No disk images";
+    } else {
+        qsort(files, (size_t)n, sizeof *files, by_name);
+        int cur = -1;
+        for (int i = 0; i < n; i++) {
+            if (strcmp(files[i], disk_now) == 0)
+                cur = i;
+            strcpy(shown[i], files[i]);
+            char *dot = strrchr(shown[i], '.');
+            if (dot)
+                *dot = 0;
+            rows[i] = shown[i];
+        }
+        c64_video_wait_idle();
+        int sel = menu_pick_disk("Insert disk", rows, n, cur);
+        pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
+        if (sel >= 0 && sel != cur) {
+            char path[ROM_NAME_MAX + 2];
+            snprintf(path, sizeof path, "/%s", files[sel]);
+            c64_mount_disk(NULL, 0, path);
+            strcpy(disk_now, files[sel]);
+            static char msg[32];
+            snprintf(msg, sizeof msg, "%s", shown[sel]);
+            status = msg;
+        }
+    }
+    free(rows);
+    free(shown);
+    free(files);
+    return status;
+}
+
 /* ---- emulator ------------------------------------------------------------ */
 
 /* fps, speed and load under the picture: from the launcher in the combined
@@ -329,6 +415,11 @@ static void __attribute__((noreturn)) emulation_loop(const char *path, const cha
     uint64_t next_frame = time_us_64();
     uint64_t stat_t0 = time_us_64(), stat_busy_us = 0;
     uint32_t stat_drawn = 0, stat_emulated = 0;
+    uint64_t status_until = 0;              /* a message holds the status line */
+    if (start_status) {
+        c64_video_set_status(start_status);
+        status_until = time_us_64() + 4000000;
+    }
 
     for (;;) {
         uint64_t frame_start = time_us_64();
@@ -338,6 +429,16 @@ static void __attribute__((noreturn)) emulation_loop(const char *path, const cha
             stat_drawn++;
         stat_emulated++;
         autostart_step(path, file);
+        if (c64_input_disk_change()) {
+            const char *s = disk_menu();
+            c64_video_set_status(s ? s : "");
+            status_until = s ? time_us_64() + 2000000 : 0;
+            next_frame = time_us_64();      /* the pause is not to be caught up */
+            stat_t0 = next_frame;
+            stat_drawn = stat_emulated = 0;
+            stat_busy_us = 0;
+            continue;
+        }
         fatfs_stdio_sync_idle(25);          /* saved games reach the flash */
 
         next_frame += FRAME_US;
@@ -349,7 +450,14 @@ static void __attribute__((noreturn)) emulation_loop(const char *path, const cha
             next_frame = now;               /* hopelessly behind: stop catching up */
 
         now = time_us_64();
-        if (show_stats && now - stat_t0 >= 1000000) {
+        if (status_until && now >= status_until) {
+            status_until = 0;
+            c64_video_set_status("");
+            stat_t0 = now;                  /* the statistics start over */
+            stat_drawn = stat_emulated = 0;
+            stat_busy_us = 0;
+        }
+        if (show_stats && !status_until && now - stat_t0 >= 1000000) {
             char s[32];
             snprintf(s, sizeof s, "%lufps %lu%% CPU%lu%%",
                      (unsigned long)stat_drawn,
@@ -441,9 +549,39 @@ int main(void)
     own_roms = c64_roms_load();
     if (own_roms)
         c64_set_roms(c64_roms_basic(), c64_roms_kernal(), c64_roms_chargen());
+    /* A cartridge: its banks into the ROM region the first time */
+    bool cart = cart_store_is_cart_name(game);
+    if (cart && !cart_store_matches(game)) {
+#if PBC_MULTI
+        pbc_loading_begin(game);
+        const char *err = cart_store_program(game, pbc_loading_progress);
+#else
+        menu_message("LOADING CARTRIDGE", game, "Only needed the first time", NULL);
+        const char *err = cart_store_program(game, NULL);
+#endif
+        if (err) {
+            menu_message("ERROR", err, game, "Press a button");
+            menu_wait_release();
+            while (!input_raw())
+                sleep_ms(20);
+            menu_wait_release();
+            watchdog_reboot(0, 0, 10);  /* back to the game list */
+            for (;;) tight_loop_contents();
+        }
+    }
+
+    /* "True drive": the 1541's own ROM from the drive, else DOS level */
+    true_drive = settings_true_drive(game) && c64_roms_load_drive();
+    if (settings_true_drive(game) && !true_drive)
+        start_status = "No 1541.rom: fast drive";
 
     int port = settings_port(game);
     c64_input_set_port(port);
+    static const char *const key_names[] = { C64_KEYS(C64_KEY_NAME) };
+    int key = settings_key(game);
+    c64_input_set_key(key);
+    if (is_disk(game))
+        snprintf(disk_now, sizeof disk_now, "%s", game);   /* autostart mounts it */
 
     char port_text[16];
     snprintf(port_text, sizeof port_text, "Port %d", port);
@@ -451,7 +589,8 @@ int main(void)
         { "Stick",   port_text },
         { "Fire",    "Button B" },
         { "RETURN",  "Button A" },
-        { "Space",   "Center + A" },
+        { key_names[key], "Center + B" },
+        { "Disk",    "Center + A" },
         { "ROMs",    own_roms ? "Commodore" : "OpenROMs" },
     };
 #if PBC_MULTI
@@ -463,7 +602,11 @@ int main(void)
     pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
     menu_wait_release();
 
-    overclock();
+    if (true_drive)
+        overclock(TRUE_DRIVE_MHZ > CPU_MHZ ? TRUE_DRIVE_MHZ : CPU_MHZ,
+                  TRUE_DRIVE_VREG > CPU_VREG ? TRUE_DRIVE_VREG : CPU_VREG);
+    else
+        overclock(CPU_MHZ, CPU_VREG);
     audio_pwm_init();
 
     c64_init();
@@ -481,6 +624,13 @@ int main(void)
     static char file[SETTINGS_FILE_MAX + 1];
     snprintf(path, sizeof path, "/%s", game);
     settings_file(game, file);
+    /* Switching to the real 1541 resets its CPU: do it now, so that it
+     * boots with the C64 and is ready when LOAD comes (the autostart's
+     * mount of the same file then changes nothing). */
+    if (true_drive && is_disk(game))
+        c64_mount_disk(NULL, 0, path);
+    if (cart)
+        c64_load_cartridge(path);       /* plugged in, the C64 reset with it */
 #if PBC_MULTI
     pbc_fade_in(false);             /* over the first frames */
 #endif

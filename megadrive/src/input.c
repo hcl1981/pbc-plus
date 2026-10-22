@@ -57,8 +57,9 @@ genesis_input_t input_poll_genesis(void)
     } else {
         center_since = 0;
         combo_latched = false;
-        if (r & IN_A) g.pad &= ~(1u << 6);
-        if (r & IN_B) g.pad &= ~(1u << 4);
+        /* A on B: on this small device B is the easier button */
+        if (r & IN_B) g.pad &= ~(1u << 6);   /* A */
+        if (r & IN_A) g.pad &= ~(1u << 4);   /* B */
     }
     return g;
 }

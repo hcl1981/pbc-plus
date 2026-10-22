@@ -14,4 +14,8 @@ extern const uint8_t BuiltinKernalROM[KERNAL_ROM_SIZE];
 extern const uint8_t BuiltinCharROM[CHAR_ROM_SIZE];
 extern const uint8_t BuiltinDriveROM[DRIVE_ROM_SIZE];
 
+/* The KERNAL bytes under the DOS-level drive traps (offset from $E000). */
+typedef struct { uint16_t off; uint8_t orig[3]; } KernalTrap;
+extern const KernalTrap BuiltinKernalTraps[6];
+
 #endif

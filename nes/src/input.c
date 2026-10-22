@@ -42,8 +42,9 @@ uint8_t input_poll_nes(void)
         if (r & IN_B) j |= NES_START;
         if (r & IN_A) j |= NES_SELECT;
     } else {
-        if (r & IN_A) j |= NES_A;
-        if (r & IN_B) j |= NES_B;
+        /* the main button on B: on this small device B is the easier one */
+        if (r & IN_B) j |= NES_A;
+        if (r & IN_A) j |= NES_B;
     }
     return j;
 }

@@ -14,6 +14,8 @@ uint8_t  *c64_get_ram(void);
 uint16_t  c64_get_pc(void);
 /* .d64: mount as drive 8 and type LOAD"*",8,1; .prg: load and type RUN */
 void      c64_load_file(const char *path);
+/* A .crt: insert and reset (after cart_store_program() put it in flash). */
+void      c64_load_cartridge(const char *path);
 /* Only mount a disk image as drive 8 (data/size unused). */
 void      c64_mount_disk(const uint8_t *data, uint32_t size, const char *path);
 void      c64_type_string(const char *str);

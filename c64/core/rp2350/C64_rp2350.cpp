@@ -89,7 +89,14 @@ C64::C64() : quit_requested(false), prefs_editor_requested(false), load_snapshot
     Basic = user_basic ? user_basic : c64_roms_basic();
     Kernal = user_kernal ? user_kernal : c64_roms_kernal();
     Char = user_char ? user_char : c64_roms_chargen();
-    ROM1541 = BuiltinDriveROM;      /* never executed: drive 8 is DOS-level */
+    /* The processor-level 1541 runs the drive's own ROM (1541.rom from the
+     * drive, see c64_roms.c); the KERNAL then talks to it over the serial
+     * bus, so its DOS-level traps come out again. Without the file drive 8
+     * stays at DOS level and the built-in (empty) ROM is never executed. */
+    ROM1541 = (uint8_t *)(c64_roms_drive() ? c64_roms_drive() : BuiltinDriveROM);
+    if (c64_roms_drive() && !c64_roms_untrap_own())
+        for (const KernalTrap &t : BuiltinKernalTraps)
+            memcpy((uint8_t *)Kernal + t.off, t.orig, sizeof t.orig);
     // Color RAM in regular SRAM for fast VIC access
     Color = g_Color;
 
@@ -633,7 +640,25 @@ bool c64_run_frame(void)
 
         // CPU emulation
         // Frodo's $f2 opcode mechanism handles IEC traps internally
-        c64->TheCPU->EmulateLine(cycles_left);
+        if (ThePrefs.Emul1541Proc) {
+            /* as Frodo's C64::emulate_line(): while the 1541 is busy, the
+             * two CPUs take turns instruction by instruction */
+            int cycles_1541 = ThePrefs.FloppyCycles;
+            c64->TheCPU1541->CountVIATimers(cycles_1541);
+            if (!c64->TheCPU1541->Idle) {
+                int cycles = cycles_left;
+                while (cycles >= 0 || cycles_1541 >= 0) {
+                    if (cycles > cycles_1541)
+                        cycles -= c64->TheCPU->EmulateLine(1);
+                    else
+                        cycles_1541 -= c64->TheCPU1541->EmulateLine(1);
+                }
+            } else {
+                c64->TheCPU->EmulateLine(cycles_left);
+            }
+        } else {
+            c64->TheCPU->EmulateLine(cycles_left);
+        }
         c64->cycle_counter += CYCLES_PER_LINE;
 
         line_count++;
@@ -736,8 +761,8 @@ void c64_mount_disk(const uint8_t *data, uint32_t size, const char *filename)
     MII_DEBUG_PRINTF("c64_mount_disk: %s\n", filename);
 
     // Use Frodo's built-in DOS-level IEC emulation
-    // false = DOS-level emulation (not processor-level 1541)
-    TheC64->MountDrive8(false, filename);
+    // processor-level 1541 when its ROM is there ("True drive"), else DOS level
+    TheC64->MountDrive8(c64_roms_drive() != NULL, filename);
 
     MII_DEBUG_PRINTF("c64_mount_disk: mounted via Frodo IEC (Emul1541Proc=%d)\n",
            ThePrefs.Emul1541Proc);
@@ -893,7 +918,8 @@ void c64_load_file(const char *filename)
     }
 
     // ---------- CARTRIDGE ----------
-    // PBC: not supported, see flash_block() in Cartridge.cpp
+    // PBC: main.c lays it out in flash first (cart_store.c), then calls
+    // c64_load_cartridge()
 
     MII_DEBUG_PRINTF("Unsupported file type: %s\n", ext);
 }

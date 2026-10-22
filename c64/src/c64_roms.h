@@ -28,6 +28,18 @@ const uint8_t *c64_roms_chargen(void);   /* NULL: keep the built-in one */
 void c64_roms_fill_builtin(const uint8_t *basic_rom, const uint8_t *kernal_rom,
                            const uint8_t *char_rom);
 
+/* Processor-level 1541 ("True drive"): needs the drive's own ROM, 1541.rom
+ * (16 KB, also found as 1541.bin / dos1541.rom), on the drive. Loads it
+ * into RAM with Frodo's patches. Needs the volume mounted. */
+bool c64_roms_load_drive(void);
+bool c64_roms_drive_present(void);       /* the file is there (options) */
+const uint8_t *c64_roms_drive(void);     /* NULL: drive 8 at DOS level */
+
+/* The player's own KERNAL without the DOS-level drive traps (the real 1541
+ * talks over the serial bus). False if the built-in one is in use: the
+ * caller puts back its bytes (BuiltinKernalTraps). */
+bool c64_roms_untrap_own(void);
+
 #ifdef __cplusplus
 }
 #endif

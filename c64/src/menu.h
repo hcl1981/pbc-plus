@@ -26,4 +26,9 @@ void menu_controls(const menu_control_t *c, int n);
 /* Wait until every button is released. */
 void menu_wait_release(void);
 
+/* In the game (Center + A): which disk to put into drive 8. `cur` is the
+ * one in it (-1: none of these). Returns the chosen index, or -1 for
+ * "back". The caller has stopped drawing the game. */
+int menu_pick_disk(const char *title, const char *const *names, int n, int cur);
+
 #endif /* PBC_MENU_H */

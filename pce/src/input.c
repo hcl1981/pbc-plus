@@ -42,8 +42,9 @@ uint8_t input_poll_pce(void)
         if (r & IN_B) j |= PCE_RUN;
         if (r & IN_A) j |= PCE_SELECT;
     } else {
-        if (r & IN_A) j |= PCE_I;
-        if (r & IN_B) j |= PCE_II;
+        /* the main button on B: on this small device B is the easier one */
+        if (r & IN_B) j |= PCE_I;
+        if (r & IN_A) j |= PCE_II;
     }
     return j;
 }

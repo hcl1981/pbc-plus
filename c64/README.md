@@ -15,7 +15,9 @@ dort. Das Drumherum ist dasselbe wie bei [`../nes`](../nes/) und
 | HDMI/VGA 320×240 | **ST7789**: 320×240 auf 240×180 verkleinert (gemittelt), auf Kern 1 per DMA |
 | SID über I2S/PWM | SID über den **PWM-Lautsprecher** (GP15), 22 222 Hz, **per Vorgabe aus** |
 | F9 tauscht die Joystick-Ports | **Joystick-Port pro Spiel** in den Optionen, gespeichert |
-| Diskettenwahl, Cartridges, Bandlaufwerk | entfallen |
+| Diskettenwahl | **Mitte + A** im Spiel (alle `.d64` des Laufwerks) |
+| Cartridges | **`.crt`** (8K/16K, Ocean, Fun Play, Super Games, Simons' Basic, C64GS, Dinamic, Zaxxon, Magic Desk, Comal 80, EasyFlash), aus dem Flash gelesen |
+| Bandlaufwerk | entfällt |
 
 **Stand:** läuft auf dem Gerät, auf dem Gerät geprüft: Ton, Spielstände auf
 Diskette (speichern, RESET, wieder laden), Dateiauswahl, USB-Eintrag. Kern 0 lag
@@ -77,7 +79,15 @@ bei PicoBoyGB.
 | Joystick (Port aus den Optionen) | Joystick |
 | Feuer | B |
 | RETURN | A |
-| Leertaste | Mitte + A |
+| Leertaste (andere Taste je Spiel in den Optionen: RUN/STOP, F1–F7, Y, N, 1–4) | Mitte + B |
+| Diskette wählen | Mitte + A |
+
+**Diskettenwechsel:** Mitte + A hält das Spiel an und zeigt alle `.d64` auf
+dem Laufwerk, nach Namen sortiert, wie die Spieleliste. Die im Laufwerk ist
+markiert („in drive“) und vorausgewählt. Hoch/runter wählt, links/rechts
+blättert, A legt sie in Laufwerk 8, B geht ohne Wechsel zurück. Ein zu langer
+Name läuft in der markierten Zeile durch. Nach einem Wechsel steht der Name
+zwei Sekunden unter dem Bild.
 
 Zurück zur Spieleliste geht es mit RESET. Mit `-DSHOW_FPS=1` gebaut (in
 PBCemu: Option im Starter), stehen unter dem Bild gezeichnete Bilder pro
@@ -144,6 +154,33 @@ Ein veränderter KERNAL (JiffyDOS o. Ä.) wird nicht genommen. Welche ROMs
 laufen, zeigt die Steuerungsübersicht vor dem Spielstart: „ROMs Commodore“
 oder „ROMs OpenROMs“. In der Firmware und im Repo steckt nichts davon.
 
+### True drive: die echte 1541
+
+Normalerweise emuliert Frodo Laufwerk 8 auf DOS-Ebene: Es beantwortet die
+Befehle auf dem seriellen Bus direkt, ohne Laufwerksprozessor. Das ist schnell,
+aber Spiele mit eigenem Schnelllader (der Code in die 1541 lädt, z. B. Sam's
+Journey) hängen dann beim Laden. Für sie gibt es in den Optionen eines Spiels
+**True drive**: Dann läuft ein zweiter 6502 mit dem ROM der 1541, die Diskette
+dreht sich als GCR-Daten unter dem Lesekopf, und der KERNAL spricht wie auf
+echter Hardware über den seriellen Bus.
+
+Dafür braucht es das ROM der 1541, das nicht frei ist und deshalb nicht
+mitkommt: `1541.rom` (16384 Bytes, 325302-01 + 901229-05; auch `1541.bin`,
+`dos1541.rom`) ins Hauptverzeichnis des Laufwerks. Fehlt es, läuft das Spiel
+mit der schnellen Emulation, und unter dem Bild steht kurz „No 1541.rom“.
+Das ROM bekommt Frodos Patches im RAM (keine Prüfsumme, Schlaf in der
+DOS-Leerlaufschleife); aus dem KERNAL nimmt der Emulator die Fallen der
+DOS-Emulation wieder heraus (bei OpenROMs mit den Originalbytes aus
+`BuiltinKernalTraps`, erzeugt von `tools/openroms/make_rom_data.py`).
+
+Kosten: Solange das Laufwerk arbeitet, wechseln sich die beiden Prozessoren
+Befehl für Befehl ab. Mit True drive läuft der C64 deshalb mit 200 MHz statt
+150 MHz. Frodo hielt die ganze Diskette als GCR im RAM (gut 250 KB); hier
+liegt nur die Spur unter dem Lesekopf im Speicher (höchstens knapp 8 KB) und
+wird beim Spurwechsel aus der Datei erzeugt (`core/1541gcr.cpp`). Schreiben
+auf die Diskette geht mit True drive nicht über Frodos Fallen; ob ein Spiel
+dabei speichern kann, ist ungeprüft.
+
 Beim Umbau auf OpenROMs sind zwei Fehler aus frank-c64 aufgefallen und
 behoben: Die Klasse `Prefs` war zweimal mit verschiedenem Aufbau definiert
 (`Prefs_rp2350.h` ohne zwei Felder von `Prefs.h`), sodass `ThePrefs = prefs`
@@ -199,13 +236,22 @@ Quellzeile zuordnen.
   Schreibzugriffe durchgeschrieben. **Nach dem Speichern also kurz warten**,
   bevor man RESET drückt oder ausschaltet. Fällt der Strom mitten im Schreiben
   aus, kann das Image beschädigt werden.
-* **Keine echte 1541.** Wie bei frank-c64 läuft das Laufwerk auf DOS-Ebene
-  (Frodo-IEC-Emulation), nicht als eigene 6502-CPU – das spart Rechenzeit und
-  lädt schnell. Spiele mit eigenem Schnelllader, der direkt mit dem Laufwerk
-  spricht, oder mit Kopierschutz laden so nicht.
-* Nur Laufwerk 8, kein Diskettenwechsel: Spiele über mehrere Disketten gehen
-  nicht.
-* Keine Cartridges (`.crt`), kein Bandlaufwerk. Der Cartridge-Code aus der Vorlage schrieb `.crt`-Abbilder an Flash-Adresse 1 MB, mitten in die Gesamtfirmware; das Schreiben ist abgeschaltet, `.crt` wird nicht mehr geladen.
+* **Echte 1541 nur mit True drive.** Wie bei frank-c64 läuft das Laufwerk
+  sonst auf DOS-Ebene (Frodo-IEC-Emulation), nicht als eigene 6502-CPU – das
+  spart Rechenzeit und lädt schnell. Spiele mit eigenem Schnelllader oder
+  Kopierschutz brauchen „True drive“ und `1541.rom`, siehe oben.
+* Nur Laufwerk 8. Kein Bandlaufwerk.
+* **Cartridges (`.crt`):** Beim ersten Start legt `src/cart_store.c` die Bänke
+  geordnet in den ROM-Bereich, in dem die anderen Emulatoren ihr Spiel
+  ablegen (mit Ladebildschirm; eine EasyFlash mit 1 MB braucht ein paar
+  Sekunden), mit demselben Infosatz wie deren `rom_store.c`. Danach liest der
+  Kern die Bänke direkt aus dem Flash und beim Einstecken nur noch die
+  CHIP-Köpfe der Datei. Die Vorlage schrieb die Abbilder an Flash-Adresse
+  1 MB, mitten in die Gesamtfirmware. Nicht emuliert: Schreiben in den Flash
+  einer EasyFlash (Spielstände solcher Cartridges gehen beim Ausschalten
+  verloren); andere Typen (GMod2, Action Replay …) werden mit einer Meldung
+  abgelehnt. Ein Spiel, das ständig Code aus der Cartridge ausführt, kann
+  langsamer laufen als von Diskette (16 KB XIP-Cache).
 
 ## Bauen
 

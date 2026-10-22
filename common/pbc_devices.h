@@ -10,7 +10,7 @@
 #define PBC_DEVICES_LIST_H
 
 #define PBC_DEVICES(X) \
-    X("Commodore 64",   "Commodore  \xfa  1982", ".d64.prg",        APP_C64,  0xd9a55b, pic_c64, icon_c64, c_c64,  m_c64) \
+    X("Commodore 64",   "Commodore  \xfa  1982", ".d64.prg.crt",    APP_C64,  0xd9a55b, pic_c64, icon_c64, c_c64,  m_c64) \
     X("NES",            "Nintendo  \xfa  1983",  ".nes",            APP_NES,  0xe5483c, pic_nes, icon_nes, c_nes,  m_nes) \
     X("Master System",  "Sega  \xfa  1985",      ".sms",            APP_SMS,  0x3d8bfd, pic_sms, icon_sms, c_sms,  m_sms) \
     X("PC Engine",      "NEC  \xfa  1987",       ".pce",            APP_PCE,  0xff8a3d, pic_pce, icon_pce, c_pce,  m_pce) \

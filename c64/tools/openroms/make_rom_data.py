@@ -69,10 +69,12 @@ def main():
     assert len(kernal) == 8192 and len(basic) == 8192 and len(chargen) == 4096
 
     in_rom = sorted(a for a in syms.values() if 0xE000 <= a <= 0xFFFF)
+    orig = []                   # the bytes under the traps, for the real 1541
     for name, op in TRAPS:
         a = syms[name]
         nxt = next(x for x in in_rom if x > a)
         assert nxt - a >= 3, f"{name} is too short to hold a trap"
+        orig.append((a - 0xE000, bytes(kernal[a - 0xE000:a - 0xE000 + 3])))
         kernal[a - 0xE000:a - 0xE000 + 3] = bytes([0xF2, op, 0x60])
 
     print("/*")
@@ -94,7 +96,13 @@ def main():
     print(array("BuiltinBasicROM", basic, "BASIC $A000-$BFFF"))
     print(array("BuiltinKernalROM", bytes(kernal), "KERNAL $E000-$FFFF, with traps"))
     print(array("BuiltinCharROM", chargen, "character generator"))
-    print("/* Drive ROM: never executed, Frodo emulates drive 8 at DOS level. */")
+    print("/* What the traps replaced: put back for the processor-level 1541. */")
+    print(f"const KernalTrap BuiltinKernalTraps[{len(orig)}] = {{")
+    for off, b in orig:
+        print(f"    {{ 0x{off:04x}, {{ 0x{b[0]:02x}, 0x{b[1]:02x}, 0x{b[2]:02x} }} }},")
+    print("};")
+    print("/* Drive ROM: not free; the processor-level 1541 takes 1541.rom from the")
+    print(" * drive (c64_roms.c), else drive 8 is emulated at DOS level. */")
     print("const uint8_t BuiltinDriveROM[DRIVE_ROM_SIZE] __aligned(4) = { 0 };")
 
     # Addresses the emulator needs, as a header next to it

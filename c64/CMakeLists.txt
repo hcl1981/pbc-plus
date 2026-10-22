@@ -52,6 +52,7 @@ add_executable(pbc_c64
     src/menu.c
     src/settings.c
     src/d64_dir.c
+    src/cart_store.c
     src/flash_fs.c
     src/usb_msc.c
     src/usb_descriptors.c

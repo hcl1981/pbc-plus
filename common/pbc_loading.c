@@ -38,6 +38,8 @@ static const look_t *look(void)
 
 /* Runs draw() once per strip of rows y0..y1 and sends each strip. The
  * strip lives on the stack: no RAM is kept from the game for these screens. */
+static int strip_y0, strip_y1;          /* the rows being drawn, for a narrower clip */
+
 static void render(int y0, int y1, void (*draw)(void))
 {
     uint16_t strip[GFX_W * STRIP];
@@ -45,6 +47,8 @@ static void render(int y0, int y1, void (*draw)(void))
         int h = y1 - y < STRIP ? y1 - y : STRIP;
         gfx_fb = (uint16_t *)((uintptr_t)strip - (uintptr_t)y * GFX_W * sizeof *strip);
         gfx_clip(0, y, GFX_W, y + h);
+        strip_y0 = y;
+        strip_y1 = y + h;
         draw();
         pbc_display_window(0, y, GFX_W, h);
         pbc_display_begin();
@@ -162,4 +166,98 @@ void pbc_loading_message(const char *title, const char *l1, const char *l2, cons
     }
     render(0, GFX_H, message_screen);
     pbc_fade_in(true);
+}
+
+/* ---- list ------------------------------------------------------------------------- */
+
+#define LIST_VIS   7                    /* rows on the card at most */
+
+static const char *const *list_rows;
+static int list_n, list_sel, list_mark, list_top;
+static const char *list_title, *list_note, *list_footer;
+static uint64_t list_since;             /* when `sel` got there: a long name scrolls */
+static int list_x;                      /* how far it has scrolled */
+static int list_sel_y, list_sel_h;      /* where the ticks redraw it */
+
+/* as the options card and the game list in pbcemu/src/ui.c */
+static void list_screen(void)
+{
+    const look_t *d = look();
+    int vis = list_n < LIST_VIS ? list_n : LIST_VIS;
+    int rh = vis > 6 ? 26 : 30;
+    int c = (rh - 4) / 2;
+    int h = 56 + vis * rh + 30, y0 = (GFX_H - h) / 2;
+    gfx_background(BG_TOP, BG_BOTTOM);
+    gfx_rrect(14, y0, GFX_W - 28, h, 16, CARD, 255);
+    if (list_title)                     /* NULL in the ticks: not in their rows */
+        gfx_text(&font_head, 30, y0 + 14, list_title, TEXT, 255);
+    int note_w = list_note ? gfx_text_w(&font_small, list_note) + 8 : 0;
+    for (int k = 0; k < vis; k++) {
+        int i = list_top + k, y = y0 + 48 + k * rh;
+        bool sel = i == list_sel;
+        int avail = GFX_W - 72 - (i == list_mark ? note_w : 0);
+        if (sel) {
+            gfx_rrect(22, y, GFX_W - 48, rh - 4, 9, d->accent, 55);
+            list_sel_y = y;
+            list_sel_h = rh - 4;
+        }
+        if (sel && gfx_text_w(&font_body, list_rows[i]) > avail) {
+            gfx_clip(34, strip_y0, 34 + avail, strip_y1);
+            gfx_text(&font_body, 34 - list_x, y + c - 9, list_rows[i], TEXT, 255);
+            gfx_clip(0, strip_y0, GFX_W, strip_y1);
+        } else {
+            char fit[PBC_LAUNCH_NAME_MAX + 4];
+            gfx_text_fit(&font_body, list_rows[i], avail, fit);
+            gfx_text(&font_body, 34, y + c - 9, fit, sel ? TEXT : DIM, 255);
+        }
+        if (i == list_mark && list_note)
+            gfx_text(&font_small, GFX_W - 38 - note_w + 8, y + c - 6, list_note, FAINT, 255);
+    }
+    if (list_n > vis) {                 /* scroll bar */
+        int track = vis * rh - 4, ty0 = y0 + 48;
+        int th = track * vis / list_n;
+        if (th < 12) th = 12;
+        int ty = ty0 + (track - th) * list_top / (list_n - vis);
+        gfx_rrect(GFX_W - 23, ty0, 3, track, 1, 0xffffff, 18);
+        gfx_rrect(GFX_W - 23, ty, 3, th, 1, d->accent, 255);
+    }
+    gfx_text_centered(&font_small, GFX_W / 2, y0 + h - 24, list_footer, DIM, 255);
+}
+
+void pbc_loading_list(const char *title, const char *const *rows, int n, int sel,
+                      int mark, const char *note, const char *footer)
+{
+    char fit[PBC_LAUNCH_NAME_MAX + 4];
+    gfx_text_fit(&font_head, title, GFX_W - 60, fit);
+    if (sel != list_sel || rows != list_rows)
+        list_since = time_us_64();
+    list_title = fit;
+    list_rows = rows;
+    list_n = n;
+    list_sel = sel;
+    list_mark = mark;
+    list_note = note;
+    list_footer = footer;
+    list_x = 0;
+    /* the window follows the selection, as little as needed */
+    int vis = n < LIST_VIS ? n : LIST_VIS;
+    if (list_top > n - vis) list_top = n - vis;
+    if (sel < list_top) list_top = sel;
+    if (sel >= list_top + vis) list_top = sel - vis + 1;
+    if (list_top < 0) list_top = 0;
+    render(0, GFX_H, list_screen);
+    list_title = NULL;
+}
+
+void pbc_loading_list_tick(void)
+{
+    if (!list_rows || list_sel < 0)
+        return;
+    int note_w = list_note && list_sel == list_mark ? gfx_text_w(&font_small, list_note) + 8 : 0;
+    int x = gfx_marquee(gfx_text_w(&font_body, list_rows[list_sel]), GFX_W - 72 - note_w,
+                        (uint32_t)((time_us_64() - list_since) / 1000));
+    if (x == list_x)
+        return;
+    list_x = x;
+    render(list_sel_y, list_sel_y + list_sel_h, list_screen);
 }

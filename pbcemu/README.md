@@ -24,7 +24,8 @@ getestet, auch nicht der Sprung vom Starter in die Emulatoren.
    Seite, **Add Games**, schaltet den USB-Laufwerk-Modus ein.
 3. **Spiele:** hoch/runter wählt, links/rechts blättert seitenweise, **A**
    startet, **B** geht zurück, **Mitte** öffnet die Optionen. Beim C64 sind
-   das zusätzlich Joystick-Port und Programm auf der Diskette, je Spiel.
+   das zusätzlich Joystick-Port, Programm auf der Diskette und die Taste auf
+   Mitte + B, je Spiel.
 4. Vor dem Start zeigt der Starter die Tastenbelegung (zwei Sekunden, A
    überspringt). Zurück zur Liste: **RESET**.
 
@@ -36,6 +37,8 @@ getestet, auch nicht der Sprung vom Starter in die Emulatoren.
 | Display | Anzeigemodus des Systems (gemerkt je System) |
 | Show FPS | blendet im Spiel Bilder/s, Tempo in % des Originals und Auslastung von Kern 0 ein, z. B. `60fps 100% CPU71%` |
 | Joystick / Program | nur bei C64-Spielen: Port und Programm auf der Diskette |
+| Mitte + B | nur bei C64-Spielen: welche Taste dort liegt (Vorgabe SPACE). Mitte + A öffnet im Spiel die Diskettenauswahl, siehe `../c64/README.md` |
+| True drive | nur bei C64-Spielen: echte 1541-Emulation für Spiele mit eigenem Schnelllader; braucht `1541.rom` auf dem Laufwerk, siehe `../c64/README.md` |
 
 Anzeigemodi (der erste ist jeweils die Vorgabe):
 

@@ -30,44 +30,32 @@ namespace fs = std::filesystem;
 #endif
 
 #ifndef PSRAM_MAX_FREQ_MHZ
-static uint8_t small_buffer[0x4000] __aligned(4096);
-static uint32_t requested_size = 0;
-// put it with 1MB offset (the firmaware is less than 400 kB, so more than 3 MB may be reused)
-#define CARTRIDGE_BASE (1ul << 20)
-#define CARTRIDGE_ADDR ((uint8_t*)(XIP_BASE + CARTRIDGE_BASE))
+/* PBC: the banks lie flat in the ROM region of the flash, laid out by
+ * c64/src/cart_store.c with FromFile() below on the cartridge's first start
+ * (a ROM cartridge's bank n at n * bank size, an EasyFlash's ROML at 0 and
+ * ROMH at 512 KB). Inserting it later only reads the CHIP headers. The
+ * template wrote to 1 MB, inside the combined firmware. */
+#include "cart_store.h"
+#define CARTRIDGE_ADDR ((uint8_t *)cart_store_data())
 
-/* PBC: never writes. This came from a board where the firmware stayed
- * under 400 KB; here 1 MB lies inside the combined firmware, the erase
- * ran without stopping core 1, which executes from flash, and GP25 is no
- * LED.
- * Cartridges are not offered (only .d64/.prg), so nothing calls it. */
-void __not_in_flash_func(flash_block)(uint8_t* buffer, size_t flash_target_offset) {
-    (void)buffer;
-    (void)flash_target_offset;
-}
+static uint8_t *chip_buf;               /* while storing: one CHIP packet */
+static long file_size;
 
-static void easyflash_write(uint32_t flash_offset,
-                            const uint8_t *src,
-                            uint32_t size)
+/* The contents of the CHIP packet at the file position: written to the
+ * flash when storing, else skipped (already there). */
+static bool chip_data(FILE *f, uint32_t offset, uint32_t size)
 {
-    while (size) {
-        uint32_t sector_base = flash_offset & ~(FLASH_SECTOR_SIZE - 1);
-        uint32_t sector_off  = flash_offset &  (FLASH_SECTOR_SIZE - 1);
-        uint32_t chunk = FLASH_SECTOR_SIZE - sector_off;
-        if (chunk > size)
-            chunk = size;
-        // read-back sector
-        memcpy(small_buffer,
-               CARTRIDGE_ADDR + sector_base,
-               FLASH_SECTOR_SIZE);
-        // patch
-        memcpy(small_buffer + sector_off, src, chunk);
-        // write-back
-        flash_block(small_buffer, sector_base);
-        flash_offset += chunk;
-        src          += chunk;
-        size         -= chunk;
-    }
+	if (!cart_store_writing())
+		return fseek(f, size, SEEK_CUR) == 0;
+	if (size > 0x4000)
+		return false;
+	if (!chip_buf && !(chip_buf = (uint8_t *)malloc(0x4000)))
+		return false;
+	if (fread(chip_buf, size, 1, f) != 1)
+		return false;
+	cart_store_write(offset, chip_buf, size);
+	cart_store_progress((uint32_t)ftell(f), (uint32_t)file_size);
+	return true;
 }
 
 #endif
@@ -80,13 +68,7 @@ ROMCartridge::ROMCartridge(unsigned num_banks, unsigned bank_size) : numBanks(nu
 	rom = (uint8_t*)psram_malloc(num_banks * bank_size);
 	memset(rom, 0xff, num_banks * bank_size);
 #else
-	requested_size = num_banks * bank_size;
-	if (requested_size <= sizeof(small_buffer)) {
-		rom = small_buffer;
-		memset(small_buffer, 0xff,  requested_size);
-	} else {
-		rom = CARTRIDGE_ADDR;
-	}
+	rom = CARTRIDGE_ADDR;
 #endif
 }
 
@@ -417,7 +399,6 @@ CartridgeEasyFlash::CartridgeEasyFlash()
 	memset(roml, 0xff, NUM_BANKS * BANK_SIZE);
 	memset(romh, 0xff, NUM_BANKS * BANK_SIZE);
 #else
-	// no cases to fit small_buffer, use small_buffer only as write-back cache
 	roml = CARTRIDGE_ADDR;
 	romh = CARTRIDGE_ADDR + (NUM_BANKS * BANK_SIZE);
 #endif
@@ -642,6 +623,11 @@ Cartridge * Cartridge::FromFile(const std::string & path, std::string & ret_erro
 			return nullptr;
 		}
 
+#ifndef PSRAM_MAX_FREQ_MHZ
+		fseek(f, 0, SEEK_END);
+		file_size = ftell(f);
+		fseek(f, 0, SEEK_SET);
+#endif
 		uint8_t header[64];
 		if (fread(header, sizeof(header), 1, f) != 1)
 			goto error_read;
@@ -700,6 +686,10 @@ Cartridge * Cartridge::FromFile(const std::string & path, std::string & ret_erro
 			case 32: {
 				// EasyFlash cartridge - special handling (not ROMCartridge)
 				CartridgeEasyFlash * ef = new CartridgeEasyFlash;
+#ifndef PSRAM_MAX_FREQ_MHZ
+				if (cart_store_writing())
+					cart_store_erase(2 * CartridgeEasyFlash::NUM_BANKS * CartridgeEasyFlash::BANK_SIZE);
+#endif
 
 				// Load CHIP packets for EasyFlash
 				while (true) {
@@ -736,17 +726,10 @@ Cartridge * Cartridge::FromFile(const std::string & path, std::string & ret_erro
 						goto error_unsupp;
 					}
 #ifndef PSRAM_MAX_FREQ_MHZ
-					uint32_t flash_off;
-					if (chip_start == 0x8000) {
-						flash_off = (dest - CARTRIDGE_ADDR);
-					} else {
-						flash_off = (dest - CARTRIDGE_ADDR);
-					}
-					if (fread(small_buffer, chip_size, 1, f) != 1) {
+					if (!chip_data(f, (uint32_t)(dest - CARTRIDGE_ADDR), chip_size)) {
 						delete ef;
 						goto error_read;
 					}
-					easyflash_write(flash_off, small_buffer, chip_size);
 #else
 
 					if (fread(dest, chip_size, 1, f) != 1) {
@@ -762,6 +745,11 @@ Cartridge * Cartridge::FromFile(const std::string & path, std::string & ret_erro
 			default:
 				goto error_unsupp;
 		}
+
+#ifndef PSRAM_MAX_FREQ_MHZ
+		if (cart_store_writing())
+			cart_store_erase(cart->numBanks * cart->bankSize);
+#endif
 
 		// Load CHIP packets for standard ROMCartridge types
 		while (true) {
@@ -793,31 +781,8 @@ Cartridge * Cartridge::FromFile(const std::string & path, std::string & ret_erro
 			if (fread(cart->ROM() + offset, chip_size, 1, f) != 1)
 				goto error_read;
 #else
-			if (requested_size <= sizeof(small_buffer)) {
-				// small cartridge: load fully into RAM buffer
-				if (fread((uint8_t*)cart->ROM() + offset, chip_size, 1, f) != 1)
-					goto error_read;
-			} else {
-                // large cartridge: stream into flash via small_buffer
-                uint32_t remaining = chip_size;
-                uint32_t flash_off = offset;
-                while (remaining) {
-                    // we must program full FLASH_SECTOR_SIZE blocks
-                    uint32_t to_read = remaining;
-                    if (to_read > FLASH_SECTOR_SIZE)
-                        to_read = FLASH_SECTOR_SIZE;
-                    // fill buffer with erased flash value
-                    memset(small_buffer, 0xff, FLASH_SECTOR_SIZE);
-                    // read actual data
-                    if (fread(small_buffer, to_read, 1, f) != 1)
-                        goto error_read;
-
-                    // write to flash
-                    flash_block(small_buffer, flash_off);
-                    flash_off += FLASH_SECTOR_SIZE;
-                    remaining -= to_read;
-                }
-			}
+			if (!chip_data(f, offset, chip_size))
+				goto error_read;
 #endif
 		}
 		fclose(f);
@@ -838,3 +803,20 @@ error_unsupp:
 	ret_error_msg = "Unsupported cartridge type";
 	return nullptr;
 }
+
+
+#ifndef PSRAM_MAX_FREQ_MHZ
+/* c64/src/cart_store.c: parse `path` while it writes the banks to the
+ * flash. NULL or an error text. */
+extern "C" const char *c64_cart_parse(const char *path)
+{
+	static std::string error;
+	Cartridge *cart = Cartridge::FromFile(path, error);
+	free(chip_buf);
+	chip_buf = nullptr;
+	if (cart == nullptr)
+		return error.c_str();
+	delete cart;
+	return nullptr;
+}
+#endif

@@ -85,6 +85,21 @@ static inline uint16_t blend(uint16_t d, uint16_t c, unsigned a)
     return (uint16_t)(r | (r >> 16));
 }
 
+int gfx_marquee(int w, int box, uint32_t ms)
+{
+    const uint32_t hold = 1000, px_ms = 25;         /* 40 pixels a second */
+    int over = w - box;
+    if (over <= 0)
+        return 0;
+    uint32_t run = (uint32_t)over * px_ms;
+    uint32_t t = ms % (hold + run + hold);
+    if (t < hold)
+        return 0;
+    if (t < hold + run)
+        return (int)((t - hold) / px_ms);
+    return over;
+}
+
 uint32_t gfx_mix(uint32_t a, uint32_t b, int t)
 {
     uint32_t r = 0;

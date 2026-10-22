@@ -406,8 +406,8 @@ int main(void)
 
     static const menu_control_t controls[] = {
         { "D-pad",   "Joystick" },
-        { "I",       "Button A" },
-        { "II",      "Button B" },
+        { "I",       "Button B" },
+        { "II",      "Button A" },
         { "RUN",     "Center + B" },
         { "SELECT",  "Center + A" },
     };

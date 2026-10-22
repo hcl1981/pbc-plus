@@ -45,8 +45,8 @@ Vor jedem Spielstart zeigt ein Kasten zwei Sekunden lang diese Belegung.
 | PC Engine | PicoBoy |
 |---|---|
 | Steuerkreuz | Joystick |
-| I | A |
-| II | B |
+| I | B |
+| II | A |
 | RUN | Mitte + B |
 | SELECT | Mitte + A |
 

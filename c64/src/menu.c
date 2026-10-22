@@ -11,6 +11,7 @@
 #include "settings.h"
 #include "d64_dir.h"
 #include "menu.h"
+#include "c64_roms.h"
 #if PBC_MULTI
 #include "pbc_loading.h"
 #endif
@@ -92,14 +93,14 @@ static void shorten(const char *src, char *dst, int max_chars)
     dst[max_chars] = 0;
 }
 
-/* Disk images and plain programs. */
+/* Disk images, plain programs and cartridges. */
 static bool is_c64_name(const char *name)
 {
     size_t n = strlen(name);
     if (n < 4)
         return false;
     const char *e = name + n - 4;
-    return strcasecmp(e, ".d64") == 0 || strcasecmp(e, ".prg") == 0;
+    return strcasecmp(e, ".d64") == 0 || strcasecmp(e, ".prg") == 0 || strcasecmp(e, ".crt") == 0;
 }
 
 static int cmp_names(const void *a, const void *b)
@@ -179,9 +180,13 @@ static void petscii_to_ascii(const char *in, char *out)
  * switched by accident in a game. Saved on the way out. */
 static void options(const char *game)
 {
-    enum { R_PORT, R_FILE, R_SOUND, R_VOLUME, R_BACK, ROWS };
+    enum { R_PORT, R_FILE, R_KEY, R_DRIVE, R_SOUND, R_VOLUME, R_BACK, ROWS };
+    static const char *const key_names[] = { C64_KEYS(C64_KEY_NAME) };
     int sel = 0;
     int port = settings_port(game);
+    int key = settings_key(game);
+    bool drive_rom = c64_roms_drive_present();
+    bool drive = settings_true_drive(game) && drive_rom;
     char shortname[NAME_CHARS + 1];
 
     /* Programs on the disk; index 0 is "*", the first one. */
@@ -204,11 +209,11 @@ static void options(const char *game)
     header("OPTIONS");
     shorten(game, shortname, NAME_CHARS);
     pbc_display_text_centered(40, shortname, COL_DIM, COL_BG, 1);
-    pbc_display_text_centered(200, "Up/Down: select", COL_DIM, COL_BG, 1);
-    pbc_display_text_centered(212, "Left/Right: change", COL_DIM, COL_BG, 1);
-    pbc_display_text_centered(224, "B: back", COL_DIM, COL_BG, 1);
+    pbc_display_text_centered(222, "Up/Down: select", COL_DIM, COL_BG, 1);
+    pbc_display_text_centered(234, "Left/Right: change", COL_DIM, COL_BG, 1);
+    pbc_display_text_centered(246, "B: back", COL_DIM, COL_BG, 1);
     if (is_disk)
-        pbc_display_text_centered(244, "File * = first on the disk", COL_DIM, COL_BG, 1);
+        pbc_display_text_centered(260, "File * = first on the disk", COL_DIM, COL_BG, 1);
     menu_wait_release();
 
     for (bool redraw = true;;) {
@@ -217,12 +222,15 @@ static void options(const char *game)
             petscii_to_ascii(files ? files[cur] : "*", name);
             snprintf(line[R_PORT],   40, "Joystick     Port %d", port);
             snprintf(line[R_FILE],   40, "File   %s", is_disk ? name : "(program)");
+            snprintf(line[R_KEY],    40, "Center+B     %s", key_names[key]);
+            snprintf(line[R_DRIVE],  40, "True drive   %s", !drive_rom ? "needs 1541.rom" : drive ? "on " : "off");
             snprintf(line[R_SOUND],  40, "Sound        %s", g_settings.sound ? "on " : "off");
             snprintf(line[R_VOLUME], 40, "Volume       %-2d", g_settings.volume);
             snprintf(line[R_BACK],   40, "Back");
             for (int i = 0; i < ROWS; i++) {
                 uint16_t bg = i == sel ? COL_SEL_BG : COL_BG;
-                bool dim = (i == R_VOLUME && !g_settings.sound) || (i == R_FILE && !is_disk);
+                bool dim = (i == R_VOLUME && !g_settings.sound) || (i == R_FILE && !is_disk) ||
+                           (i == R_DRIVE && !drive_rom);
                 pbc_display_fill(0, 66 + i * 22, PBC_LCD_W, 16, bg);
                 pbc_display_text(24, 70 + i * 22, line[i], dim ? COL_DIM : COL_TEXT, bg, 1);
             }
@@ -246,6 +254,14 @@ static void options(const char *game)
         if (dir && sel == R_FILE && is_disk && files && nfiles > 1) {
             cur = (cur + dir + nfiles) % nfiles;
             settings_set_file(game, cur ? files[cur] : "");
+        }
+        if (dir && sel == R_KEY) {
+            key = (key + dir + C64_KEY_COUNT) % C64_KEY_COUNT;
+            settings_set_key(game, key);
+        }
+        if (dir && sel == R_DRIVE && drive_rom) {
+            drive = !drive;
+            settings_set_true_drive(game, drive);
         }
         if (dir && sel == R_SOUND)
             g_settings.sound = !g_settings.sound;
@@ -351,4 +367,68 @@ static bool pick(char *out, int out_size)
             pbc_display_text_centered(254, pos, COL_DIM, COL_BG, 1);
         }
     }
+}
+
+/* ---- disk choice in the game ------------------------------------------------ */
+
+#define DISK_ROWS 8                     /* rows of the plain list */
+
+static void draw_disks(const char *title, const char *const *names, int n, int sel, int cur)
+{
+#if PBC_MULTI
+    pbc_loading_list(title, names, n, sel, cur, "in drive", "A  insert      B  back");
+#else
+    static int top;
+    if (sel < top) top = sel;
+    if (sel >= top + DISK_ROWS) top = sel - DISK_ROWS + 1;
+    char buf[NAME_CHARS + 2];
+    header("INSERT DISK");
+    for (int k = 0; k < DISK_ROWS; k++) {
+        int i = top + k;
+        uint16_t bg = i == sel ? COL_SEL_BG : COL_BG;
+        pbc_display_fill(0, 50 + k * 22, PBC_LCD_W, 16, bg);
+        if (i >= n)
+            continue;
+        shorten(names[i], buf, NAME_CHARS);
+        pbc_display_text(12, 54 + k * 22, buf, i == cur ? COL_TITLE : COL_TEXT, bg, 1);
+    }
+    char pos[24];
+    snprintf(pos, sizeof pos, "%d/%d", sel + 1, n);
+    pbc_display_fill(0, 230, PBC_LCD_W, 8, COL_BG);
+    pbc_display_text_centered(230, pos, COL_DIM, COL_BG, 1);
+    pbc_display_text_centered(266, "A: insert   B: back", COL_DIM, COL_BG, 1);
+    (void)title;
+#endif
+}
+
+int menu_pick_disk(const char *title, const char *const *names, int n, int cur)
+{
+    int sel = cur >= 0 ? cur : 0;
+    menu_wait_release();
+    draw_disks(title, names, n, sel, cur);
+    for (;;) {
+        uint32_t e = input_menu_edges();
+        if (!e) {
+#if PBC_MULTI
+            pbc_loading_list_tick();        /* a long name scrolls */
+#endif
+            sleep_ms(15);
+            continue;
+        }
+        if (e & IN_B) {
+            sel = -1;
+            break;
+        }
+        if (e & (IN_A | IN_CENTER))
+            break;
+        int old = sel;
+        if (e & IN_UP)    sel = (sel + n - 1) % n;
+        if (e & IN_DOWN)  sel = (sel + 1) % n;
+        if (e & IN_LEFT)  sel = sel >= DISK_ROWS ? sel - DISK_ROWS : 0;
+        if (e & IN_RIGHT) sel = sel + DISK_ROWS < n ? sel + DISK_ROWS : n - 1;
+        if (sel != old)
+            draw_disks(title, names, n, sel, cur);
+    }
+    menu_wait_release();
+    return sel;
 }

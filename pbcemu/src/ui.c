@@ -148,7 +148,7 @@ static void device_screen(int sel, int next, int t, int dir)
 /* ---- options ----------------------------------------------------------------------- */
 
 /* Rows of the options card; which ones appear depends on where it opens. */
-enum { ROW_SOUND, ROW_VOLUME, ROW_DISPLAY, ROW_STATS, ROW_PORT, ROW_PROGRAM };
+enum { ROW_SOUND, ROW_VOLUME, ROW_DISPLAY, ROW_STATS, ROW_PORT, ROW_PROGRAM, ROW_KEY, ROW_DRIVE };
 
 typedef struct {
     int device;                     /* -1: no device (no display row) */
@@ -156,11 +156,14 @@ typedef struct {
     int  port;
     char (*files)[D64_NAME_MAX + 1];
     int  nfiles, file;
-    int  rows[6], nrows;
+    int  key;                       /* on Center + B, C64_KEYS index */
+    bool drive;                     /* processor-level 1541 */
+    bool drive_rom;                 /* ... possible: 1541.rom is on the drive */
+    int  rows[8], nrows;
 } opt_t;
 
 #define C64_FILES_MAX 64
-#define OPT_ROW_H     32
+#define OPT_ROW_H     32            /* fewer pixels when more rows than fit */
 
 /* PETSCII file name -> something the font can show. */
 static void petscii_to_ascii(const char *in, char *out)
@@ -195,6 +198,9 @@ static void value_arrows(int x_right, int y, const char *s)
     gfx_chevron(x_right + 4, y + 9, 4, 1, DIM, 255);
 }
 
+static void key_chips(int x, int y, const char *keys);
+static bool c64_drive_rom(void);
+
 static int mode_count(int device)
 {
     int n = 0;
@@ -208,18 +214,26 @@ static void options_screen(void (*under)(void *), void *arg, const char *title,
 {
     under(arg);
     gfx_rect(0, 0, GFX_W, GFX_H, 0x000000, 150);
-    int h = 56 + o->nrows * OPT_ROW_H + 30, y0 = (GFX_H - h) / 2;
+    int rh = OPT_ROW_H;
+    if (56 + o->nrows * rh + 30 > GFX_H - 8)
+        rh = (GFX_H - 8 - 86) / o->nrows;
+    int c = (rh - 4) / 2;               /* middle of a row's highlight */
+    int h = 56 + o->nrows * rh + 30, y0 = (GFX_H - h) / 2;
     gfx_rrect(14, y0, GFX_W - 28, h, 16, CARD, 255);
     char t[GAME_NAME_MAX + 4];
     gfx_text_fit(&font_head, title, GFX_W - 60, t);
     gfx_text(&font_head, 30, y0 + 14, t, TEXT, 255);
 
-    static const char *const names[] = { "Sound", "Volume", "Display", "Show FPS", "Joystick", "Program" };
+    static const char *const names[] = { "Sound", "Volume", "Display", "Show FPS", "Joystick", "Program",
+                                         "", "True drive" };
+    static const char *const key_names[] = { C64_KEYS(C64_KEY_NAME) };
     for (int i = 0; i < o->nrows; i++) {
-        int y = y0 + 48 + i * OPT_ROW_H, kind = o->rows[i];
+        int y = y0 + 48 + i * rh, kind = o->rows[i];
         if (i == row)
-            gfx_rrect(22, y, GFX_W - 44, OPT_ROW_H - 4, 9, accent, 55);
-        gfx_text(&font_body, 34, y + 5, names[kind], i == row ? TEXT : DIM, 255);
+            gfx_rrect(22, y, GFX_W - 44, rh - 4, 9, accent, 55);
+        y += c - 14;                    /* the items below are placed for a 32 pixel row */
+        bool off = kind == ROW_DRIVE && !o->drive_rom;   /* nothing to switch */
+        gfx_text(&font_body, 34, y + 5, names[kind], off ? FAINT : i == row ? TEXT : DIM, 255);
         int xr = GFX_W - 34;
         char v[32];
         switch (kind) {
@@ -243,6 +257,18 @@ static void options_screen(void (*under)(void *), void *arg, const char *title,
             value_arrows(xr - 8, y + 4, v);
             break;
         }
+        case ROW_KEY:
+            key_chips(34, y + 7, "Center + B");     /* as on the start screen */
+            value_arrows(xr - 8, y + 4, key_names[o->key]);
+            break;
+        case ROW_DRIVE:
+            if (o->drive_rom) {
+                switch_toggle(xr - 38, y + 4, o->drive, accent);
+            } else {
+                const char *t = "needs 1541.rom";
+                gfx_text(&font_small, xr - gfx_text_w(&font_small, t), y + 8, t, FAINT, 255);
+            }
+            break;
         }
     }
     gfx_text_centered(&font_small, GFX_W / 2, y0 + h - 24, "\xae \xaf  change      A  done", DIM, 255);
@@ -265,9 +291,14 @@ static void options(void (*under)(void *), void *arg, int device, const char *ga
     if (c64) {
         o.rows[o.nrows++] = ROW_PORT;
         o.rows[o.nrows++] = ROW_PROGRAM;
+        o.rows[o.nrows++] = ROW_KEY;
+        o.rows[o.nrows++] = ROW_DRIVE;
         settings_load();
         o.game = game;
         o.port = settings_port(game);
+        o.key = settings_key(game);
+        o.drive_rom = c64_drive_rom();
+        o.drive = settings_true_drive(game) && o.drive_rom;
         o.files = malloc(C64_FILES_MAX * sizeof *o.files);
         o.nfiles = 1;
         if (o.files) {
@@ -317,6 +348,8 @@ static void options(void (*under)(void *), void *arg, int device, const char *ga
             case ROW_STATS: g_prefs.stats = !g_prefs.stats; break;
             case ROW_PORT: o.port = o.port == 1 ? 2 : 1; break;
             case ROW_PROGRAM: o.file = (o.file + o.nfiles + d) % o.nfiles; break;
+            case ROW_KEY: o.key = (o.key + C64_KEY_COUNT + d) % C64_KEY_COUNT; break;
+            case ROW_DRIVE: o.drive = o.drive_rom && !o.drive; break;
             }
         }
         if (e & (IN_A | IN_B | IN_CENTER))
@@ -326,6 +359,9 @@ static void options(void (*under)(void *), void *arg, int device, const char *ga
     if (c64) {
         settings_set_port(game, o.port);
         settings_set_file(game, o.file ? o.files[o.file] : "");
+        settings_set_key(game, o.key);
+        if (o.drive_rom)                /* without the ROM the choice stays as it was */
+            settings_set_true_drive(game, o.drive);
         settings_save();
         free(o.files);
     }
@@ -339,6 +375,7 @@ typedef struct {
     char (*names)[GAME_NAME_MAX];
     int n, cur;
     int scroll;                     /* in 1/16 pixel, follows the cursor smoothly */
+    uint64_t cur_since;             /* when the cursor got there: long names scroll */
     int fade;                       /* 0..256 when entering */
 } list_t;
 
@@ -376,6 +413,17 @@ static void list_screen(void *arg)
             char title[GAME_NAME_MAX], tags[GAME_NAME_MAX], fit[GAME_NAME_MAX + 4];
             games_title(l->names[i], title, tags, sizeof title);
             int max_w = GFX_W - 44;
+            int full = gfx_text_w(&font_body, title) + (tags[0] ? 6 + gfx_text_w(&font_small, tags) : 0);
+            if (sel && full > max_w) {
+                /* too long: the whole name runs through the row */
+                int x = 20 - gfx_marquee(full, max_w, (uint32_t)((time_us_64() - l->cur_since) / 1000));
+                gfx_clip(20, LIST_Y - 2, 20 + max_w, LIST_Y + LIST_ROWS * ROW_H + 2);
+                x += gfx_text(&font_body, x, y + 6, title, TEXT, 255);
+                if (tags[0])
+                    gfx_text(&font_small, x + 6, y + 9, tags, DIM, 255);
+                gfx_clip(0, LIST_Y - 2, GFX_W, LIST_Y + LIST_ROWS * ROW_H + 2);
+                continue;
+            }
             gfx_text_fit(&font_body, title, max_w, fit);
             int w = gfx_text(&font_body, 20, y + 6, fit, sel ? TEXT : 0xc3c9d6, 255);
             if (tags[0] && w + 12 < max_w) {
@@ -412,6 +460,7 @@ static bool game_list(int device, char game[GAME_NAME_MAX])
     if (l.cur >= LIST_ROWS)
         target_top = (l.cur - LIST_ROWS + 1) * ROW_H;
     l.scroll = target_top * 16;
+    l.cur_since = time_us_64();
 
     ui_wait_release();
     for (;;) {
@@ -434,6 +483,8 @@ static bool game_list(int device, char game[GAME_NAME_MAX])
         if (e & IN_DOWN)  l.cur = (l.cur + 1) % l.n;
         if (e & IN_LEFT)  l.cur = l.cur >= LIST_ROWS ? l.cur - LIST_ROWS : 0;
         if (e & IN_RIGHT) l.cur = l.cur + LIST_ROWS < l.n ? l.cur + LIST_ROWS : l.n - 1;
+        if (e & (IN_UP | IN_DOWN | IN_LEFT | IN_RIGHT))
+            l.cur_since = time_us_64();
         if (e & IN_CENTER)
             options(list_screen, &l, device, l.names[l.cur], devices[device].accent);
         if (e & IN_A) {
@@ -525,6 +576,17 @@ static bool c64_own_roms(void)
            f_stat("/basic.rom", &fi) == FR_OK && fi.fsize == 8192;
 }
 
+/* The 1541's ROM for "True drive", by the names c64/src/c64_roms.c tries. */
+static bool c64_drive_rom(void)
+{
+    static const char *const names[] = { "/1541.rom", "/1541.bin", "/dos1541.rom", "/1541" };
+    static FILINFO fi;
+    for (unsigned i = 0; i < sizeof names / sizeof names[0]; i++)
+        if (f_stat(names[i], &fi) == FR_OK && fi.fsize == 16384)
+            return true;
+    return false;
+}
+
 /* "Center + B" -> the same button symbols as in the footer; other words
  * (Joystick ...) stay text. */
 static void key_chips(int x, int y, const char *keys)
@@ -566,8 +628,9 @@ static void starting_screen(int device, const char *title, const char *const *ro
     gfx_rect(0, 64, GFX_W, 1, 0xffffff, 22);
 
     gfx_text(&font_small, 22, 80, "CONTROLS", FAINT, 255);
+    int step = note && rows > 4 ? 24 : 28;    /* the note must stay above the footer */
     for (int i = 0; i < rows; i++) {
-        int y = 100 + i * 28;
+        int y = 100 + i * step;
         int w = gfx_text_w(&font_small, rows_b[i]) + 16;
         if (w < 34) w = 34;
         gfx_rrect(22, y, w, 20, 10, dev->accent, 90);
@@ -575,7 +638,7 @@ static void starting_screen(int device, const char *title, const char *const *ro
         key_chips(96, y + 3, rows_k[i]);
     }
     if (note)
-        gfx_text(&font_small, 22, 100 + rows * 28 + 4, note, DIM, 255);
+        gfx_text(&font_small, 22, 100 + rows * step + 4, note, DIM, 255);
     gfx_text_centered(&font_small, GFX_W / 2, GFX_H - 38, "Back to this list: RESET", FAINT, 255);
     if (alpha > 0) {
         int w = 120;
@@ -598,9 +661,12 @@ void ui_starting(int device, const char *game)
         k[n] = c->key;
     }
     if (dev->app == APP_C64) {
+        static const char *const key_names[] = { C64_KEYS(C64_KEY_NAME) };
         snprintf(port, sizeof port, "Joystick, port %d", settings_port(game));
         k[0] = port;
-        snprintf(note, sizeof note, "ROMs: %s", c64_own_roms() ? "Commodore (from the drive)" : "OpenROMs");
+        b[3] = key_names[settings_key(game)];      /* the key on Center + B */
+        snprintf(note, sizeof note, "ROMs: %s%s", c64_own_roms() ? "Commodore" : "OpenROMs",
+                 settings_true_drive(game) && c64_drive_rom() ? ", true drive" : "");
     }
 
     /* about two seconds, or until A is pressed */

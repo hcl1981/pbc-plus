@@ -78,6 +78,12 @@ bool c64_video_present(void)
     return true;
 }
 
+void c64_video_wait_idle(void)
+{
+    while (frame_ready || status_dirty)
+        tight_loop_contents();
+}
+
 void c64_video_set_status(const char *s)
 {
     strncpy(status_text, s, sizeof status_text - 1);

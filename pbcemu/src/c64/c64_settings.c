@@ -16,7 +16,8 @@ typedef struct {
     uint32_t hash;                  /* FNV-1a of the file name, 0 = unused */
     uint8_t  port;
     char     file[SETTINGS_FILE_MAX + 1];   /* "" = first program */
-    uint8_t  pad[2];
+    uint8_t  key;                   /* on Center + B, C64_KEYS index; was padding (0) */
+    uint8_t  drive;                 /* 1: processor-level 1541; was padding (0) */
 } game_t;
 
 typedef struct {
@@ -105,6 +106,18 @@ int settings_port(const char *game)
     return g ? (g->port == 1 ? 1 : 2) : PORT_DEFAULT;
 }
 
+int settings_key(const char *game)
+{
+    const game_t *g = find(game);
+    return g && g->key < C64_KEY_COUNT ? g->key : 0;
+}
+
+bool settings_true_drive(const char *game)
+{
+    const game_t *g = find(game);
+    return g && g->drive == 1;
+}
+
 void settings_file(const char *game, char *out)
 {
     const game_t *g = find(game);
@@ -164,6 +177,20 @@ void settings_set_port(const char *game, int port)
     game_t *g = entry(game);
     if (g)
         g->port = (uint8_t)(port == 1 ? 1 : 2);
+}
+
+void settings_set_key(const char *game, int key)
+{
+    game_t *g = entry(game);
+    if (g)
+        g->key = (uint8_t)(key >= 0 && key < C64_KEY_COUNT ? key : 0);
+}
+
+void settings_set_true_drive(const char *game, bool on)
+{
+    game_t *g = entry(game);
+    if (g)
+        g->drive = on ? 1 : 0;
 }
 
 void settings_set_file(const char *game, const char *file)

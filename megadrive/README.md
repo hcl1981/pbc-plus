@@ -50,8 +50,8 @@ bei PicoBoyGB.
 | Genesis | PicoBoy |
 |---|---|
 | Steuerkreuz | Joystick |
-| A | A |
-| B | B |
+| A | B |
+| B | A |
 | C | Mitte |
 | START | Mitte + B |
 

@@ -580,7 +580,7 @@ void MOS6502_1541::illegal_op(uint16_t adr)
  *  Returns number of cycles of last instruction
  */
 
-int MOS6502_1541::EmulateLine(int cycles_left)
+C64_HOT(MOS6502_1541_EmulateLine) int MOS6502_1541::EmulateLine(int cycles_left)
 {
 	uint8_t tmp, tmp2;
 	uint16_t adr, tmp_adr;

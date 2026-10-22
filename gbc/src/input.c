@@ -42,8 +42,9 @@ uint8_t input_poll_gb(void)
         if (r & IN_B) j |= GB_START;
         if (r & IN_A) j |= GB_SELECT;
     } else {
-        if (r & IN_A) j |= GB_A;
-        if (r & IN_B) j |= GB_B;
+        /* the main button on B: on this small device B is the easier one */
+        if (r & IN_B) j |= GB_A;
+        if (r & IN_A) j |= GB_B;
     }
     return j;
 }

@@ -45,4 +45,9 @@ void gfx_text_fit(const pbc_font_t *f, const char *s, int max_w, char *out);
 
 uint32_t gfx_mix(uint32_t a, uint32_t b, int t);   /* t 0..255 from a to b */
 
+/* Text w pixels wide in a box `box` wide, ms milliseconds after it was
+ * selected: how far to shift it left. Still for a second, then through to
+ * its end, still again, back to the start. 0 if it fits. */
+int  gfx_marquee(int w, int box, uint32_t ms);
+
 #endif /* PBC_GFX_H */
