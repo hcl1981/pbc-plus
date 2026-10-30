@@ -53,6 +53,7 @@
 #include "openroms_syms.h"
 #include "c64_roms.h"
 #include "cart_store.h"
+#include "pbc_rgb.h"
 
 /* ---- build-time configuration (see CMakeLists.txt) ---------------------- */
 #ifndef CPU_MHZ
@@ -607,6 +608,7 @@ int main(void)
                   TRUE_DRIVE_VREG > CPU_VREG ? TRUE_DRIVE_VREG : CPU_VREG);
     else
         overclock(CPU_MHZ, CPU_VREG);
+    pbc_rgb_set(0, 0, 0);           /* the drive LED (C64::SetDriveLEDs), at the new clock */
     audio_pwm_init();
 
     c64_init();

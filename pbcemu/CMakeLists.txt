@@ -39,6 +39,7 @@ add_executable(pbcemu
     src/flash_fs.c
     src/usb_msc.c
     src/usb_descriptors.c
+    ${CMAKE_CURRENT_LIST_DIR}/../common/pbc_rgb.c
     fatfs/ff.c
     fatfs/ffunicode.c
     fatfs/diskio.c
@@ -76,6 +77,7 @@ target_link_libraries(pbcemu
     hardware_flash
     hardware_sync
     hardware_watchdog
+    hardware_pio
     tinyusb_device
     tinyusb_board
 )

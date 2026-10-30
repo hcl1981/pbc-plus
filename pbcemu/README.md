@@ -18,15 +18,15 @@ getestet, auch nicht der Sprung vom Starter in die Emulatoren.
    bis 5 MB passen. **Beim ersten Start wird es deshalb neu formatiert**; die
    Spiele danach wieder draufkopieren. Dasselbe beim Zurückwechseln auf eine
    Einzel-Firmware.
-2. **Geräte:** Joystick links/rechts blättert durch die Systeme, **A** öffnet
+2. **Geräte:** Joystick links/rechts blättert durch die Systeme, **B** öffnet
    die Spieleliste. Unter jedem Gerät steht, wie viele Spiele es gibt.
    **Mitte** öffnet die Einstellungen des Geräts (siehe unten). Die letzte
    Seite, **Add Games**, schaltet den USB-Laufwerk-Modus ein.
-3. **Spiele:** hoch/runter wählt, links/rechts blättert seitenweise, **A**
-   startet, **B** geht zurück, **Mitte** öffnet die Optionen. Beim C64 sind
+3. **Spiele:** hoch/runter wählt, links/rechts blättert seitenweise, **B**
+   startet, **A** geht zurück, **Mitte** öffnet die Optionen. Beim C64 sind
    das zusätzlich Joystick-Port, Programm auf der Diskette und die Taste auf
    Mitte + B, je Spiel.
-4. Vor dem Start zeigt der Starter die Tastenbelegung (zwei Sekunden, A
+4. Vor dem Start zeigt der Starter die Tastenbelegung (zwei Sekunden, B
    überspringt). Zurück zur Liste: **RESET**.
 
 ### Einstellungen (Mitte)

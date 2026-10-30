@@ -85,7 +85,7 @@ bei PicoBoyGB.
 **Diskettenwechsel:** Mitte + A hält das Spiel an und zeigt alle `.d64` auf
 dem Laufwerk, nach Namen sortiert, wie die Spieleliste. Die im Laufwerk ist
 markiert („in drive“) und vorausgewählt. Hoch/runter wählt, links/rechts
-blättert, A legt sie in Laufwerk 8, B geht ohne Wechsel zurück. Ein zu langer
+blättert, B legt sie in Laufwerk 8, A geht ohne Wechsel zurück. Ein zu langer
 Name läuft in der markierten Zeile durch. Nach einem Wechsel steht der Name
 zwei Sekunden unter dem Bild.
 
@@ -172,6 +172,12 @@ Das ROM bekommt Frodos Patches im RAM (keine Prüfsumme, Schlaf in der
 DOS-Leerlaufschleife); aus dem KERNAL nimmt der Emulator die Fallen der
 DOS-Emulation wieder heraus (bei OpenROMs mit den Originalbytes aus
 `BuiltinKernalTraps`, erzeugt von `tools/openroms/make_rom_data.py`).
+
+Die LED des Laufwerks ist die RGB-LED im „+“ (WS2812 an GPIO 11, per PIO,
+`common/pbc_rgb.c`): Sie leuchtet gedämpft grün, solange die 1541 sie
+einschaltet, und blinkt bei einem Laufwerksfehler wie das Original. Der
+Launcher schaltet sie beim Start aus, denn sie behält ihre Farbe auch über
+RESET hinweg.
 
 Kosten: Solange das Laufwerk arbeitet, wechseln sich die beiden Prozessoren
 Befehl für Befehl ab. Mit True drive läuft der C64 deshalb mit 200 MHz statt

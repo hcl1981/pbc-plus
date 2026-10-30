@@ -46,6 +46,7 @@ extern "C" {
 #include "Display_rp2350.h"
 #include "ROM_data.h"
 #include "c64_roms.h"
+#include "pbc_rgb.h"
 
 #include <cstring>
 #include <cstdlib>
@@ -478,6 +479,15 @@ int C64::TapePosition() const { return 0; }
 void C64::SetDriveLEDs(int l0, int l1, int l2, int l3)
 {
     TheDisplay->SetLEDs(l0, l1, l2, l3);
+
+    /* With the real 1541 its drive LED is the RGB LED, in a soft green.
+     * The drive's ROM blinks it itself on an error. */
+    static int8_t shown = -1;
+    int on = ThePrefs.Emul1541Proc && (l0 & (DRVLED_ON | DRVLED_ERROR_ON)) ? 1 : 0;
+    if (on != shown) {
+        shown = (int8_t)on;
+        pbc_rgb_set(0, on ? 1 : 0, 0);
+    }
 }
 
 

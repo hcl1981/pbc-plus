@@ -140,7 +140,7 @@ static void device_screen(int sel, int next, int t, int dir)
             x += 12;
         }
     }
-    static const char *const keys[] = { "A", "*" };
+    static const char *const keys[] = { "B", "*" };
     static const char *const labels[] = { "Open", "Settings" };
     footer(keys, labels, 2);
 }
@@ -271,7 +271,7 @@ static void options_screen(void (*under)(void *), void *arg, const char *title,
             break;
         }
     }
-    gfx_text_centered(&font_small, GFX_W / 2, y0 + h - 24, "\xae \xaf  change      A  done", DIM, 255);
+    gfx_text_centered(&font_small, GFX_W / 2, y0 + h - 24, "\xae \xaf  change      B  done", DIM, 255);
     gfx_present();
 }
 
@@ -443,7 +443,7 @@ static void list_screen(void *arg)
     }
 
     gfx_rect(0, GFX_H - 28, GFX_W, 1, 0xffffff, 22);
-    static const char *const keys[] = { "A", "B", "*" };
+    static const char *const keys[] = { "B", "A", "*" };
     static const char *const labels[] = { "Play", "Back", "Options" };
     footer(keys, labels, 3);
 }
@@ -475,7 +475,7 @@ static bool game_list(int device, char game[GAME_NAME_MAX])
         gfx_present();
 
         uint32_t e = input_menu_edges();
-        if (e & IN_B)
+        if (e & IN_A)
             return false;
         if (l.n == 0)
             continue;
@@ -487,7 +487,7 @@ static bool game_list(int device, char game[GAME_NAME_MAX])
             l.cur_since = time_us_64();
         if (e & IN_CENTER)
             options(list_screen, &l, device, l.names[l.cur], devices[device].accent);
-        if (e & IN_A) {
+        if (e & IN_B) {
             strcpy(game, l.names[l.cur]);
             return true;
         }
@@ -535,7 +535,7 @@ ui_result_t ui_run(int *device, char game[GAME_NAME_MAX])
             carousel_t d = { sel };
             options(device_still, &d, devices[sel].app == APP_NONE ? -1 : sel, NULL, devices[sel].accent);
         }
-        if (e & IN_A) {
+        if (e & IN_B) {
             *device = sel;
             if (devices[sel].app == APP_NONE)
                 return UI_USB;
@@ -669,12 +669,12 @@ void ui_starting(int device, const char *game)
                  settings_true_drive(game) && c64_drive_rom() ? ", true drive" : "");
     }
 
-    /* about two seconds, or until A is pressed */
+    /* about two seconds, or until B is pressed */
     ui_wait_release();
     for (int t = 0; t <= 255; t += 4) {
         starting_screen(device, fit, b, k, n, note[0] ? note : NULL, t);
         gfx_present();
-        if (input_menu_edges() & IN_A)
+        if (input_menu_edges() & IN_B)
             break;
     }
     gfx_finish();

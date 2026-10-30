@@ -33,6 +33,7 @@
 #include "games.h"
 #include "prefs.h"
 #include "pbc_launch.h"
+#include "pbc_rgb.h"
 
 static FATFS g_fs;
 extern volatile bool usb_msc_ejected;
@@ -238,6 +239,7 @@ int main(void)
 
     uint32_t reset = powman_hw->chip_reset;
     input_init();
+    pbc_rgb_set(0, 0, 0);               /* a game may have left it on (C64 drive LED) */
     prefs_load();
     pbc_display_init();
     gfx_init();

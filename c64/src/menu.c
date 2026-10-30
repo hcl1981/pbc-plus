@@ -376,7 +376,7 @@ static bool pick(char *out, int out_size)
 static void draw_disks(const char *title, const char *const *names, int n, int sel, int cur)
 {
 #if PBC_MULTI
-    pbc_loading_list(title, names, n, sel, cur, "in drive", "A  insert      B  back");
+    pbc_loading_list(title, names, n, sel, cur, "in drive", "B  insert      A  back");
 #else
     static int top;
     if (sel < top) top = sel;
@@ -396,7 +396,7 @@ static void draw_disks(const char *title, const char *const *names, int n, int s
     snprintf(pos, sizeof pos, "%d/%d", sel + 1, n);
     pbc_display_fill(0, 230, PBC_LCD_W, 8, COL_BG);
     pbc_display_text_centered(230, pos, COL_DIM, COL_BG, 1);
-    pbc_display_text_centered(266, "A: insert   B: back", COL_DIM, COL_BG, 1);
+    pbc_display_text_centered(266, "B: insert   A: back", COL_DIM, COL_BG, 1);
     (void)title;
 #endif
 }
@@ -415,11 +415,11 @@ int menu_pick_disk(const char *title, const char *const *names, int n, int cur)
             sleep_ms(15);
             continue;
         }
-        if (e & IN_B) {
+        if (e & IN_A) {
             sel = -1;
             break;
         }
-        if (e & (IN_A | IN_CENTER))
+        if (e & (IN_B | IN_CENTER))
             break;
         int old = sel;
         if (e & IN_UP)    sel = (sel + n - 1) % n;
