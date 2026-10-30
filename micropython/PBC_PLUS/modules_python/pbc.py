@@ -73,8 +73,9 @@ def show(canvas, x=0, y=0):
     # would hide the sprites until their next move.
     if (x == 0 and y == 0 and canvas is Sprite._background and
             Sprite._visible):
-        _redraw_sprites()
+        _sprites_jetzt(immer=True)
         return
+    _sprites_jetzt()
     key = getattr(canvas, 'transparent', None)
     if key is None:
         _screen.blit(canvas.buf, x, y, canvas.width, canvas.height)
@@ -85,39 +86,45 @@ def show(canvas, x=0, y=0):
 # These mirror the methods on Canvas, so you can swap a script between
 # direct and buffered just by adding/removing a Canvas + show().
 
-def fill(color=BLACK):                    _screen.fill(color)
-def clear(color=BLACK):                   _screen.fill(color)
-def pixel(x, y, color):                   _screen.pixel(x, y, color)
-def line(x0, y0, x1, y1, color):          _screen.line(x0, y0, x1, y1, color)
+def fill(color=BLACK):                    _sprites_jetzt(); _screen.fill(color)
+def clear(color=BLACK):                   _sprites_jetzt(); _screen.fill(color)
+def pixel(x, y, color):                   _sprites_jetzt(); _screen.pixel(x, y, color)
+def line(x0, y0, x1, y1, color):          _sprites_jetzt(); _screen.line(x0, y0, x1, y1, color)
 
 def rect(x, y, w, h, color, fill=False):
+    _sprites_jetzt()
     _screen.rect(x, y, w, h, color, fill)
 
-def fill_rect(x, y, w, h, color):         _screen.fill_rect(x, y, w, h, color)
-def hline(x, y, w, color):                _screen.hline(x, y, w, color)
-def vline(x, y, h, color):                _screen.vline(x, y, h, color)
+def fill_rect(x, y, w, h, color):         _sprites_jetzt(); _screen.fill_rect(x, y, w, h, color)
+def hline(x, y, w, color):                _sprites_jetzt(); _screen.hline(x, y, w, color)
+def vline(x, y, h, color):                _sprites_jetzt(); _screen.vline(x, y, h, color)
 
 def ellipse(cx, cy, xr, yr, color, fill=False, mask=0x0F):
+    _sprites_jetzt()
     _screen.ellipse(cx, cy, xr, yr, color, fill, mask)
 
 def poly(ox, oy, coords, color, fill=False):
+    _sprites_jetzt()
     _screen.poly(ox, oy, coords, color, fill)
 
-def text(s, x, y, color):                 _screen.text(s, x, y, color)
+def text(s, x, y, color):                 _sprites_jetzt(); _screen.text(s, x, y, color)
 
 def text12(s, x, y, color, bg=None):
+    _sprites_jetzt()
     return _screen.text12(s, x, y, color, bg)
 
 def text12_width(s):
     return _screen.text12_width(s)
 
 def text18(s, x, y, color, bg=None):
+    _sprites_jetzt()
     return _screen.text18(s, x, y, color, bg)
 
 def text18_width(s):
     return _screen.text18_width(s)
 
 def text24(s, x, y, color, bg=None):
+    _sprites_jetzt()
     return _screen.text24(s, x, y, color, bg)
 
 def text24_width(s):
@@ -286,32 +293,33 @@ class Sprite:
 
     # ---- visibility -----------------------------------------------------
     def show(self):
-        """Make this sprite visible and repaint the screen."""
+        """Make this sprite visible and repaint the screen (drawn
+        together with other sprite changes, see _sprites_spaeter)."""
+        _sprites_spaeter(self)
         if not self._shown:
             Sprite._visible.append(self)
             self._shown = True
-        _redraw_sprites()
 
     def hide(self):
         """Hide this sprite and repaint the screen."""
+        _sprites_spaeter(self)
         if self._shown:
             try: Sprite._visible.remove(self)
             except ValueError: pass
             self._shown = False
-        _redraw_sprites()
 
     # ---- position (instant) --------------------------------------------
     def set_to(self, x, y):
         """Teleport the sprite to absolute (x, y) and repaint."""
+        _sprites_spaeter(self)
         self.x = int(x)
         self.y = int(y)
-        _redraw_sprites()
 
     def set_by(self, dx, dy):
         """Move the sprite by (dx, dy) pixels and repaint."""
+        _sprites_spaeter(self)
         self.x += int(dx)
         self.y += int(dy)
-        _redraw_sprites()
 
     # ---- position (animated, blocking) ---------------------------------
     def glide_to(self, x, y, ms):
@@ -323,6 +331,7 @@ class Sprite:
         if ms <= 0:
             self.set_to(x, y)
             return
+        _sprites_jetzt()
         sx, sy = self.x, self.y
         dx, dy = x - sx, y - sy
         # 16 ms per frame ≈ 60 fps; never zero so the loop runs.
@@ -382,6 +391,72 @@ class Sprite:
         return False
 
 
+# ---- Sprites are drawn together -------------------------------------
+#
+# Every redraw sends the whole screen (~16 ms). If each move redrew at
+# once, a game moving two sprites per loop would draw twice and run at
+# half speed. So a move only notes that the screen is out of date; the
+# redraw follows a few ms later (timer), or right away when the program
+# waits (delay), draws on the screen itself or shows a canvas -- then the
+# order stays exactly as written. Text drawn on the background canvas
+# still appears with the next redraw, as before.
+# A sprite that moves a second time before the redraw draws first: one
+# frame per game loop, however many sprites move in it, so a game loop
+# without a wait keeps its pace (one frame per round, as before).
+
+_sprites_offen = False      # a sprite changed, the screen shows the old state
+_bewegt = []                # sprites changed since the last redraw
+_sprite_timer = None
+_timer_laeuft = False
+_zeichnet = False
+_abbruch = False            # Ctrl-C arrived inside the timer callback
+
+def _sprites_spaeter(sprite):
+    global _sprites_offen, _sprite_timer, _timer_laeuft
+    _pruefe_abbruch()
+    for s in _bewegt:
+        if s is sprite:
+            _sprites_jetzt()
+            break
+    _bewegt.append(sprite)
+    _sprites_offen = True
+    if not _timer_laeuft:
+        if _sprite_timer is None:
+            _sprite_timer = machine.Timer(-1)
+        _timer_laeuft = True
+        _sprite_timer.init(mode=machine.Timer.ONE_SHOT, period=5, callback=_sprites_timer)
+
+def _sprites_timer(_t):
+    global _timer_laeuft, _abbruch
+    _timer_laeuft = False
+    try:
+        _sprites_jetzt()
+    except KeyboardInterrupt:
+        # A Ctrl-C (Stop in the IDE) landing in this callback would be
+        # lost and the program would run on: hand it to the program at
+        # its next pbc call instead.
+        _abbruch = True
+
+def _pruefe_abbruch():
+    global _abbruch
+    if _abbruch:
+        _abbruch = False
+        raise KeyboardInterrupt
+
+def _sprites_jetzt(immer=False):
+    """Redraw now if a sprite changed (or always, with immer=True)."""
+    global _sprites_offen, _zeichnet
+    _pruefe_abbruch()
+    if (_sprites_offen or immer) and not _zeichnet:
+        _sprites_offen = False
+        _bewegt.clear()
+        _zeichnet = True
+        try:
+            _redraw_sprites()
+        finally:
+            _zeichnet = False
+
+
 # Lazily-allocated backbuffer for sprite rendering. We don't reserve
 # the 134 KB until the first sprite is actually shown, so programs
 # that only use direct drawing don't pay for it.
@@ -405,10 +480,16 @@ def _redraw_sprites():
         _sprite_backbuf = Canvas(WIDTH, HEIGHT)
     # Background: black, or an optional user-supplied Canvas (not
     # exposed via blocks yet, but a hook is here for later).
-    if Sprite._background is None:
+    bg = Sprite._background
+    if bg is None:
         _sprite_backbuf.fill(BLACK)
+    elif (getattr(bg, 'transparent', None) is None and bg.width == WIDTH and
+          bg.height == HEIGHT and len(bg.buf) == len(_sprite_backbuf.buf)):
+        # Full-screen opaque background: copy the bytes in one go (well
+        # under 1 ms; framebuf.blit goes pixel by pixel, ~30 ms).
+        _sprite_backbuf.buf[:] = bg.buf
     else:
-        Sprite._background.stamp_on(_sprite_backbuf, 0, 0)
+        bg.stamp_on(_sprite_backbuf, 0, 0)
     # Stamp every visible sprite onto the backbuffer in insertion
     # order -- later sprites draw on top of earlier ones.
     for s in Sprite._visible:
@@ -443,6 +524,7 @@ def sprite(path):
 
 def delay(ms):
     """Wait `ms` milliseconds. Saves you the `import time`."""
+    _sprites_jetzt()
     time.sleep_ms(ms)
 
 # ---- Status LEDs (red/yellow/green next to the screen) ---------------
@@ -518,6 +600,7 @@ def any_pressed():
             pressed_a() or pressed_b())
 
 def wait_for_button():
+    _sprites_jetzt()
     while not any_pressed():
         time.sleep_ms(10)
     while any_pressed():

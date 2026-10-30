@@ -16,7 +16,7 @@ Usage:
         t.right(170)
 
 The turtle owns a private 240x280 RGB565 canvas that's allocated
-on first use; every move blits it to the panel. No need to call
+on first use; every move sends the changed part to the panel. No need to call
 pbc.show() yourself.
 
 Speed semantics:
@@ -78,6 +78,46 @@ def get_canvas():
     return _canvas
 
 
+# Only the changed part of the canvas goes to the panel: a full
+# pbc.show() costs ~49 ms, a turtle step changes a few hundred pixels.
+# (The IDE emulator's turtle does the same, so both run at the same pace.)
+_dirty = None          # [x0, y0, x1, y1] inclusive, or None
+
+
+def _mark(x0, y0, x1, y1):
+    global _dirty
+    if _dirty is None:
+        _dirty = [x0, y0, x1, y1]
+    else:
+        d = _dirty
+        if x0 < d[0]: d[0] = x0
+        if y0 < d[1]: d[1] = y0
+        if x1 > d[2]: d[2] = x1
+        if y1 > d[3]: d[3] = y1
+
+
+def _flush():
+    """Push the changed rectangle (or the whole canvas if it's large or
+    sprites sit on top of the canvas)."""
+    global _dirty
+    d, _dirty = _dirty, None
+    if d is None:
+        return
+    x0 = max(0, d[0]); y0 = max(0, d[1])
+    x1 = min(_canvas.width - 1, d[2]); y1 = min(_canvas.height - 1, d[3])
+    if x1 < x0 or y1 < y0:
+        return
+    w = x1 - x0 + 1
+    h = y1 - y0 + 1
+    if (w * h * 2 > _canvas.width * _canvas.height or
+            (pbc.Sprite._visible and _canvas is pbc.Sprite._background)):
+        pbc.show(_canvas)
+        return
+    stueck = pbc.Canvas(w, h)
+    stueck.blit(_canvas, -x0, -y0)
+    pbc.show(stueck, x0, y0)
+
+
 # ----------------------------------------------------------------------
 # Turtle
 # ----------------------------------------------------------------------
@@ -134,7 +174,7 @@ class Turtle:
         self._restore_backup()
         self.visible = False
         self._first_draw = True
-        pbc.show(_canvas)
+        _flush()
 
     def show(self):
         # Erase any marker already on screen first, otherwise calling
@@ -148,7 +188,7 @@ class Turtle:
         if was_visible:
             self._restore_backup()
         self._draw_turtle()
-        pbc.show(_canvas)
+        _flush()
 
     # ---- speed ------------------------------------------------------
 
@@ -166,13 +206,13 @@ class Turtle:
         # Screen y grows down, so user "left" = subtract angle.
         self._angle = (self._angle - angle) % 360
         self._draw_turtle()
-        pbc.show(_canvas)
+        _flush()
 
     def right(self, angle):
         self._restore_backup()
         self._angle = (self._angle + angle) % 360
         self._draw_turtle()
-        pbc.show(_canvas)
+        _flush()
 
     def setDirection(self, angle):
         self._restore_backup()
@@ -180,7 +220,7 @@ class Turtle:
         # clockwise -- the same way right() turns.
         self._angle = (270 + angle) % 360
         self._draw_turtle()
-        pbc.show(_canvas)
+        _flush()
 
     # ---- position ---------------------------------------------------
 
@@ -191,7 +231,7 @@ class Turtle:
         self._y = _CY - y
         self._first_draw = True
         self._draw_turtle()
-        pbc.show(_canvas)
+        _flush()
 
     def home(self):
         self.setPosition(0, 0)
@@ -214,6 +254,7 @@ class Turtle:
         if self._speed == 0:
             # Instant: walk all pixels (drawing path), one show at end.
             self._restore_backup()
+            sx, sy = int(self._x), int(self._y)
             for _ in range(steps):
                 self._x += sign * dx
                 self._y += sign * dy
@@ -223,8 +264,10 @@ class Turtle:
             if rem > 0:
                 self._x += sign * dx * rem
                 self._y += sign * dy * rem
+            ex, ey = int(self._x), int(self._y)
+            _mark(min(sx, ex), min(sy, ey), max(sx, ex), max(sy, ey))
             self._draw_turtle()
-            pbc.show(_canvas)
+            _flush()
             return
 
         # Animated: chunk pixels into blocks of `speed` size.
@@ -233,13 +276,16 @@ class Turtle:
         while walked < steps:
             n = min(block, steps - walked)
             self._restore_backup()
+            sx, sy = int(self._x), int(self._y)
             for _ in range(n):
                 self._x += sign * dx
                 self._y += sign * dy
                 if self.draw_pen:
                     _canvas.pixel(int(self._x), int(self._y), self.color)
+            ex, ey = int(self._x), int(self._y)
+            _mark(min(sx, ex), min(sy, ey), max(sx, ex), max(sy, ey))
             self._draw_turtle()
-            pbc.show(_canvas)
+            _flush()
             walked += n
 
         # Catch up the fractional remainder so polygons close cleanly.
@@ -249,7 +295,7 @@ class Turtle:
             self._x += sign * dx * rem
             self._y += sign * dy * rem
             self._draw_turtle()
-            pbc.show(_canvas)
+            _flush()
 
     def back(self, dist):
         self.forward(-dist)
@@ -267,7 +313,7 @@ class Turtle:
         self._restore_backup()
         self._angle = saved
         self._draw_turtle()
-        pbc.show(_canvas)
+        _flush()
 
     # ---- canvas ----------------------------------------------------
 
@@ -337,6 +383,7 @@ class Turtle:
         self._bk_fb.blit(_canvas, -bx, -by)
         # Draw the marker on top.
         self._draw_triangle(x, y, self._angle)
+        _mark(bx, by, bx + n - 1, by + n - 1)
         self._prev_pos   = (x, y)
         self._first_draw = False
 
@@ -352,6 +399,7 @@ class Turtle:
         rx = max(0, min(px - half, pbc.WIDTH  - n))
         ry = max(0, min(py - half, pbc.HEIGHT - n))
         _canvas.blit(self._bk_fb, rx, ry)
+        _mark(rx, ry, rx + n - 1, ry + n - 1)
 
     def _draw_triangle(self, x, y, heading):
         """Filled, asymmetric arrow marker so the heading is obvious."""

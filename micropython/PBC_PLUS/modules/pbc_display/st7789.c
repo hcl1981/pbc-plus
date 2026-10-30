@@ -3,6 +3,7 @@
 #include "st7789.h"
 
 #include "hardware/spi.h"
+#include "hardware/clocks.h"
 #include "hardware/dma.h"
 #include "hardware/gpio.h"
 #include "hardware/pwm.h"
@@ -92,7 +93,16 @@ void st7789_init(uint32_t baud_hz) {
     gpio_init(PIN_DC);   gpio_set_dir(PIN_DC,  GPIO_OUT); gpio_put(PIN_DC,  1);
     gpio_init(PIN_RST);  gpio_set_dir(PIN_RST, GPIO_OUT); gpio_put(PIN_RST, 1);
 
-    // SPI peripheral.
+    // SPI peripheral. The SPI clock comes from clk_peri, which this
+    // MicroPython build runs from the 48 MHz USB PLL: the SPI then only
+    // reaches 24 MHz and a full frame takes 49 ms. Running clk_peri from
+    // clk_sys (as the plain Pico SDK does) gives 37.5 MHz and ~29 ms per
+    // frame. UART/SPI objects created later read clk_peri and still get
+    // their baud rates right.
+    if (clock_get_hz(clk_peri) != clock_get_hz(clk_sys)) {
+        clock_configure(clk_peri, 0, CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLK_SYS,
+                        clock_get_hz(clk_sys), clock_get_hz(clk_sys));
+    }
     spi_init(SPI_PORT, baud_hz);
     spi_set_8bit();
     gpio_set_function(PIN_SCK,  GPIO_FUNC_SPI);

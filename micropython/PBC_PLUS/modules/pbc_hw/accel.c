@@ -69,19 +69,22 @@ static int16_t read_axis(uint8_t reg_lsb) {
 }
 
 // Axis convention (device frame, after physical-mounting correction):
-//   +X = right, +Y = down/forward (screen-y), +Z = out of screen.
-// Chip is mounted such that we swap X/Y reads and negate the new X.
+//   +X = right, +Y = down/forward (screen-y), +Z = out of screen;
+//   an axis pointing up reads +1 g (flat, screen up: z = +1 g).
+// Chip is mounted such that we swap X/Y reads; all three signs are
+// flipped (checked on the device 2026-10-29: before, flat gave z = -1 g,
+// right edge up x = -1 g, joystick side down y = +1 g).
 float accel_x_g(void) {
     if (!accel_initialized && !accel_init()) return 0.0f;
-    return -(float)read_axis(REG_XLSB + 2) * (float)accel_range_g_int / 512.0f;
+    return  (float)read_axis(REG_XLSB + 2) * (float)accel_range_g_int / 512.0f;
 }
 float accel_y_g(void) {
     if (!accel_initialized && !accel_init()) return 0.0f;
-    return  (float)read_axis(REG_XLSB)     * (float)accel_range_g_int / 512.0f;
+    return -(float)read_axis(REG_XLSB)     * (float)accel_range_g_int / 512.0f;
 }
 float accel_z_g(void) {
     if (!accel_initialized && !accel_init()) return 0.0f;
-    return  (float)read_axis(REG_XLSB + 4) * (float)accel_range_g_int / 512.0f;
+    return -(float)read_axis(REG_XLSB + 4) * (float)accel_range_g_int / 512.0f;
 }
 
 float accel_x_ms2(void) { return accel_x_g() * G_TO_MS2; }

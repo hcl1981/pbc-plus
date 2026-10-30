@@ -80,7 +80,7 @@ static mp_obj_t display_make_new(const mp_obj_type_t *type,
                                  size_t n_args, size_t n_kw,
                                  const mp_obj_t *args) {
     (void)type; (void)n_args; (void)n_kw; (void)args;
-    st7789_init(62500000);   // 62.5 MHz SPI -- max safe for ST7789
+    st7789_init(75000000);   // 75 MHz SPI (clk_sys / 2); datasheet max is 62.5 MHz, checked on the device
     draw_boot_splash();
     return MP_OBJ_FROM_PTR(&display_singleton);
 }

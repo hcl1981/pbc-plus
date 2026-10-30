@@ -87,7 +87,8 @@ void buttons_init(void) {
         gpio_init(button_pins[i]);                // SIO mode, dir IN, output cleared
         gpio_set_dir(button_pins[i], GPIO_IN);
         gpio_pull_up(button_pins[i]);
-        gpio_set_irq_enabled(button_pins[i], GPIO_IRQ_EDGE_FALL, true);
+        // Both edges: the release is needed for debouncing (see below).
+        gpio_set_irq_enabled(button_pins[i], GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE, true);
     }
     irq_set_enabled(IO_IRQ_BANK0, true);
 }
@@ -144,13 +145,18 @@ static void buttons_raw_irq_handler(void) {
     }
 }
 
+// A press counts only if the pin was quiet for DEBOUNCE_MS before the
+// falling edge. Every edge (press or release) restarts that quiet time,
+// so the contacts bouncing on RELEASE no longer count as a new press
+// (measured on the device: up, left and A did that when only the time
+// since the last press was checked).
 void buttons_handle_gpio_irq(uint32_t gpio, uint32_t events) {
-    (void)events;
     for (int i = 0; i < BTN_COUNT; i++) {
         if (button_pins[i] != gpio) continue;
         uint32_t now = to_ms_since_boot(get_absolute_time());
-        if ((now - button_last_ms[i]) < DEBOUNCE_MS) return;
+        bool ruhig = (now - button_last_ms[i]) >= DEBOUNCE_MS;
         button_last_ms[i] = now;
+        if (!(events & GPIO_IRQ_EDGE_FALL) || !ruhig) return;
         button_latch[i]   = true;
 
         mp_obj_t cb = button_callbacks[i];
