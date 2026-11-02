@@ -18,8 +18,13 @@ void c64_input_set_port(int port);
 /* The key on Center + B: index into C64_KEYS (settings.h). */
 void c64_input_set_key(int key);
 
-/* True once per press of Center + A. */
+/* True once per press of Center + A; in link play on both devices, after
+ * the same frame. _mine: this device's player asked, the other one waits. */
 bool c64_input_disk_change(void);
+bool c64_input_disk_mine(void);
+
+/* Before each frame: link play swaps the buttons here, with the partner. */
+void c64_input_frame(const uint8_t *ram);
 
 /* Called by the Frodo glue (Display::PollKeyboard, c64_run_frame). */
 void    input_rp2350_poll(uint8_t *key_matrix, uint8_t *rev_matrix, uint8_t *joystick);

@@ -2,9 +2,15 @@
 #ifndef PBC_UI_H
 #define PBC_UI_H
 
+#include <stdbool.h>
 #include "games.h"
 
 typedef enum { UI_PLAY, UI_USB } ui_result_t;
+
+/* After UI_PLAY: this device's controller in link play, 0 for a game alone,
+ * and whether this device started it (it is then the link's master). */
+extern int  ui_link_player;
+extern bool ui_link_master;
 
 /* Device carousel and game list until a game is chosen (device and file
  * name returned) or "Add Games" is picked. The volume must be mounted.

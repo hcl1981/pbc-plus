@@ -5,6 +5,7 @@
 #include "gfx.h"
 #include "display.h"
 #include "pbc_launch.h"
+#include "devices.h"                    /* APP_*, from pbcemu/src */
 #include "pbc_devices.h"
 #include "pbc_loading.h"
 
@@ -25,8 +26,11 @@
 
 extern uint16_t *gfx_fb;                /* gfx.c, built with GFX_STRIP */
 
+/* Only the icons of this emulator's own devices (PBC_APP, set by
+ * pbc_multi.cmake): the others would cost every emulator some 15 KB. */
 typedef struct { const char *name; uint32_t accent; const pbc_picture_t *icon; } look_t;
-#define LOOK(name, maker, exts, app, accent, pic, icon, controls, modes) { name, accent, &icon },
+#define LOOK(name, maker, exts, app, accent, pic, icon, controls, modes) \
+    { name, accent, (app) == PBC_APP ? &icon : NULL },
 static const look_t looks[] = { PBC_DEVICES(LOOK) };
 
 static const look_t *look(void)
@@ -97,7 +101,8 @@ static void loading_screen(void)
     gfx_background(BG_TOP, BG_BOTTOM);
     for (int y = 0; y < 66; y++)
         gfx_rect(0, y, GFX_W, 1, d->accent, 70 - y);
-    gfx_picture(d->icon, 10, 10, 255);
+    if (d->icon)
+        gfx_picture(d->icon, 10, 10, 255);
     if (game_title)
         gfx_text(&font_head, 90, 13, game_title, TEXT, 255);
     gfx_text(&font_small, 90, 37, d->name, DIM, 255);

@@ -13,7 +13,7 @@ ist dasselbe wie bei [`../nes`](../nes/) und [`../c64`](../c64/):
 | SD-Karten-Menü, USB-Laufwerk der SD-Karte | **USB-Stick-Modus** in eine FatFs-Partition im Flash (aus [PicoBoyGB](../picoboygb/)) |
 | HDMI | **ST7789**: Master System 240 Pixel breit 1:1, Game Gear 1,5× auf 240×216, auf Kern 1 per DMA |
 | Ton über HDMI/I2S | Ton über den **PWM-Lautsprecher** (GP15), 22 222 Hz, Timer auf Kern 1 |
-| Spielstände, Batteriespeicher, SG-1000-Menü, zwei Controller | entfallen |
+| Spielstände, Batteriespeicher, SG-1000-Menü | entfallen; zwei Controller nur im Link-Spiel von PBCemu ([`../docs/LINKSPIEL.md`](../docs/LINKSPIEL.md)) |
 
 **Stand: gebaut, noch nicht auf dem Gerät getestet.**
 
@@ -24,7 +24,7 @@ Die Oberfläche auf dem Gerät ist englisch (Menüs, Optionen, Meldungen, Hilfed
 1. [`../dist/sms.uf2`](../dist/sms.uf2) flashen: BOOTSEL halten, USB anstecken,
    Datei auf das Laufwerk `RPI-RP2` kopieren.
 2. **ROMs aufspielen:** beim Einschalten **A oder B** gedrückt halten. Das Gerät
-   meldet sich als USB-Stick `PBC-ROMS`. `.sms`- und `.gg`-Dateien draufkopieren
+   meldet sich als USB-Stick `PBC-ROMS`. `.sms`-, `.gg`- und `.sg`-Dateien (SG-1000) draufkopieren
    und das Laufwerk **auswerfen** – der PicoBoy startet von selbst neu. Beim
    allerersten Start (leeres Laufwerk) landet man automatisch in diesem Modus.
 3. Ohne gedrückte Taste einschalten: Spieleliste mit Master-System- und
@@ -110,9 +110,9 @@ kostet kein RAM.
 
 Das ROM wird direkt aus dem Flash gelesen; Flash und Emulatorcode teilen sich
 einen Cache von nur 16 KB. Der Kern läuft deshalb aus dem RAM (rund 80 KB):
-Z80 (`z80_execute`, die gut 1500 Opcode-Routinen, Sprung-, Taktzahl- und
-DAA-Tabellen), Speicher- und Port-Zugriffe, VDP, Zeichenroutinen, PSG und die
-Zeilenausgabe in `src/sms_video.c`. Im übernommenen RP2350-Port war das
+Z80 (redcode/Z80 samt Befehlstabellen, siehe unten), Speicher- und
+Port-Zugriffe, VDP, Zeichenroutinen, PSG und die Zeilenausgabe in
+`src/sms_video.c`. Im übernommenen RP2350-Port war das
 abgeschaltet (`in_ram` in `core/smsplus/shared.h` war leer), alles lief aus
 dem Flash.
 
@@ -182,7 +182,7 @@ Am Kern geändert: `SMS_AUD_RATE` in `sms.h` lässt sich von außen setzen
 * **Nicht auf Hardware geprüft.**
 * **Kein Batteriespeicher.** Spiele mit Speicherfunktion (z. B. Phantasy Star)
   verlieren ihren Stand beim Ausschalten; das Batterie-RAM startet leer.
-* Nur NTSC-Takt (60 Hz), kein zweiter Spieler, kein SG-1000 (`.sg`).
+* Nur NTSC-Takt (60 Hz). SG-1000 (`.sg`) bisher nur am PC getestet.
 
 ## Lizenzen
 
@@ -192,4 +192,14 @@ Am Kern geändert: `SMS_AUD_RATE` in `sms.h` lässt sich von außen setzen
   `src/tusb_config.h`, `src/font8x8.h`, `fatfs/diskio.c`: aus PicoBoyGB,
   **MIT**, siehe `LICENSE.picoboygb`.
 * `fatfs/`: ChaN FatFs, eigene BSD-artige Lizenz (im Dateikopf).
+* `core/redcode/`: Z80-Kern **redcode/Z80** von Manuel Sainz de Baranda y Goñi
+  mit Headern seiner Bibliothek Zeta, **LGPL-3.0-or-later**; für den PicoBoy
+  geändert von `tools/redcode_patch.py`, Einzelheiten in `core/redcode/README.md`.
+  Er ersetzt seit November 2026 den Z80-Kern aus MAME (Juergen Buchmueller),
+  der nur für nicht-kommerzielle Zwecke frei war; `core/smsplus/z80_redcode.c`
+  bietet SMS Plus dessen alte Schnittstelle.
+* `core/smsplus/sn76496.[ch]`: PSG (SN76489), seit November 2026 eigener Code
+  für den PicoBoy (GPL-2.0-or-later); er ersetzt den SN76496 aus dem alten
+  MAME (Nicola Salmoria) und behält Schnittstelle und Pegel. Das Rauschen
+  folgt jetzt dem Sega-Chip (16-Bit-Register, Abgriffe 0 und 3).
 * `core/smsplus/emu2413/`: emu2413, © 2020 Mitsutaka Okazaki (Vermerk im Dateikopf; upstream steht emu2413 unter MIT).

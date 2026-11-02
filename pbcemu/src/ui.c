@@ -14,6 +14,7 @@
 #include "devices.h"
 #include "games.h"
 #include "prefs.h"
+#include "pbc_lobby.h"
 #include "ui.h"
 #include "c64/settings.h"
 #include "c64/d64_dir.h"
@@ -27,6 +28,13 @@
 #define TEXT       0xf2f4f8
 #define DIM        0x8d96ab
 #define FAINT      0x485168
+
+#define LINK_GREEN 0x3ccf7a
+
+_Static_assert(LOBBY_NAME_MAX == GAME_NAME_MAX, "offers carry a file name");
+
+int  ui_link_player;
+bool ui_link_master;
 
 #define ROW_H      30
 #define LIST_Y     70
@@ -96,6 +104,16 @@ static void device_card(int d, int xoff, int alpha)
     const device_t *dev = &devices[d];
     int cx = GFX_W / 2 + xoff;
     gfx_picture(dev->pic, cx - dev->pic->w / 2, 38, alpha);
+    if (device_link(dev)) {
+        /* playable by two over the link cable: a round golden badge on
+         * the picture, like a seal */
+        int bx = cx + dev->pic->w / 2 - 22, by = 38 + 19;
+        gfx_circle(bx, by + 1, 18, 0x000000, alpha * 70 / 255);         /* shadow */
+        gfx_circle(bx, by, 18, 0x9c6f16, alpha);                          /* rim */
+        gfx_circle(bx, by, 16, 0xe2b13c, alpha);                          /* gold */
+        gfx_circle(bx - 3, by - 4, 9, 0xffe7a3, alpha * 70 / 255);       /* shine */
+        gfx_text_centered(&font_small, bx, by - 6, "LINK", 0x3b2705, alpha);
+    }
     gfx_text_centered(&font_title, cx, 170, dev->name, TEXT, alpha);
     gfx_text_centered(&font_small, cx, 200, dev->maker, DIM, alpha);
 
@@ -118,6 +136,10 @@ static void device_screen(int sel, int next, int t, int dir)
     char page[16];
     snprintf(page, sizeof page, "%d / %d", (t < 128 ? sel : next) + 1, device_count);
     gfx_text(&font_small, GFX_W - 14 - gfx_text_w(&font_small, page), 14, page, DIM, 255);
+    if (lobby_partner()) {
+        const char *s = "Link connected";
+        gfx_text(&font_small, GFX_W - 14 - gfx_text_w(&font_small, s), 28, s, LINK_GREEN, 255);
+    }
 
     int e = ease(t);
     device_card(sel, -dir * e * GFX_W / 256, 255 - e * 200 / 256);
@@ -159,7 +181,7 @@ typedef struct {
     int  key;                       /* on Center + B, C64_KEYS index */
     bool drive;                     /* processor-level 1541 */
     bool drive_rom;                 /* ... possible: 1541.rom is on the drive */
-    int  rows[8], nrows;
+    int  rows[9], nrows;
 } opt_t;
 
 #define C64_FILES_MAX 64
@@ -354,6 +376,8 @@ static void options(void (*under)(void *), void *arg, int device, const char *ga
         }
         if (e & (IN_A | IN_B | IN_CENTER))
             break;
+        if (lobby_incoming(NULL))           /* the partner started a game */
+            break;
     }
     prefs_save();
     if (c64) {
@@ -366,6 +390,124 @@ static void options(void (*under)(void *), void *arg, int device, const char *ga
         free(o.files);
     }
     ui_wait_release();
+}
+
+/* ---- link play ------------------------------------------------------------------------ */
+
+static void background_under(void *arg)
+{
+    (void)arg;
+    background();
+}
+
+static void link_card(void (*under)(void *), void *arg, const char *title, const char *line,
+                      const char *const *rows, int nrows, int sel, const char *foot, uint32_t accent)
+{
+    under(arg);
+    gfx_rect(0, 0, GFX_W, GFX_H, 0x000000, 150);
+    int h = 94 + nrows * OPT_ROW_H, y0 = (GFX_H - h) / 2;
+    gfx_rrect(14, y0, GFX_W - 28, h, 16, CARD, 255);
+    char t[GAME_NAME_MAX + 4];
+    gfx_text_fit(&font_head, title, GFX_W - 60, t);
+    gfx_text(&font_head, 30, y0 + 14, t, TEXT, 255);
+    gfx_text(&font_small, 30, y0 + 42, line, DIM, 255);
+    for (int i = 0; i < nrows; i++) {
+        int y = y0 + 62 + i * OPT_ROW_H;
+        if (i == sel)
+            gfx_rrect(22, y, GFX_W - 44, OPT_ROW_H - 4, 9, accent, 90);
+        gfx_text(&font_body, 34, y + 5, rows[i], i == sel ? TEXT : DIM, 255);
+    }
+    gfx_text_centered(&font_small, GFX_W / 2, y0 + h - 24, foot, DIM, 255);
+    gfx_present();
+}
+
+/* A partner is there: this device picks its controller and offers the game.
+ * True: both start it. False: back to the list. */
+static bool link_offer(void (*under)(void *), void *arg, int device, const char *game, uint32_t accent)
+{
+    static const char *const rows[] = { "Player 1", "Player 2" };
+    static int sel;                     /* as last time */
+    char title[GAME_NAME_MAX], tags[GAME_NAME_MAX];
+    games_title(game, title, tags, sizeof title);
+
+    ui_wait_release();
+    for (;;) {
+        link_card(under, arg, title, "Choose your controller", rows, 2, sel, "B  start      A  back", accent);
+        uint32_t e = input_menu_edges();
+        if (e & (IN_UP | IN_DOWN | IN_LEFT | IN_RIGHT))
+            sel = !sel;
+        if (e & IN_B)
+            break;
+        if ((e & IN_A) || lobby_incoming(NULL) || !lobby_partner())
+            return false;
+    }
+
+    static lobby_offer_t o;
+    o.device = device;
+    o.player = sel ? 1 : 2;
+    snprintf(o.game, sizeof o.game, "%s", game);
+    lobby_offer(&o);
+    for (;;) {
+        link_card(under, arg, title, "Waiting for partner ...", NULL, 0, 0, "A  back", accent);
+        switch (lobby_offer_state()) {
+        case LOBBY_ACCEPTED:
+            ui_link_player = sel + 1;
+            ui_link_master = true;
+            return true;
+        case LOBBY_NO_GAME:
+            ui_message("Link play", "Your partner does not", "have this game.", NULL);
+            return false;
+        case LOBBY_GONE:
+            ui_message("Link play", "Your partner has left.", NULL, NULL);
+            return false;
+        case LOBBY_LOST:                /* both at once: the partner's game it is */
+            return false;
+        }
+        if (input_menu_edges() & IN_A) {
+            lobby_offer_cancel();
+            return false;
+        }
+    }
+}
+
+static bool file_on_drive(const char *name)
+{
+    static FILINFO fi;
+    char path[GAME_NAME_MAX + 2];
+    snprintf(path, sizeof path, "/%s", name);
+    return f_stat(path, &fi) == FR_OK;
+}
+
+/* The partner started a game: this device starts it too.
+ * True with device and game set. */
+static bool link_join(int *device, char game[GAME_NAME_MAX])
+{
+    static lobby_offer_t o;
+    if (!lobby_incoming(&o))
+        return false;
+    bool ok = o.device >= 0 && o.device < device_count && devices[o.device].app != APP_NONE &&
+              device_link(&devices[o.device]) &&
+              (o.player == 1 || o.player == 2) && file_on_drive(o.game);
+    lobby_answer(ok);
+    if (!ok)
+        return false;
+
+    char title[GAME_NAME_MAX], tags[GAME_NAME_MAX], line[32];
+    games_title(o.game, title, tags, sizeof title);
+    snprintf(line, sizeof line, "You are player %d", o.player);
+    int went;
+    while ((went = lobby_went()) == 0) {
+        link_card(background_under, NULL, title, line, NULL, 0, 0, "Starting ...", devices[o.device].accent);
+    }
+    if (went < 0) {
+        ui_message("Link play", "Your partner has left.", NULL, NULL);
+        return false;
+    }
+    *device = o.device;
+    strcpy(game, o.game);
+    ui_link_player = o.player;
+    ui_link_master = false;
+    return true;
 }
 
 /* ---- game list ------------------------------------------------------------------------ */
@@ -393,6 +535,10 @@ static void list_screen(void *arg)
     char c[24];
     count_text(l->device, c, sizeof c);
     gfx_text(&font_small, 90, 37, c, DIM, 255);
+    if (lobby_partner() && device_link(dev)) {
+        const char *s = "Link connected";
+        gfx_text(&font_small, GFX_W - 12 - gfx_text_w(&font_small, s), 37, s, LINK_GREEN, 255);
+    }
     gfx_rect(0, 64, GFX_W, 1, 0xffffff, 22);
 
     if (l->n == 0) {
@@ -448,9 +594,11 @@ static void list_screen(void *arg)
     footer(keys, labels, 3);
 }
 
-/* Returns true with the chosen game in `game`, false for "back". */
-static bool game_list(int device, char game[GAME_NAME_MAX])
+/* Returns true with the chosen game in `game`, false for "back". A game the
+ * link partner started may be on another device: `device` follows it. */
+static bool game_list(int *device_io, char game[GAME_NAME_MAX])
 {
+    int device = *device_io;
     list_t l = { .device = device };
     l.n = games_list(device, &l.names);
     for (int i = 0; game[0] && i < l.n; i++)
@@ -474,6 +622,9 @@ static bool game_list(int device, char game[GAME_NAME_MAX])
         list_screen(&l);
         gfx_present();
 
+        if (link_join(device_io, game))
+            return true;
+
         uint32_t e = input_menu_edges();
         if (e & IN_A)
             return false;
@@ -489,7 +640,10 @@ static bool game_list(int device, char game[GAME_NAME_MAX])
             options(list_screen, &l, device, l.names[l.cur], devices[device].accent);
         if (e & IN_B) {
             strcpy(game, l.names[l.cur]);
-            return true;
+            if (!lobby_partner() || !device_link(&devices[device]) ||
+                link_offer(list_screen, &l, device, game, devices[device].accent))
+                return true;
+            ui_wait_release();
         }
     }
 }
@@ -510,10 +664,13 @@ ui_result_t ui_run(int *device, char game[GAME_NAME_MAX])
     int sel = (*device >= 0 && *device < device_count) ? *device : 1;
     int next = sel, dir = 1, t = 0;
 
+    ui_link_player = 0;
     ui_wait_release();
     for (;;) {
         device_screen(sel, next, t, dir);
         gfx_present();
+        if (link_join(device, game))
+            return UI_PLAY;
         if (next != sel) {
             t += 48;
             if (t >= 256) {
@@ -539,7 +696,7 @@ ui_result_t ui_run(int *device, char game[GAME_NAME_MAX])
             *device = sel;
             if (devices[sel].app == APP_NONE)
                 return UI_USB;
-            if (game_list(sel, game))
+            if (game_list(device, game))
                 return UI_PLAY;
             game[0] = 0;
             ui_wait_release();
@@ -655,7 +812,7 @@ void ui_starting(int device, const char *game)
 
     const char *b[8], *k[8];
     int n = 0;
-    char port[24], note[40] = "";
+    char port[24], note[64] = "";
     for (const control_t *c = dev->controls; c->button && n < 8; c++, n++) {
         b[n] = c->button;
         k[n] = c->key;
@@ -667,6 +824,11 @@ void ui_starting(int device, const char *game)
         b[3] = key_names[settings_key(game)];      /* the key on Center + B */
         snprintf(note, sizeof note, "ROMs: %s%s", c64_own_roms() ? "Commodore" : "OpenROMs",
                  settings_true_drive(game) && c64_drive_rom() ? ", true drive" : "");
+    }
+
+    if (ui_link_player) {
+        size_t len = strlen(note);
+        snprintf(note + len, sizeof note - len, "%sLink: player %d", len ? ", " : "", ui_link_player);
     }
 
     /* about two seconds, or until B is pressed */

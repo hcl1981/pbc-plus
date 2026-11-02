@@ -1,8 +1,12 @@
 # PBCemu — alle Emulatoren in einer Firmware
 
 Ein Starter mit Gerätewahl und Spieleliste vor allen Emulatoren dieses Repos:
-Commodore 64, NES, Master System, PC Engine, Mega Drive, Game Gear und
-Game Boy (Color). Fertig als **`dist/pbcemu.uf2`**, eine Datei für alles.
+Atari 2600, Commodore 64, NES, SG-1000, MSX, Master System, PC Engine,
+Mega Drive, Game Gear und Game Boy (Color). Fertig als **`dist/pbcemu.uf2`**,
+eine Datei für alles. Zwei Geräte am USB-C-Kabel spielen Atari 2600, C64,
+NES, SG-1000, MSX, Master System und PC Engine zu zweit
+([`../docs/LINKSPIEL.md`](../docs/LINKSPIEL.md)); im Karussell tragen diese
+Konsolen die goldene Plakette **LINK**.
 Der alte PicoBoyGB-Emulator ist nicht dabei; Game-Boy-Spiele laufen im
 Game-Boy-Color-Emulator.
 
@@ -44,8 +48,11 @@ Anzeigemodi (der erste ist jeweils die Vorgabe):
 
 | System | Modi |
 |---|---|
+| Atari 2600 | Scale 1.5x (160 → 240 Pixel breit) |
 | Commodore 64 | Standard (320×240-Ausschnitt verkleinert), Full border (ganzer Rand), No border (nur 320×200) |
 | NES | Crop 1:1 (240×240), Fit width (240×225), No overscan (240×224) |
+| SG-1000 | Crop 1:1, Fit width, Zoom 1.25x |
+| MSX | Fit width (256 → 240), Crop 1:1 |
 | Master System | Crop 1:1, Fit width (240×180), Zoom 1.25x |
 | PC Engine | Standard, Crop 1:1 |
 | Mega Drive | Fit width, Crop 1:1 |
@@ -60,8 +67,11 @@ nach Endung:
 
 | System | Endungen |
 |---|---|
-| Commodore 64 | `.d64` `.prg` (eigene ROMs: `kernal.rom`, `basic.rom`, siehe `../c64`) |
+| Atari 2600 | `.a26` |
+| Commodore 64 | `.d64` `.prg` `.crt` (eigene ROMs: `kernal.rom`, `basic.rom`, siehe `../c64`) |
 | NES | `.nes` |
+| SG-1000 | `.sg` |
+| MSX | `.rom` `.mx1` (MSX1-Module; C-BIOS ist eingebaut, siehe `../msx`) |
 | Master System | `.sms` |
 | PC Engine | `.pce` |
 | Mega Drive | `.md` `.gen` `.smd` `.bin` (bis 5 MB, mit Super Street Fighter II) |
@@ -96,7 +106,7 @@ eigenständige Firmwares (`dist/nes.uf2` usw.).
 | Adresse | Inhalt |
 |---|---|
 | `0x000000` | Starter (256 KB vorgesehen, ca. 180 KB belegt) |
-| `0x040000` … | Mega Drive, Master System/Game Gear, NES, PC Engine, Game Boy Color, C64 — dicht gepackt, auf 4 KB gerundet (zusammen ca. 1,4 MB) |
+| `0x040000` … | Mega Drive, Master System/Game Gear/SG-1000, NES, PC Engine, Game Boy Color, C64, MSX, Atari 2600 — dicht gepackt, auf 4 KB gerundet (zusammen ca. 1,6 MB, bis `0x200000`) |
 | `0x200000` | ROM des laufenden Spiels (5 MB) |
 | `0x700000` | FatFs = USB-Laufwerk `PBC-ROMS`, ca. 9 MB (Einzel-Firmwares: ab `0x600000`) |
 | `0xFF0000` | gehört den Einzel-Firmwares (welches Spiel in *ihrem* ROM-Bereich liegt); der Starter löscht es, weil dort jetzt Emulatoren liegen |
@@ -117,7 +127,8 @@ Animationen.
   (`art/sheet.jpeg`, Prompt siehe unten). `tools/import_icons.py` stellt die
   acht Zellen vor dem Magenta frei, schneidet sie zu, setzt sie auf eine
   gemeinsame Grundlinie mit einheitlichem Schatten und legt sie als
-  `art/*.png` ab. Fehlt ein Bild dort, nimmt `make_assets.py` die eigene
+  `art/*.png` ab. MSX und Atari 2600 kommen aus `art/sheet_extra.jpeg`, das
+  SG-1000 aus `art/sg1000.jpeg` (Aufrufe in `tools/import_icons.py`). Fehlt ein Bild dort, nimmt `make_assets.py` die eigene
   Zeichnung aus `tools/devices.py` (gleiche Perspektive, keine Logos).
 * **Schrift:** Lato (SIL Open Font License, `LICENSE.lato`) in vier Größen,
   geglättet mit 16 Stufen, Codepage 437 wie die Dateinamen aus FatFs (Umlaute).

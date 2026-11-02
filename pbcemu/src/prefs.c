@@ -11,7 +11,7 @@
 
 typedef struct {
     uint32_t magic;
-    uint8_t  sound, volume, stats, pad;
+    uint8_t  sound, volume, stats, unused;
     uint8_t  video[PREFS_DEVICES];
     uint32_t check;
 } stored_t;

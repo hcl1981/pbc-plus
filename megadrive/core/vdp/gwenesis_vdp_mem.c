@@ -274,21 +274,15 @@ extern bool sprite_collision;
  *
  ******************************************************************************/
 int m68k_irq_acked(int irq) {
-    /* VINT has higher priority (Fatal Rewind) */
+    /* PBC: the 68000 has taken an interrupt. The VDP drops that request
+     * and keeps the lines at what is still pending: VBlank (level 6) is
+     * taken first, then the line interrupt (level 4). */
+    (void)irq;
     if (REG1_VBLANK_INTERRUPT && (gwenesis_vdp_status & STATUS_VIRQPENDING)) {
-        /* Clear VINT pending flag */
         gwenesis_vdp_status &= ~STATUS_VIRQPENDING;
-
-        if (hint_pending && REG0_LINE_INTERRUPT)
-            m68k_set_irq(4);
-        else
-            m68k_set_irq(0);
-    }
-    else {
-        /* Clear HINT pending flag */
+        m68k_set_irq(hint_pending && REG0_LINE_INTERRUPT ? 4 : 0);
+    } else {
         hint_pending = 0;
-
-        /* Update IRQ status */
         m68k_set_irq(0);
     }
 

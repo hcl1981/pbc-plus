@@ -370,6 +370,75 @@ def c64():
     return p.done()
 
 
+def msx2():
+    """An MSX2 computer of the later kind (Sony HB-F1XD, Philips NMS 8245):
+    black keyboard unit, cartridge slot at the back, disk drive on the right,
+    function keys in a row above the keys; a joystick beside it."""
+    p = Pic()
+    p.shadow(92, 112, 88, 9)
+    blk, key, fkey = '#232327', '#3a3a40', '#8e8e96'
+    x, y, w, h, dep = 6, 74, 156, 20, 48
+    # top face sloping towards the front
+    p.poly([(x + 6, y - dep), (x + w - 6, y - dep), (x + w, y), (x, y)], shade(blk, 0.16))
+    # raised back strip with the cartridge slot
+    p.poly([(x + 6, y - dep), (x + w - 6, y - dep), (x + w - 5, y - dep + 9), (x + 5, y - dep + 9)],
+           shade(blk, 0.26))
+    p.rrect(x + 34, y - dep + 2, x + 92, y - dep + 6, 1, '#0b0b0d')
+    p.rrect(x + 38, y - dep + 3.2, x + 88, y - dep + 4.8, 0.5, shade(blk, 0.35))
+    p.ellipse(x + w - 22, y - dep + 2.6, x + w - 18.5, y - dep + 6, '#e0412e')      # power LED
+    # function keys: one row of five wide keys
+    fy0, fy1 = y - dep + 12, y - dep + 16.5
+    for k in range(5):
+        a0 = x + 16 + k * 15
+        p.poly([(a0, fy0), (a0 + 12, fy0), (a0 + 12.4, fy1), (a0 - 0.4, fy1)], fkey)
+    # keyboard: rows narrowing to the back, the right part left free for the drive
+    rows = 5
+    for r in range(rows):
+        f0, f1 = r / rows, (r + 1) / rows
+        span = dep - 22
+        ya, yb = fy1 + 2.5 + f0 * span, fy1 + 2.5 + f1 * span
+        ins_a, ins_b = 14 - f0 * 6, 14 - f1 * 6
+        xa0, xa1 = x + ins_a, x + w - 46 - ins_a * 0.4
+        xb0, xb1 = x + ins_b, x + w - 46 - ins_b * 0.4
+        if r == 4:                                                         # space bar
+            m = 0.28
+            p.poly([(xa0 + (xa1 - xa0) * m, ya + 0.6), (xa1 - (xa1 - xa0) * m, ya + 0.6),
+                    (xb1 - (xb1 - xb0) * m, yb - 0.6), (xb0 + (xb1 - xb0) * m, yb - 0.6)], key)
+            continue
+        keys = 14
+        for k in range(keys):
+            a0 = xa0 + (xa1 - xa0) * k / keys
+            a1 = xa0 + (xa1 - xa0) * (k + 1) / keys
+            b0 = xb0 + (xb1 - xb0) * k / keys
+            b1 = xb0 + (xb1 - xb0) * (k + 1) / keys
+            p.poly([(a0 + 0.5, ya + 0.6), (a1 - 0.5, ya + 0.6), (b1 - 0.5, yb - 0.6), (b0 + 0.5, yb - 0.6)],
+                   key)
+            p.line([(a0 + 0.8, ya + 0.9), (a1 - 0.8, ya + 0.9)], shade(key, 0.3), 0.6)
+    # cursor keys on the right of the keyboard
+    cxk, cyk = x + w - 30, y - 12
+    for dx, dy in ((0, -4.5), (-5, 0), (5, 0), (0, 4.5)):
+        p.rrect(cxk + dx - 2.2, cyk + dy - 2, cxk + dx + 2.2, cyk + dy + 2, 0.6, '#c94040')
+    # front: the disk drive on the right
+    p.rrect(x, y, x + w, y + h, 3, blk)
+    p.rrect(x, y, x + w, y + 2, 1, shade(blk, 0.3))
+    p.rrect(x + w - 58, y + 5, x + w - 8, y + 15, 1.5, shade(blk, 0.12))
+    p.rrect(x + w - 54, y + 9, x + w - 18, y + 11, 0.5, '#0a0a0c')                     # slot
+    p.rrect(x + w - 15, y + 8, x + w - 11, y + 12, 1, '#9a9aa2')                       # eject
+    p.ellipse(x + w - 57, y + 7, x + w - 55, y + 9, '#3ccf7a')                          # drive LED
+    # joystick
+    cx, cy = 172, 106
+    p.rrect(cx - 16, cy - 7, cx + 16, cy + 9, 4, '#1c1c20')
+    p.rrect(cx - 16, cy - 9, cx + 16, cy + 6, 4, '#2c2c32')
+    p.button(cx - 9, cy - 3, 2.8, '#d83a2e')
+    p.button(cx + 9, cy - 3, 2.8, '#2f74d6')
+    p.ellipse(cx - 4.5, cy - 3, cx + 4.5, cy + 1, '#141417')
+    p.line([(cx, cy - 1), (cx, cy - 24)], '#141417', 3)
+    p.ellipse(cx - 4.5, cy - 29, cx + 4.5, cy - 20, '#1b1b1e')
+    p.ellipse(cx - 2.5, cy - 27.5, cx + 0.5, cy - 24.5, '#55555c')
+    p.line([(cx - 16, cy), (cx - 22, cy - 6), (x + w, y + 12)], '#151518', 1)
+    return p.done()
+
+
 def usb_drive():
     p = Pic()
     p.shadow(100, 112, 60, 7)
@@ -389,6 +458,71 @@ def usb_drive():
     return p.done()
 
 
+def sg1000():
+    """Sega SG-1000: a black wedge with a silver band, the slot on top, and
+    its joystick with the red ball."""
+    p = Pic()
+    p.shadow(96, 110, 90, 9)
+    blk, silver, red = '#1d1d22', '#b9bcc4', '#d42a2a'
+    x, y, w, h, dep = 14, 62, 144, 32, 34
+    p.poly([(x + 6, y - dep), (x + w - 6, y - dep), (x + w, y), (x, y)], shade(blk, 0.16))
+    p.rrect(x + 42, y - dep + 6, x + 102, y - dep + 13, 1.5, '#0b0b0d')       # cartridge slot
+    p.rrect(x + 46, y - dep + 8.5, x + 98, y - dep + 10.5, 0.5, shade(blk, 0.32))
+    for i in range(6):                                                          # vents
+        xx = x + 14 + i * 4
+        p.line([(xx + 2, y - dep + 8), (xx - 1, y - 6)], '#0c0c0e', 1.2)
+    p.rrect(x, y, x + w, y + h, 2.5, blk)
+    p.rrect(x, y, x + w, y + 2, 1, shade(blk, 0.3))
+    p.rrect(x + 4, y + 6, x + w - 4, y + 15, 1.5, silver)                     # silver band
+    p.rrect(x + 4, y + 6, x + w - 4, y + 8, 1, shade(silver, 0.35))
+    p.rrect(x + 10, y + 9, x + 34, y + 12, 0.8, shade(silver, -0.25))
+    p.ellipse(x + w - 16, y + 9, x + w - 12, y + 13, red)                     # power LED
+    p.rrect(x + w - 34, y + 20, x + w - 10, y + 27, 1.5, '#121215')          # joystick port
+    # joystick: black base, stick with a red ball, red fire button
+    cx, cy = 150, 106
+    p.rrect(cx - 18, cy - 8, cx + 18, cy + 10, 3, '#18181b')
+    p.rrect(cx - 18, cy - 8, cx + 18, cy - 6, 2, shade('#18181b', 0.3))
+    p.rrect(cx - 7.5, cy - 24, cx - 4.5, cy - 2, 1.5, '#2a2a2e')
+    p.button(cx - 6, cy - 26, 4.5, red)
+    p.button(cx + 9, cy + 1, 3.6, red)
+    p.line([(cx - 18, cy + 2), (cx - 30, cy - 4), (x + w - 22, y + 24)], '#111113', 1)
+    return p.done()
+
+
+def atari2600():
+    """Atari VCS / 2600: black ribbed top, wood front, the silver switches,
+    and the joystick with its red button."""
+    p = Pic()
+    p.shadow(96, 110, 90, 9)
+    blk, wood = '#1b1a1a', '#8a5a2e'
+    x, y, w, h, dep = 14, 62, 140, 30, 36
+    p.poly([(x + 6, y - dep), (x + w - 6, y - dep), (x + w, y), (x, y)], shade(blk, 0.14))
+    for i in range(9):                                                          # ribs
+        yy = y - dep + 3 + i * 3.4
+        inset = 6 - i * 0.6
+        p.line([(x + inset + 2, yy), (x + w - inset - 2, yy)], shade(blk, 0.32), 1.0)
+    p.rrect(x + 52, y - dep + 4, x + 88, y - dep + 12, 1.5, '#0a0a0b')        # cartridge slot
+    for i in range(4):                                                          # switches
+        sx = x + 12 + i * 10 if i < 2 else x + w - 52 + (i - 2) * 10 + 22
+        p.rrect(sx, y - 15, sx + 5, y - 5, 1, '#d6d8dc')
+        p.rrect(sx + 1, y - 15, sx + 4, y - 12, 0.8, '#f2f3f5')
+    p.rrect(x, y, x + w, y + h, 2.5, wood)                                     # wood front
+    for i in range(7):                                                          # grain
+        yy = y + 4 + i * 3.6
+        p.line([(x + 3, yy), (x + w * 0.4, yy + 0.8), (x + w - 3, yy - 0.5)], shade(wood, -0.18), 0.7)
+    p.rrect(x, y, x + w, y + 2, 1, shade(wood, 0.3))
+    p.rrect(x, y + h - 6, x + w, y + h, 2, shade(blk, 0.05))                  # black bottom band
+    # joystick: square black base, stick, red button at the top left
+    cx, cy = 150, 106
+    p.rrect(cx - 15, cy - 10, cx + 15, cy + 12, 3, '#161617')
+    p.rrect(cx - 15, cy - 10, cx + 15, cy - 8, 2, shade('#161617', 0.3))
+    p.rrect(cx - 2, cy - 30, cx + 2, cy, 1.8, '#202022')
+    p.ellipse(cx - 5, cy - 3, cx + 5, cy + 3, '#2a2a2c')
+    p.button(cx - 9, cy - 5, 3.2, '#d8322a')
+    p.line([(cx - 15, cy + 3), (cx - 28, cy - 3), (x + w - 10, y + 20)], '#111113', 1)
+    return p.done()
+
+
 DEVICES = {
     'nes': nes,
     'sms': master_system,
@@ -397,6 +531,9 @@ DEVICES = {
     'pce': pc_engine,
     'gbc': game_boy_color,
     'c64': c64,
+    'msx': msx2,
+    'sg': sg1000,
+    'a26': atari2600,
     'usb': usb_drive,
 }
 

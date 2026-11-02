@@ -2,19 +2,29 @@
 """import_icons.py -- device pictures from a generated sprite sheet.
 
     import_icons.py <sheet.jpg|png> <outdir>
+    import_icons.py <sheet> <outdir> <cols>x<rows> <name|-> ...   other grids
+
+art/sheet_extra.jpeg (2 x 2: MSX, Atari 2600, two not used) is read with
+    import_icons.py art/sheet_extra.jpeg art 2x2 msx a26 - -
 
 The sheet is a 4 x 2 grid on a magenta background (made with the prompt in
 README.md), cells in the order of NAMES. Each cell is keyed out, cut to the
 object, scaled to fit W x H, placed on the common baseline and given the
 same soft floor shadow as the drawn pictures (tools/devices.py), so all of
 them sit alike in the launcher. Writes <outdir>/<name>.png (RGBA).
+
+art/sg1000.jpeg is a single picture (SG-1000):
+    import_icons.py art/sg1000.jpeg art 1x1 sg
+
+art/sheet_msx.jpeg is a second sheet in the same order whose last cell is
+the MSX2 instead of the USB stick (art/msx.png until November 2026).
 """
 import sys
 from PIL import Image, ImageDraw, ImageFilter
 
 NAMES = ['nes', 'sms', 'md', 'gg', 'pce', 'gbc', 'c64', 'usb']
 W, H = 200, 128
-BG = (227, 21, 208)                 # the magenta of the cells
+BG = (227, 21, 208)                 # the magenta of the cells (key() measures it)
 
 
 def key(cell):
@@ -24,6 +34,9 @@ def key(cell):
     cell = cell.convert('RGB')
     out = Image.new('RGBA', cell.size)
     src, dst = cell.load(), out.load()
+    w, h = cell.size                    # the background: median of the corners
+    corners = [src[x, y] for x, y in ((2, 2), (w - 3, 2), (2, h - 3), (w - 3, h - 3))]
+    BG = tuple(sorted(c[i] for c in corners)[1] for i in range(3))
     for y in range(cell.size[1]):
         for x in range(cell.size[0]):
             r, g, b = src[x, y]
@@ -74,9 +87,15 @@ def place(obj):
 def main():
     sheet = Image.open(sys.argv[1]).convert('RGB')
     out = sys.argv[2]
-    cw, ch = sheet.width / 4, sheet.height / 2
-    for i, name in enumerate(NAMES):
-        c, r = i % 4, i // 4
+    cols, rows, names = 4, 2, NAMES
+    if len(sys.argv) > 3:
+        cols, rows = (int(v) for v in sys.argv[3].split('x'))
+        names = sys.argv[4:]
+    cw, ch = sheet.width / cols, sheet.height / rows
+    for i, name in enumerate(names):
+        if name == '-':
+            continue
+        c, r = i % cols, i // cols
         cell = sheet.crop((round(c * cw), round(r * ch), round((c + 1) * cw), round((r + 1) * ch)))
         place(crop_object(shave(key(cell)))).save(f'{out}/{name}.png')
 

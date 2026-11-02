@@ -71,19 +71,32 @@ add_executable(pbc_megadrive
     ${CORE}/savestate/gwenesis_savestate.c
     ${CORE}/sound/gwenesis_sn76489.c
     ${CORE}/sound/ym2612.c
-    ${CORE}/sound/ym2612_opt.S
     ${CORE}/sound/z80inst.c
-    ${CORE}/sound/z80_mem_opt.S
     ${CORE}/sound/z80_benchmark.c
-    ${CORE}/cpus/Z80/Z80.c
-    ${CORE}/cpus/Z80/z80_arm.S
-    ${CORE}/cpus/M68K/m68kcpu.c
-    ${CORE}/cpus/M68K/m68k_memory_opt.S
+    # Z80: redcode/Z80 (LGPL-3.0-or-later), see core/cpus/redcode/README.md
+    ${CORE}/cpus/redcode/Z80.c
+    # 68000: Musashi 4.10 (MIT), see core/cpus/musashi/readme.txt
+    ${CORE}/cpus/musashi/m68kcpu.c
+    ${CORE}/cpus/musashi/m68kops.c
 )
 
-set_source_files_properties(${CORE}/cpus/M68K/m68kcpu.c PROPERTIES
+set_source_files_properties(${CORE}/cpus/musashi/m68kcpu.c ${CORE}/cpus/musashi/m68kops.c PROPERTIES
     COMPILE_FLAGS "-O3 -ffast-math -funroll-loops -finline-functions -fno-partial-inlining")
 set_source_files_properties(src/video.c PROPERTIES COMPILE_FLAGS "-O3")
+# redcode/Z80 with the PicoBoy switches (tools/redcode_patch.py): opcodes
+# and operands straight from Z80 RAM (code only ever runs from there, as in
+# the old core), data through z80inst.c's memory map, the opcodes through a
+# switch, code and tables in RAM; in the combined firmware, which has the
+# RAM for it, the IX/IY opcodes through a switch as well (sound drivers use
+# them a lot). Its z80_run and z80_execute are renamed: z80inst.c has
+# functions of these names.
+set(REDCODE_DEFS "Z80_WITH_LOCAL_HEADER;Z80_PBC_FETCH8K=Z80_RAM;Z80_PBC_READ=z80_read;Z80_PBC_WRITE=z80_write;Z80_PBC_SWITCH;Z80_PBC_RAM=\".time_critical.redcode\";Z80_PBC_RAM_TABLES;z80_run=redcode_z80_run;z80_execute=redcode_z80_execute")
+if(DEFINED PBC_APP_OFFSET)
+    list(APPEND REDCODE_DEFS Z80_PBC_SWITCH_XY)
+endif()
+set_source_files_properties(${CORE}/cpus/redcode/Z80.c PROPERTIES
+    COMPILE_DEFINITIONS "${REDCODE_DEFS}"
+    COMPILE_FLAGS "-O2")
 
 target_include_directories(pbc_megadrive PRIVATE
     src                 # HDMI.h stand-in, tusb_config.h
@@ -94,8 +107,8 @@ target_include_directories(pbc_megadrive PRIVATE
     ${CORE}/vdp
     ${CORE}/sound
     ${CORE}/savestate
-    ${CORE}/cpus/M68K
-    ${CORE}/cpus/Z80
+    ${CORE}/cpus/musashi
+    ${CORE}/cpus/redcode
 )
 
 target_compile_definitions(pbc_megadrive PRIVATE
@@ -115,7 +128,7 @@ target_compile_definitions(pbc_megadrive PRIVATE
     AUDIO_VOLUME=${AUDIO_VOLUME}
     Z80_SLICE_LINES=${Z80_SLICE_LINES}
     TEST_SONIC2_ZONE=${TEST_SONIC2_ZONE}
-    PBC_Z80_IN_RAM=1
+    Z80_STATIC
     PBC_YM_CORE1=1
     # Gwenesis / frank-genesis configuration
     PICO_ON_DEVICE=1

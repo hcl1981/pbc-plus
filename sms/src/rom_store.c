@@ -78,7 +78,7 @@ static bool ends_with_ci(const char *s, const char *ext)
 
 bool rom_store_is_rom_name(const char *name)
 {
-    return ends_with_ci(name, ".sms") || ends_with_ci(name, ".gg");
+    return ends_with_ci(name, ".sms") || ends_with_ci(name, ".gg") || ends_with_ci(name, ".sg");
 }
 
 static bool file_fingerprint(const char *name, uint32_t *size, uint32_t *hash, uint8_t *buf)

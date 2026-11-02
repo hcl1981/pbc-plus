@@ -10,8 +10,11 @@
 #define PBC_DEVICES_LIST_H
 
 #define PBC_DEVICES(X) \
+    X("Atari 2600",     "Atari  \xfa  1977",     ".a26",            APP_A26,  0xd88a3a, pic_a26, icon_a26, c_a26,  m_a26) \
     X("Commodore 64",   "Commodore  \xfa  1982", ".d64.prg.crt",    APP_C64,  0xd9a55b, pic_c64, icon_c64, c_c64,  m_c64) \
     X("NES",            "Nintendo  \xfa  1983",  ".nes",            APP_NES,  0xe5483c, pic_nes, icon_nes, c_nes,  m_nes) \
+    X("SG-1000",        "Sega  \xfa  1983",      ".sg",             APP_SMS,  0x9aa2b0, pic_sg,  icon_sg,  c_sg,   m_sg)  \
+    X("MSX",            "ASCII  \xfa  1983",     ".rom.mx1",        APP_MSX,  0x35b779, pic_msx, icon_msx, c_msx,  m_msx) \
     X("Master System",  "Sega  \xfa  1985",      ".sms",            APP_SMS,  0x3d8bfd, pic_sms, icon_sms, c_sms,  m_sms) \
     X("PC Engine",      "NEC  \xfa  1987",       ".pce",            APP_PCE,  0xff8a3d, pic_pce, icon_pce, c_pce,  m_pce) \
     X("Mega Drive",     "Sega  \xfa  1988",      ".md.gen.smd.bin", APP_MD,   0xe0407a, pic_md,  icon_md,  c_md,   m_md)  \

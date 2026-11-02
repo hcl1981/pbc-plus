@@ -35,6 +35,7 @@ set(PICO_FLASH_SIZE_BYTES 16777216)
 pico_sdk_init()
 
 set(SMSP ${CMAKE_CURRENT_LIST_DIR}/core/smsplus)
+set(REDCODE ${CMAKE_CURRENT_LIST_DIR}/core/redcode)
 
 add_executable(pbc_sms
     # PicoBoy Color Plus platform
@@ -61,7 +62,10 @@ add_executable(pbc_sms
     ${SMSP}/system.c
     ${SMSP}/tms.c
     ${SMSP}/vdp.c
-    ${SMSP}/z80.c
+    ${SMSP}/z80_redcode.c
+
+    # Z80: redcode/Z80 (LGPL-3.0-or-later), see core/redcode/README.md
+    ${REDCODE}/Z80.c
     ${SMSP}/emu2413/emu2413.c
 )
 
@@ -89,6 +93,14 @@ target_compile_definitions(pbc_sms PRIVATE
     NDEBUG
     SMS_AUD_RATE=22222
 )
+
+# redcode/Z80 with the PicoBoy switches (tools/redcode_patch.py): reads
+# straight from SMS Plus' page map, writes through its handler, the opcodes
+# through a switch, code and tables in RAM. Only these two files see the
+# core's headers (its Z80.h is not SMS Plus' z80.h).
+set_source_files_properties(${REDCODE}/Z80.c ${SMSP}/z80_redcode.c PROPERTIES
+    INCLUDE_DIRECTORIES ${REDCODE}
+    COMPILE_DEFINITIONS "Z80_STATIC;Z80_WITH_LOCAL_HEADER;Z80_PBC_MAP;Z80_PBC_READMAP=cpu_readmap;Z80_PBC_WRITE=cpu_writemem16;Z80_PBC_SWITCH;Z80_PBC_RAM=\".time_critical.redcode\";Z80_PBC_RAM_TABLES")
 
 # As in pico-smsplus.
 target_compile_options(pbc_sms PRIVATE

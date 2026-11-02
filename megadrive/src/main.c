@@ -54,7 +54,7 @@
 #include "bus/gwenesis_bus.h"
 #include "io/gwenesis_io.h"
 #include "vdp/gwenesis_vdp.h"
-#include "cpus/M68K/m68k.h"
+#include "cpus/musashi/m68k.h"
 #include "sound/z80inst.h"
 #include "sound/ym2612.h"
 #include "sound/gwenesis_sn76489.h"

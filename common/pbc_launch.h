@@ -40,6 +40,9 @@
 
 /* flags */
 #define PBC_LAUNCH_STATS    0x01            /* show fps, speed and CPU load */
+#define PBC_LAUNCH_LINK1    0x02            /* link play, this device is player 1 */
+#define PBC_LAUNCH_LINK2    0x04            /* ... player 2 */
+#define PBC_LAUNCH_LINK_MASTER 0x08         /* ... and it started the game: keeps the pace */
 
 /* Display modes: each emulator numbers its own, 0 is its default, and the
  * launcher's device table (pbcemu/src/devices.c) has the names in the same

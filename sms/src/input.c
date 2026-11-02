@@ -43,8 +43,10 @@ int input_poll_sms(bool *start)
     if (r & IN_CENTER) {
         if (r & IN_B) *start = true;
     } else {
-        if (r & IN_B) pad |= 0x20;     /* button 1 */
-        if (r & IN_A) pad |= 0x10;     /* button 2 */
+        /* SMS Plus's INPUT_BUTTON2 (0x10) is bit 4 of port $DC, which on
+         * the console is button 1 (TL); 0x20 is button 2 (TR). */
+        if (r & IN_B) pad |= 0x10;     /* button 1 */
+        if (r & IN_A) pad |= 0x20;     /* button 2 */
     }
     return pad;
 }

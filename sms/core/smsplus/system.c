@@ -212,14 +212,9 @@ bool system_save_state(FIL *fd) {
     }
 
     /* Save Z80 context */
-    fr = f_write(fd, Z80_Context, sizeof(Z80_Regs), &bw);
-    if (fr != FR_OK || bw != sizeof(Z80_Regs)) {
-        printf("Error writing Z80 regs: fr=%d wrote=%u expected=%u\n", fr, bw, (unsigned)sizeof(Z80_Regs));
-        return false;
-    }
-    fr = f_write(fd, &after_EI, sizeof(int), &bw);
-    if (fr != FR_OK || bw != sizeof(int)) {
-        printf("Error writing after_EI: fr=%d wrote=%u expected=%u\n", fr, bw, (unsigned)sizeof(int));
+    fr = f_write(fd, z80_context(), z80_context_size(), &bw);
+    if (fr != FR_OK || bw != z80_context_size()) {
+        printf("Error writing Z80 regs: fr=%d wrote=%u expected=%u\n", fr, bw, z80_context_size());
         return false;
     }
 
@@ -294,15 +289,10 @@ bool system_load_state(FIL *fd) {
         return false;
     }
 
-    /* Load Z80 context */
-    fr = f_read(fd, Z80_Context, sizeof(Z80_Regs), &br);
-    if (fr != FR_OK || br != sizeof(Z80_Regs)) {
-        printf("Error reading Z80 regs: fr=%d read=%u expected=%u\n", fr, br, (unsigned)sizeof(Z80_Regs));
-        return false;
-    }
-    fr = f_read(fd, &after_EI, sizeof(int), &br);
-    if (fr != FR_OK || br != sizeof(int)) {
-        printf("Error reading after_EI: fr=%d read=%u expected=%u\n", fr, br, (unsigned)sizeof(int));
+    /* Load Z80 context (its callback pointers are the same in the same firmware) */
+    fr = f_read(fd, z80_context(), z80_context_size(), &br);
+    if (fr != FR_OK || br != z80_context_size()) {
+        printf("Error reading Z80 regs: fr=%d read=%u expected=%u\n", fr, br, z80_context_size());
         return false;
     }
 

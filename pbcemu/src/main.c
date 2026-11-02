@@ -15,6 +15,7 @@
 #include <string.h>
 #include "pico/stdlib.h"
 #include "hardware/flash.h"
+#include "pico/unique_id.h"
 #include "hardware/sync.h"
 #include "hardware/watchdog.h"
 #include "hardware/structs/watchdog.h"
@@ -33,6 +34,7 @@
 #include "games.h"
 #include "prefs.h"
 #include "pbc_launch.h"
+#include "pbc_lobby.h"
 #include "pbc_rgb.h"
 
 static FATFS g_fs;
@@ -87,6 +89,9 @@ static void write_launch(int device, const char *game)
     l.sound = g_prefs.sound;
     l.volume = (uint8_t)g_prefs.volume;
     l.flags = g_prefs.stats ? PBC_LAUNCH_STATS : 0;
+    if (ui_link_player)
+        l.flags |= (ui_link_player == 1 ? PBC_LAUNCH_LINK1 : PBC_LAUNCH_LINK2) |
+                   (ui_link_master ? PBC_LAUNCH_LINK_MASTER : 0);
     l.video = (uint8_t)prefs_video(device);
     snprintf(l.game, sizeof l.game, "%s", game);
     l.check = pbc_launch_hash(&l);
@@ -144,8 +149,11 @@ static void fs_write_readme(void)
            "Copy games to this drive, then EJECT it. The PicoBoy restarts\r\n"
            "by itself; pick the system, then the game.\r\n"
            "\r\n"
+           "  Atari 2600       .a26\r\n"
            "  Commodore 64     .d64 .prg\r\n"
            "  NES              .nes\r\n"
+           "  SG-1000          .sg\r\n"
+           "  MSX              .rom .mx1   (MSX1 cartridges)\r\n"
            "  Master System    .sms\r\n"
            "  PC Engine        .pce   (HuCards)\r\n"
            "  Mega Drive       .md .gen .smd .bin\r\n"
@@ -155,6 +163,8 @@ static void fs_write_readme(void)
            "Commodore 64: the free MEGA65 OpenROMs are built in. If you own\r\n"
            "the Commodore ROMs, copy kernal.rom and basic.rom (optionally\r\n"
            "chargen.rom) here; some games only run with the original KERNAL.\r\n"
+           "\r\n"
+           "MSX: the free C-BIOS is built in; it starts MSX1 cartridges.\r\n"
            "\r\n"
            "Back to this mode: \"Add Games\" (last page of the systems), or\r\n"
            "hold A or B while switching on.\r\n"
@@ -261,8 +271,17 @@ int main(void)
         strncpy(game, last->game, sizeof game - 1);
     }
 
+    /* USB drive mode, above, has the port to itself */
+    pico_unique_board_id_t uid;
+    pico_get_unique_board_id(&uid);
+    uint32_t id = 2166136261u;
+    for (unsigned i = 0; i < sizeof uid.id; i++)
+        id = (id ^ uid.id[i]) * 16777619u;
+    lobby_begin(id);
+
     for (;;) {
         if (ui_run(&device, game) == UI_USB) {
+            lobby_end();
             fs_unmount();
             usb_mode();
         }
@@ -271,6 +290,7 @@ int main(void)
             ui_message("Not available", "This build has no emulator", "for this system.", NULL);
             continue;
         }
+        lobby_end();
         write_launch(device, game);
         ui_starting(device, game);
         fs_unmount();

@@ -19,7 +19,14 @@ __license__ = "GPLv3"
 #include <stdio.h>
 #include <stdint.h>
 #include <assert.h>
+/* PBC: the Z80 is redcode/Z80 (core/cpus/redcode, LGPL-3.0-or-later) instead
+ * of Marat Fayzullin's core, which is free for non-commercial use only. Its
+ * z80_run/z80_execute have the names of the functions below: renamed. */
+#define z80_run redcode_z80_run
+#define z80_execute redcode_z80_execute
 #include "Z80.h"
+#undef z80_run
+#undef z80_execute
 #include "z80inst.h"
 #include "z80_benchmark.h"
 #include "m68k.h"
@@ -28,12 +35,6 @@ __license__ = "GPLv3"
 #include "gwenesis_sn76489.h"
 #include "gwenesis_savestate.h"
 
-/* Set to 1 to use ARM assembly Z80 core, 0 for C core */
-#define USE_Z80_ARM_ASM 1
-
-#if USE_Z80_ARM_ASM
-#include "z80_arm.h"
-#endif
 
 /* Always optimize Z80 functions for speed - critical path */
 #pragma GCC optimize("Ofast")
@@ -52,11 +53,38 @@ unsigned char *Z80_RAM;
  * and samples from more than two banks (Sonic 2) spent most of the frame
  * doing that. zbank_mem_r8() reads the ROM directly instead. */
 
-/* Make cpu and current_timeslice globally accessible for assembly optimization */
 Z80 cpu;
 int current_timeslice = 0;
 
-void ResetZ80(register Z80 *R);
+static zuint8 rd_cb(void *context, zuint16 address) { (void)context; return z80_read(address); }
+static void wr_cb(void *context, zuint16 address, zuint8 value) { (void)context; z80_write(address, value); }
+static zuint8 io_in(void *context, zuint16 port) { (void)context; (void)port; return 0xFF; }
+static void io_out(void *context, zuint16 port, zuint8 value) { (void)context; (void)port; (void)value; }
+static zuint8 inta(void *context, zuint16 address) { (void)context; (void)address; return 0xFF; }
+
+static void ResetZ80(Z80 *R)
+{
+    R->context = 0;
+    R->fetch_opcode = rd_cb;
+    R->fetch = rd_cb;
+    R->read = rd_cb;
+    R->write = wr_cb;
+    R->in = io_in;
+    R->out = io_out;
+    R->halt = 0;
+    R->nop = 0;
+    R->nmia = 0;
+    R->inta = inta;
+    R->int_fetch = 0;
+    R->ld_i_a = 0;
+    R->ld_r_a = 0;
+    R->reti = 0;
+    R->retn = 0;
+    R->hook = 0;
+    R->illegal = 0;
+    R->options = Z80_MODEL_ZILOG_NMOS;
+    z80_power(R, Z_TRUE);
+}
 
 #define Z80_INST_DISABLE_LOGGING 1
 
@@ -85,10 +113,6 @@ volatile int Z80_BANK;
 
 void z80_start() {
     z80_benchmark_init();
-    cpu.IPeriod = 1;
-    cpu.ICount = 0;
-    cpu.Trace = 0;
-    cpu.Trap = 0x0009;
     ResetZ80(&cpu);
     reset=1;
     reset_once=0;
@@ -155,13 +179,7 @@ void z80_run(int target) {
   int rem = 0;
   if ((reset_once == 1) && (bus_ack == 0) && (reset == 0)) {
 
-    /* If Z80 is HALTed and no interrupt is pending, it effectively just burns
-       cycles until an interrupt arrives. Fast-forward time without executing. */
-    if ((cpu.IFF & IFF_HALT) && (cpu.IRequest == INT_NONE)) {
-      zclk = target;
-      return;
-    }
-
+    /* (a HALTed Z80 skips to the end of the slice inside redcode) */
     int cycles_to_run = current_timeslice / Z80_FREQ_DIVISOR;
     Z80_COUNT(z80_cycles_req += (uint32_t)cycles_to_run);
     Z80_COUNT(z80_cycles_exec += (uint32_t)cycles_to_run);
@@ -170,11 +188,8 @@ void z80_run(int target) {
 #endif
 
    // z80_log("z80_run", "%1d%1d%1d||zclk=%d,tgt=%d",reset_once, bus_ack, reset, zclk, target);
-#if USE_Z80_ARM_ASM
-    rem = z80_arm_exec(cycles_to_run);
-#else
-    rem = ExecZ80(&cpu, cycles_to_run);
-#endif
+    /* what it ran beyond the slice comes back negative, as from ExecZ80 */
+    rem = cycles_to_run - (int)redcode_z80_run(&cpu, (zusize)cycles_to_run);
 
 #if Z80_BENCHMARK
     z80_benchmark_end(bench_start, cycles_to_run - rem);
@@ -184,9 +199,9 @@ void z80_run(int target) {
   Z80_COUNT(z80_cycles_exec -= (uint32_t)rem);
   /* Live snapshot for diagnosis: where the driver is, and whether it can
    * take the 60 Hz interrupt an SMPS driver ticks on. */
-  z80_live[0] = cpu.PC.W;
-  z80_live[1] = cpu.IFF;
-  z80_live[2] = (uint32_t)cpu.IRequest;
+  z80_live[0] = Z80_PC(cpu);
+  z80_live[1] = cpu.iff1 | cpu.halt_line << 7;
+  z80_live[2] = cpu.int_line;
   z80_live[3] = (uint32_t)(bus_ack | (reset << 1) | (reset_once << 2));
 
   zclk = target - rem * Z80_FREQ_DIVISOR;
@@ -203,23 +218,23 @@ void z80_run(int target) {
 uint32_t z80_state_signature(void) {
     uint32_t h = 2166136261u;
 #define SIGMIX(v) do { h ^= (uint32_t)(v); h *= 16777619u; } while (0)
-    SIGMIX(cpu.PC.W);  SIGMIX(cpu.SP.W);
-    SIGMIX(cpu.AF.W);  SIGMIX(cpu.BC.W);
-    SIGMIX(cpu.DE.W);  SIGMIX(cpu.HL.W);
-    SIGMIX(cpu.IX.W);  SIGMIX(cpu.IY.W);
-    SIGMIX(cpu.AF1.W); SIGMIX(cpu.BC1.W);
-    SIGMIX(cpu.DE1.W); SIGMIX(cpu.HL1.W);
-    SIGMIX(cpu.IFF);   SIGMIX(cpu.I);
+    SIGMIX(Z80_PC(cpu));  SIGMIX(Z80_SP(cpu));
+    SIGMIX(Z80_AF(cpu));  SIGMIX(Z80_BC(cpu));
+    SIGMIX(Z80_DE(cpu));  SIGMIX(Z80_HL(cpu));
+    SIGMIX(Z80_IX(cpu));  SIGMIX(Z80_IY(cpu));
+    SIGMIX(Z80_AF_(cpu)); SIGMIX(Z80_BC_(cpu));
+    SIGMIX(Z80_DE_(cpu)); SIGMIX(Z80_HL_(cpu));
+    SIGMIX(cpu.iff1);     SIGMIX(cpu.i);
     SIGMIX(Z80_BANK);
 #undef SIGMIX
     return h;
 }
 
 void z80_state_regs(uint32_t out[6]) {
-    out[0] = (uint32_t)cpu.PC.W | ((uint32_t)cpu.SP.W << 16);
-    out[1] = (uint32_t)cpu.AF.W | ((uint32_t)cpu.BC.W << 16);
-    out[2] = (uint32_t)cpu.DE.W | ((uint32_t)cpu.HL.W << 16);
-    out[3] = (uint32_t)cpu.IX.W | ((uint32_t)cpu.IY.W << 16);
+    out[0] = (uint32_t)Z80_PC(cpu) | ((uint32_t)Z80_SP(cpu) << 16);
+    out[1] = (uint32_t)Z80_AF(cpu) | ((uint32_t)Z80_BC(cpu) << 16);
+    out[2] = (uint32_t)Z80_DE(cpu) | ((uint32_t)Z80_HL(cpu) << 16);
+    out[3] = (uint32_t)Z80_IX(cpu) | ((uint32_t)Z80_IY(cpu) << 16);
     out[4] = (uint32_t)Z80_BANK;
     out[5] = (uint32_t)zclk;
 }
@@ -311,10 +326,7 @@ void z80_irq_line(unsigned int value)
 {
     if (reset_once == 0) return;
 
-    if (value)
-        cpu.IRequest = INT_IRQ;
-    else
-        cpu.IRequest = INT_NONE;
+    z80_int(&cpu, value ? Z_TRUE : Z_FALSE);
 
     z80_log(__FUNCTION__,"Interrupt = %d ", value);
 
@@ -399,25 +411,45 @@ void zvdp_mem_w8(unsigned int address, unsigned int value)
 
 */
 
-word LoopZ80(register Z80 *R)
+/* The Z80's memory map, for the core (was z80_mem_opt.S):
+ *   0000-3FFF  Z80 RAM, 8 KB mirrored (redcode fetches its code straight
+ *              from Z80_RAM, Z80_PBC_FETCH8K in CMakeLists.txt)
+ *   4000-5FFF  YM2612
+ *   6000       bank register        7F11  SN76489
+ *   8000-FFFF  32 KB window into the 68K space (zbank_*)
+ * YM2612 and PSG get the master clock of the access: the slice start plus
+ * the Z80 cycles run in it so far. */
+static inline int access_clock(void)
 {
-    return 0;
+    return zclk + (int)cpu.cycles * Z80_FREQ_DIVISOR;
 }
 
-/* 
- * Z80 memory access functions now implemented in assembly (z80_mem_opt.S)
- * for maximum performance. These functions are called thousands of times
- * per frame and are critical bottlenecks.
- */
-extern byte RdZ80(register word Addr);
-extern void WrZ80(register word Addr, register byte Value);
+zuint8 __attribute__((section(".time_critical.z80_read"))) z80_read(zuint16 address)
+{
+    if (address < 0x4000)
+        return Z80_RAM[address & 0x1FFF];
+    if (address < 0x6000)
+        return (zuint8)YM2612Read(access_clock());
+    if (address >= 0x8000)
+        return (zuint8)zbank_mem_r8(address);
+    return 0xFF;
+}
 
-extern int system_clock;
-
-byte InZ80(register word Port) {return 0;}
-void OutZ80(register word Port, register byte Value) {;}
-void PatchZ80(register Z80 *R) {;}
-void DebugZ80(register Z80 *R) {;}
+void __attribute__((section(".time_critical.z80_write"))) z80_write(int address, int value)
+{
+    address &= 0xFFFF;
+    value &= 0xFF;
+    if (address < 0x4000)
+        Z80_RAM[address & 0x1FFF] = (unsigned char)value;
+    else if (address < 0x6000)
+        YM2612Write(address & 3, value, access_clock());
+    else if (address == 0x6000)
+        zbankreg_mem_w8(value);
+    else if (address == 0x7F11)
+        gwenesis_SN76489_Write(value, access_clock());
+    else if (address >= 0x8000)
+        zbank_mem_w8(address, value);
+}
 
 void gwenesis_z80inst_save_state() {
     SaveState* state;

@@ -46,6 +46,7 @@
 #include "rom_store.h"
 #include "video.h"
 #include "audio_pwm.h"
+#include "pbc_link.h"
 #include "settings.h"
 #include "pce_glue.h"
 #include "pce-go.h"
@@ -276,8 +277,12 @@ static void __attribute__((noreturn)) emulation_loop(void)
     uint32_t stat_drawn = 0, stat_emulated = 0;
 
     for (;;) {
-        PCE.Joypad.regs[0] = input_poll_pce();
-        for (int i = 1; i < 5; i++)
+        /* as late as possible: the partner waits for this */
+        uint16_t pad1, pad2;
+        pbc_link_frame(input_poll_pce(), PCE.RAM, 0x2000, &pad1, &pad2);
+        PCE.Joypad.regs[0] = (uint8_t)pad1;
+        PCE.Joypad.regs[1] = (uint8_t)pad2;     /* the core always has the multitap */
+        for (int i = 2; i < 5; i++)
             PCE.Joypad.regs[i] = 0;
 
         uint64_t frame_start = time_us_64();
@@ -293,13 +298,17 @@ static void __attribute__((noreturn)) emulation_loop(void)
         next_frame += PCE_FRAME_US;
         uint64_t now = time_us_64();
         stat_busy_us += now - frame_start;
-        if (now < next_frame)
+        if (pbc_link_follows())
+            next_frame = now;               /* the partner's frames are the clock */
+        else if (now < next_frame)
             sleep_until(from_us_since_boot(next_frame));
         else if (now > next_frame + 4 * PCE_FRAME_US)
             next_frame = now;               /* hopelessly behind: stop catching up */
 
+        if (pbc_link_out_of_sync_news())
+            video_set_status("LINK OUT OF SYNC");
         now = time_us_64();
-        if (show_stats && now - stat_t0 >= 1000000) {
+        if (show_stats && !pbc_link_out_of_sync() && now - stat_t0 >= 1000000) {
             char s[32];
             snprintf(s, sizeof s, "%lufps %lu%% CPU%lu%%",
                      (unsigned long)stat_drawn,
@@ -430,6 +439,9 @@ int main(void)
     if (LoadCard((uint8_t *)rom_store_data(), rom_store_size()) != 0)
         fatal("Cannot load game:", "not a HuCard");
 
+    /* after overclock(): the link's timing goes by the clock */
+    pbc_link_start(pbc_link_hash(PBC_LINK_HASH_START ^ 4, rom_store_data(), rom_store_size()));
+    pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
     multicore_launch_core1(video_core1_main);
     video_wait_ready();             /* the sample timer belongs to core 1 */
     audio_pwm_set_volume(g_settings.sound ? g_settings.volume : 0);

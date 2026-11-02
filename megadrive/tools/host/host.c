@@ -31,11 +31,10 @@
 #include "bus/gwenesis_bus.h"
 #include "io/gwenesis_io.h"
 #include "vdp/gwenesis_vdp.h"
-#include "cpus/M68K/m68k.h"
+#include "m68k.h"
 #include "sound/z80inst.h"
 #include "sound/ym2612.h"
 #include "sound/gwenesis_sn76489.h"
-#include "cpus/Z80/Z80.h"
 #include "HDMI.h"
 
 /* ---- globals the core expects (src/main.c) ------------------------------- */
@@ -58,6 +57,49 @@ int16_t *gwenesis_ym2612_buffer;
 volatile int sn76489_index, sn76489_clock, ym2612_index, ym2612_clock;
 void gwenesis_io_get_buttons(void) {}
 
+/* ---- 68000 trace: MDHOST_TRACE=FILE writes, before every instruction,
+ * PC, SR, D0-D7/A0-A7 and the master clock count (19 words); compare two
+ * builds (CPU=old / CPU=musashi in build.sh) with cmp. ---------------------- */
+static FILE *trace_file;
+static void trace_insn(void)
+{
+    if (!trace_file)
+        return;
+    uint32_t r[19];
+    r[0] = m68k_get_reg(M68K_REG_PC);
+    r[1] = m68k_get_reg(M68K_REG_SR);
+    for (int i = 0; i < 16; i++)
+        r[2 + i] = m68k.dar[i];
+    r[18] = m68k.cycles;
+    fwrite(r, 4, 19, trace_file);
+}
+/* ---- YM2612 log: MDHOST_YMLOG=FILE writes every YM2612 write as two words
+ * (master clock in the frame, port << 8 | value) and {frame length,
+ * 0xFFFFFFFF} at the end of each frame, to render it with another YM2612. */
+static FILE *ym_log;
+void __real_YM2612Write(unsigned int a, unsigned int v, int target);
+void __wrap_YM2612Write(unsigned int a, unsigned int v, int target)
+{
+    if (ym_log) {
+        uint32_t r[2] = { (uint32_t)target, (a & 3) << 8 | (v & 0xFF) };
+        fwrite(r, 4, 2, ym_log);
+    }
+    __real_YM2612Write(a, v, target);
+}
+
+#ifdef OLD_M68K
+static void old_hook(int type, int width, unsigned int address, unsigned int value)
+{
+    (void)width; (void)address; (void)value;
+    if (type == HOOK_M68K_E)
+        trace_insn();
+}
+void (*cpu_hook)(int, int, unsigned int, unsigned int) = old_hook;
+#else
+void m68k_trace_hook(void) { trace_insn(); }
+#endif
+
+#ifdef OLD_M68K
 /* ---- C for core/cpus/M68K/m68k_memory_opt.S ------------------------------ */
 uint32_t m68k_read_rom16_fast(uint32_t a) { return *(uint16_t *)(ROM_DATA + a); }
 uint32_t m68k_read_rom32_fast(uint32_t a)
@@ -69,36 +111,8 @@ uint32_t m68k_read_rom32_fast(uint32_t a)
 uint32_t m68k_read_ram16_fast(uint32_t a) { return *(uint16_t *)(M68K_RAM + (a & 0xFFFF)); }
 void m68k_write_ram16_fast(uint32_t a, uint32_t v) { *(uint16_t *)(M68K_RAM + (a & 0xFFFF)) = v; }
 void m68k_write_ram8_fast(uint32_t a, uint32_t v) { M68K_RAM[(a & 0xFFFF) ^ 1] = v; }
-
-/* ---- C for core/sound/z80_mem_opt.S and core/cpus/Z80/z80_arm.S ---------- */
-extern Z80 cpu;
+#endif
 extern volatile int zclk;
-extern int current_timeslice;
-extern unsigned char *Z80_RAM;
-unsigned int zbank_mem_r8(unsigned int);
-void zbank_mem_w8(unsigned int, unsigned int);
-void zbankreg_mem_w8(unsigned int);
-
-static int z80_time(void) { return zclk + current_timeslice - cpu.ICount * Z80_FREQ_DIVISOR; }
-
-byte RdZ80(word a)
-{
-    if (a < 0x4000) return Z80_RAM[a & 0x1FFF];
-    if (a < 0x6000) return YM2612Read(z80_time());
-    if (a >= 0x8000) return zbank_mem_r8(a);
-    return 0xFF;
-}
-
-void WrZ80(word a, byte v)
-{
-    if (a < 0x4000)       Z80_RAM[a & 0x1FFF] = v;
-    else if (a < 0x6000)  YM2612Write(a & 3, v, z80_time());
-    else if (a == 0x6000) zbankreg_mem_w8(v);
-    else if (a == 0x7F11) gwenesis_SN76489_Write(v, z80_time());
-    else if (a >= 0x8000) zbank_mem_w8(a, v);
-}
-
-int z80_arm_exec(int cycles) { return ExecZ80(&cpu, cycles); }
 
 /* ---- palette path, as src/video.c ----------------------------------------- */
 const uint8_t *hdmi_line_lut[HDMI_MAX_LINES];
@@ -195,6 +209,10 @@ int main(int argc, char **argv)
         uint8_t t = rom[i]; rom[i] = rom[i + 1]; rom[i + 1] = t;
     }
     ROM_DATA = rom;
+    if (getenv("MDHOST_TRACE"))
+        trace_file = fopen(getenv("MDHOST_TRACE"), "wb");
+    if (getenv("MDHOST_YMLOG"))
+        ym_log = fopen(getenv("MDHOST_YMLOG"), "wb");
 
     /* genesis_init() in src/main.c */
     memset(M68K_RAM, 0, MAX_RAM_SIZE);
@@ -300,6 +318,10 @@ int main(int argc, char **argv)
             system_clock += VDP_CYCLES_PER_LINE;
         }
         ym2612_run(system_clock);
+        if (ym_log) {
+            uint32_t r[2] = { (uint32_t)system_clock, 0xFFFFFFFFu };
+            fwrite(r, 4, 2, ym_log);
+        }
         frame_counter++;
         m68k.cycles -= system_clock;
 

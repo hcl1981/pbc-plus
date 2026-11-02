@@ -7,7 +7,7 @@
 #include "assets.h"
 
 /* Emulator firmwares packed behind the launcher (pbcemu/build.sh). */
-enum { APP_MD, APP_SMS, APP_NES, APP_PCE, APP_GBC, APP_C64, APP_COUNT, APP_NONE = APP_COUNT };
+enum { APP_MD, APP_SMS, APP_NES, APP_PCE, APP_GBC, APP_C64, APP_MSX, APP_A26, APP_COUNT, APP_NONE = APP_COUNT };
 
 /* One line of the controls card: the console's button, the PicoBoy's. */
 typedef struct { const char *button, *key; } control_t;
@@ -26,7 +26,13 @@ typedef struct {
 extern const device_t devices[];
 extern const int device_count;      /* the last entry is "Add games" (USB) */
 
+/* A game of this device by its extension; system ROMs on the drive
+ * (kernal.rom, ...) are nobody's games. */
 bool device_has_ext(const device_t *d, const char *filename);
+
+/* Link play: the device has a second controller. The Game Gear, run by the
+ * Master System emulator, has not. */
+bool device_link(const device_t *d);
 
 /* Flash offset of an emulator, 0 if it is not part of this build. */
 uint32_t app_offset(int app);

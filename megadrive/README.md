@@ -136,7 +136,7 @@ src/rom_store.c   ROM aus FatFs in den Flash schreiben (inkl. .smd), prüfen
 src/ym_core1.c    Ton auf Core 1: Schreibprotokoll abspielen, mischen, auf 22 kHz
 src/ym2612_synth.c  zweite Übersetzung von core/sound/ym2612.c für Core 1
 src/audio_pwm.c   PWM-Lautsprecher per DMA, wie in ../sms
-tools/m68k_dispatch.py  packt die 68000-Befehlstabellen für den RAM
+tools/m68k_gen.py       erzeugt die 68000-Befehlsroutinen und ihre Tabelle (Musashi)
 tools/m68k_hot.py       wählt die 68000-Befehlsroutinen für den RAM aus
 tools/host/       mdhost: der Kern als PC-Programm, für Bildfehler (eigene README)
 src/HDMI.h        Ersatz für den HDMI-Header, den der VDP-Kern einbindet
@@ -150,14 +150,31 @@ Fast alles betrifft die Geschwindigkeit. Der Flash hat nur 16 KB Cache, und
 aus ihm kommen Spiel-ROM und Emulatorcode zugleich; alles, was pro Befehl
 oder pro Sample gebraucht wird, liegt deshalb im RAM.
 
-- **68000:** Die Befehlstabelle (Routine je Opcode) und die Taktzahltabelle
-  lagen mit zusammen 320 KB im Flash; jeder Befehl verfehlte meist den Cache.
-  Die Taktzahl hängt nur von der Routine ab, und viele 32er-Abschnitte der
-  Tabelle wiederholen sich. `tools/m68k_dispatch.py` packt beides deshalb
-  verlustfrei in drei Tabellen mit zusammen 42 KB
-  (`core/cpus/M68K/m68ki_dispatch.h`), die im RAM liegen, ebenso
+- **68000 seit November 2026:** Musashi 4.10 (MIT) statt Eke-Ekes Fassung
+  von Musashi 3.32, siehe Lizenzen und `core/cpus/musashi/README.md`. Die
+  Optimierungen unten für den alten Kern gelten genauso: Befehlstabelle
+  gepackt im RAM (42 KB, jetzt von `tools/m68k_gen.py` beim Erzeugen der
+  Routinen), `m68k_run()` und die meistbenutzten Routinen im RAM, ROM und
+  RAM direkt gelesen. Am PC Befehl für Befehl mit dem alten Kern verglichen
+  (144 Millionen Befehle aus Sonic 1–3, auch die Takte gleich). Auf dem
+  Gerät (PBCemu, Sonic 2, 30 s ohne Eingabe, Benchmark-Build): CPU 60,0 % →
+  57,1 %; Z80, Grafikchip und Ton unverändert.
+- **68000 (alter Kern):** Die Befehlstabelle (Routine je Opcode) und die
+  Taktzahltabelle lagen mit zusammen 320 KB im Flash; jeder Befehl verfehlte
+  meist den Cache. Die Taktzahl hängt nur von der Routine ab, und viele
+  32er-Abschnitte der Tabelle wiederholen sich; ein Skript packte beides
+  verlustfrei in drei Tabellen mit zusammen 42 KB im RAM, ebenso
   `m68k_run()`. Nebenbei gefunden: Die alte Tabelle endete bei $EFBF,
   Line-F-Opcodes lasen dahinter einen falschen Sprungzeiger.
+- **Z80 seit November 2026:** redcode/Z80 statt des Kerns von Marat
+  Fayzullin (der nur nicht-kommerziell frei ist), siehe Lizenzen;
+  Speicherzugriffe in C in `core/sound/z80inst.c` statt `z80_mem_opt.S`.
+  Auf dem Gerät gemessen (PBCemu, 30 s Spiel ohne Eingabe, Benchmark-Build):
+  CPU 58,4 % → 59,9 %, davon Z80 12,0 % → 13,7 %; 68000 und Grafikchip
+  unverändert, Ton auf Kern 1 42,7 % → 43,1 %. Opcodes kommen direkt aus dem
+  Z80-RAM, Code und Tabellen liegen im RAM, in PBCemu laufen auch die
+  IX/IY-Befehle über `switch`. Der Rest ist redcodes Interrupt-Prüfung nach
+  jedem Befehl. Das Folgende gilt für den alten Kern.
 - **Z80:** Der Assembler-Kern aus frank-genesis war ein Zwischenstand. Er
   verglich jeden Opcode der Reihe nach mit bis zu 240 Werten und gab beim
   ersten fehlenden an den C-Kern im Flash ab. Jetzt läuft nur der C-Kern,
@@ -169,10 +186,11 @@ oder pro Sample gebraucht wird, liegt deshalb im RAM.
   sein können. Beide lesen jetzt direkt; das macht 96 KB RAM frei.
 - **68000-Befehlsroutinen:** Alle 1700 passen nicht in den RAM.
   `tools/m68k_hot.py` wählt nach Befehlsart (Move, Sprünge, Vergleiche, …
-  zuerst) und Adressierung (Register, (An), (An)+, -(An) zuerst) aus: 17 KB
+  zuerst) und Adressierung (Register, (An), (An)+, -(An) zuerst) aus: 48 KB
   in beiden Firmwares (`M68K_HOT1`), weitere 30 KB nur in PBCemu
-  (`M68K_HOT2`), wo mehr RAM frei ist. Ändert sich der Kern, das Skript mit
-  einer Bau-.elf neu laufen lassen.
+  (`M68K_HOT2`). Bis November 2026 waren es 17 + 30 KB; der neue YM2612 gab
+  das RAM für mehr frei (Benchmark: CPU 58,1 % → 56,2 %). Ändert sich der
+  Kern, das Skript mit einer Bau-.elf neu laufen lassen.
 - **VDP:** `gwenesis_vdp_render_line()` und `gwenesis_vdp_write_memory_16()`
   im RAM.
 - **VBlank-Interrupt:** kommt jetzt wie in Genesis Plus GX 788 Takte nach
@@ -220,6 +238,18 @@ oder pro Sample gebraucht wird, liegt deshalb im RAM.
   zweite Kopie (`src/ym2612_synth.c`) und den PSG ein, mittelt die 53 kHz
   des Chips auf 22 kHz und gibt jedes Bild an den Lautsprecher. Die
   Synthese und ihre kleinen Tabellen liegen im RAM.
+- **YM2612 seit November 2026:** eigener Code statt MAME fm.c / Genesis Plus
+  GX (siehe Lizenzen). Am PC mit dem alten verglichen: Einzeltests (alle
+  Algorithmen, Rückkopplung, Hüllkurven, SSG-EG, LFO, Kanal-3-Modus) und die
+  YM2612-Schreibzugriffe aus Sonic 1–3, Kanal für Kanal; bis auf Rundung in
+  fast stillen Ausklängen dieselben Samples. Bewusst anders: Die
+  Tonhöhenmodulation folgt den dokumentierten Tiefen (Cent) statt der
+  Bit-Tabelle des Chips, die Rückkopplung von Operator 1 rechnet mit voller
+  Genauigkeit, und der DAC (Kanal 6) springt wie im Chip, statt geglättet zu
+  werden. Auf dem Gerät (PBCemu, Sonic 2, 30 s, Benchmark-Build): Ton auf
+  Kern 1 42,8 % → 32,7 %. Die großen Tabellen des alten fallen weg; das
+  RAM nutzen jetzt mehr 68000-Routinen (unten). Frei bleiben in der
+  Einzel-Firmware 40 KB, in PBCemu 29 KB.
 
 ### Wie das Bild aufs Display kommt
 
@@ -281,3 +311,23 @@ schaltet ein Spiel dort um, wird das ignoriert. SSF2 tut das nicht.
   `src/tusb_config.h`, `src/font8x8.h`, `fatfs/diskio.c`: aus PicoBoyGB,
   **MIT**, siehe `LICENSE.picoboygb`.
 * `fatfs/`: ChaN FatFs, eigene BSD-artige Lizenz (im Dateikopf).
+* `core/cpus/redcode/`: Z80-Kern **redcode/Z80** von Manuel Sainz de Baranda
+  y Goñi mit Headern seiner Bibliothek Zeta, **LGPL-3.0-or-later**; für den
+  PicoBoy geändert von `tools/redcode_patch.py` (`core/cpus/redcode/README.md`).
+  Er ersetzt seit November 2026 den Z80-Kern von Marat Fayzullin, der nur für
+  nicht-kommerzielle Zwecke frei war.
+* `core/sound/gwenesis_sn76489.*`: PSG, im November 2026 für diese Portierung
+  neu geschrieben (GPL-3.0-or-later wie die übrige Tonausgabe); er ersetzt den
+  PSG nach Maxim mit Änderungen aus Genesis Plus GX. Schnittstelle, Zeitablauf
+  und Lautstärke sind gleich geblieben (am PC verglichen).
+* `core/cpus/musashi/`: 68000-Kern **Musashi 4.10** von Karl Stenerud,
+  **MIT**; für den 68000 und das Mega Drive angepasst, Routinen erzeugt von
+  `tools/m68k_gen.py` (`core/cpus/musashi/README.md`). Er ersetzt seit
+  November 2026 Musashi 3.32 in Eke-Ekes Fassung aus Genesis Plus GX, dessen
+  Lizenz keine kommerzielle Nutzung erlaubt.
+* `core/sound/ym2612.*`: YM2612, im November 2026 für diese Portierung neu
+  geschrieben (GPL-3.0-or-later) nach Yamahas und Segas Unterlagen und den
+  veröffentlichten Messungen am Chip; er ersetzt den YM2612 nach MAME fm.c mit
+  Änderungen aus Genesis Plus GX (Lizenz ohne kommerzielle Nutzung).
+  Schnittstelle und Pegel sind gleich geblieben. Damit enthält der
+  Mega-Drive-Emulator keinen Code mehr, der nur nicht-kommerziell frei ist.

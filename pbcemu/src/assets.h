@@ -23,6 +23,9 @@ extern const pbc_picture_t pic_gg, icon_gg;
 extern const pbc_picture_t pic_pce, icon_pce;
 extern const pbc_picture_t pic_gbc, icon_gbc;
 extern const pbc_picture_t pic_c64, icon_c64;
+extern const pbc_picture_t pic_msx, icon_msx;
+extern const pbc_picture_t pic_sg, icon_sg;
+extern const pbc_picture_t pic_a26, icon_a26;
 extern const pbc_picture_t pic_usb, icon_usb;
 
 #endif

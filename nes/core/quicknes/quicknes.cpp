@@ -278,6 +278,11 @@ int __attribute__((section(".time_critical.qnes_emulate_frame"))) qnes_emulate_f
     return 0;
 }
 
+const uint8_t *qnes_get_ram(void)
+{
+    return emu ? emu->low_mem() : NULL;
+}
+
 const uint8_t *qnes_get_pixels(void)
 {
     if (!rom_loaded)

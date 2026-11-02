@@ -44,6 +44,7 @@
 #include "audio_pwm.h"
 #include "settings.h"
 #include "quicknes.h"
+#include "pbc_link.h"
 
 /* ---- build-time configuration (see CMakeLists.txt) ---------------------- */
 #ifndef CPU_MHZ
@@ -236,15 +237,17 @@ static void __attribute__((noreturn)) emulation_loop(void)
     uint32_t stat_drawn = 0, stat_emulated = 0;
 
     for (;;) {
-        uint8_t joy = input_poll_nes();
-
         /* QuickNES draws this frame into the buffer of two frames ago.
          * If core 1 is still sending that one, let it finish. */
         while (prev_pixels && video_busy_with(prev_pixels))
             tight_loop_contents();
 
+        /* as late as possible: the partner waits for this */
+        uint16_t joy1, joy2;
+        pbc_link_frame(input_poll_nes(), qnes_get_ram(), 0x800, &joy1, &joy2);
+
         uint64_t frame_start = time_us_64();
-        qnes_emulate_frame(joy, 0);
+        qnes_emulate_frame(joy1, joy2);
 
         static int16_t samples[1024];
         long n = qnes_read_samples(samples, 1024);   /* must be drained anyway */
@@ -262,12 +265,16 @@ static void __attribute__((noreturn)) emulation_loop(void)
         next_frame += period;
         uint64_t now = time_us_64();
         stat_busy_us += now - frame_start;
-        if (now < next_frame)
+        if (pbc_link_follows())
+            next_frame = now;               /* the partner's frames are the clock */
+        else if (now < next_frame)
             sleep_until(from_us_since_boot(next_frame));
         else if (now > next_frame + 4 * period)
             next_frame = now;               /* hopelessly behind: stop catching up */
 
-        if (show_stats) {
+        if (pbc_link_out_of_sync_news())
+            video_set_status("LINK OUT OF SYNC");
+        else if (show_stats && !pbc_link_out_of_sync()) {
             now = time_us_64();
             uint64_t span = now - stat_t0;
             if (span >= 1000000) {
@@ -382,6 +389,8 @@ int main(void)
     show_stats = SHOW_FPS;
     video_set_mode(VIDEO_MODE_CROP);
 #endif
+    pbc_link_start(pbc_link_hash(PBC_LINK_HASH_START ^ 1, rom_store_data(), rom_store_size()));
+    pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
     multicore_launch_core1(video_core1_main);
 #if PBC_MULTI
     pbc_fade_in(false);             /* over the first frames */

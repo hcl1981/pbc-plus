@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """m68k_hot.py -- marks the most used 68000 opcode handlers for RAM.
 
-The handlers in core/cpus/M68K/m68kops.h run from flash and share the 16 KB
+The handlers in core/cpus/musashi/m68kops.c run from flash and share the 16 KB
 XIP cache with the game ROM. Not all of them fit in RAM, so this picks them
 by instruction family (branches, moves, compares, ... first, the way 68000
 game code is usually made up) and by addressing mode (registers and
 (An)/(An)+/-(An) first), until a size budget is used up:
 
-    M68K_HOT1   both firmwares (the stand-alone one has little RAM left)
-    M68K_HOT2   only the combined firmware (PBCemu), see m68kcpu.c
+    M68K_HOT1   both firmwares
+    M68K_HOT2   only the combined firmware (PBCemu), see m68kops.c
 
 It reads the handler sizes from a build without the marks and rewrites the
-handler definitions in m68kops.h; running it again replaces the old marks.
+handler definitions in m68kops.c; running it again replaces the old marks
+(tools/m68k_gen.py keeps them when it regenerates the file).
 
     tools/m68k_hot.py build/pbc_megadrive.elf
 """
@@ -21,8 +22,8 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-OPS = os.path.join(HERE, '..', 'core', 'cpus', 'M68K', 'm68kops.h')
-BUDGET1, BUDGET2 = 17000, 30000
+OPS = os.path.join(HERE, '..', 'core', 'cpus', 'musashi', 'm68kops.c')
+BUDGET1, BUDGET2 = 48000, 30000
 
 FAMILIES = ('move moveq bne beq bra bsr dbf dbra jsr rts tst cmp cmpi lea addq '
             'subq movea btst clr add sub andi ori bcc bcs bpl bmi bge blt bgt ble '

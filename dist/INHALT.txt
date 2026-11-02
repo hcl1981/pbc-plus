@@ -9,19 +9,20 @@ alle Emulatoren (C64, NES, Master System, PC Engine, Mega Drive,
 Game Gear, Game Boy Color) mit Gerätewahl und Spieleliste.
 
 DATEI                                     GRÖSSE  SHA256 (Anfang)
-c64.uf2                                      564K  ff59b1e0100bbdf8
-gbc.uf2                                      164K  1540ffd9ecadfbb2
+c64.uf2                                      620K  ad0391bbebcbbac9
+gbc.uf2                                      160K  9a8a3e1bab503ddf
 i2collection.uf2                             352K  06caddf8420545ef
 jumpnbump.uf2                                1.1M  d8f26ad7455a2dac
-megadrive.uf2                                1.3M  4f7b61a7004e5b3f
+megadrive.uf2                                848K  8a74d139a789e0a6
 micropolis.uf2                               2.0M  d817994650e66e23
-micropython-PBC_PLUS.uf2                     748K  81dba5cdff9350f4
-nes.uf2                                      352K  43a1186385719136
+micropython-PBC_PLUS.uf2                     748K  8e1ff46a30498a4e
+nes.uf2                                      348K  65af57ac0f7bf0cc
 noiz2sa.uf2                                  120K  597e5833290d22a1
-pbcemu.uf2                                   3.3M  e0c62d73212dd4ea
-pce.uf2                                      224K  b4d6e9967d552e83
+pbcemu.uf2                                   4.0M  5a92fb3e424edfce
+pbclink.uf2                                  4.0M  6f1d45abe74e6146
+pce.uf2                                      224K  0c3ead1145a472d3
 picoboygb.uf2                                128K  93672907ee58848e
-sms.uf2                                      584K  69928970bdaf1f63
+sms.uf2                                      384K  e5a57ab3f4955dd1
 spout.uf2                                    120K  71881f01a486539b
 stransball2.uf2                              740K  3b9b4dc1f52a9561
 tyrian-komplett.uf2                           19M  00dc75202432fbdc

@@ -32,6 +32,12 @@ auf dem Gerät.
 | `-s` | mit `-z`: 100 Bilder nach Levelbeginn in den Bonuslevel (Tunnel) wechseln. Mit `MDHOST_TIME=1` davor gibt es die Rechenzeit jedes Bildes aus |
 | `-p` | je gespeichertem Bild ausgeben, ab welcher Zeile wie viele der 64 Farben umgelenkt sind (Palettenwechsel mitten im Bild) |
 
+**Zwei Kerne vergleichen:** `MDHOST_TRACE=DATEI` schreibt vor jedem
+68000-Befehl PC, SR, alle Register und die Taktzahl (19 Wörter). Zwei
+Fassungen (z. B. `CPU=old OUT=mdhost-old ./build.sh` mit dem früheren Kern)
+laufen lassen und die Spuren mit `cmp` vergleichen; so wurde Musashi 4 gegen
+den alten Kern geprüft.
+
 Gefunden damit: die Interrupt-Reihenfolge und die halbe Palettenzeile
 an der Wasseroberfläche in Sonic 2 (siehe `../../README.md`). 1500 Bilder
 dauern weniger als eine Sekunde.

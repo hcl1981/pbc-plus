@@ -35,11 +35,28 @@ function(pbc_multi target)
         ROM_INFO_OFFSET=0xFF8000u
         PBGB_FS_FLASH_OFFSET=0x700000u
     )
+    # which emulator this is (pbcemu/src/devices.h), for the loading screen
+    set(app_of_pbc_megadrive APP_MD)
+    set(app_of_pbc_sms APP_SMS)
+    set(app_of_pbc_nes APP_NES)
+    set(app_of_pbc_pce APP_PCE)
+    set(app_of_pbc_gbc APP_GBC)
+    set(app_of_pbc_c64 APP_C64)
+    set(app_of_pbc_msx APP_MSX)
+    set(app_of_pbc_a2600 APP_A26)
+    if(NOT DEFINED app_of_${target})
+        message(FATAL_ERROR "pbc_multi: no APP_* for ${target}")
+    endif()
+    set_source_files_properties(${CMAKE_CURRENT_FUNCTION_LIST_DIR}/pbc_loading.c
+        PROPERTIES COMPILE_DEFINITIONS PBC_APP=${app_of_${target}})
     # Loading screen and messages in the launcher's look (pbc_loading.c),
     # drawn with its gfx.c and fonts; the linker keeps only what is used.
     set(launcher ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../pbcemu/src)
     target_sources(${target} PRIVATE
         ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/pbc_loading.c
+        ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/pbc_link.c
+        ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/pbc_lockstep.c
+        ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/usblink.c
         ${launcher}/gfx.c
         ${launcher}/assets.c)
     set_source_files_properties(${CMAKE_CURRENT_FUNCTION_LIST_DIR}/pbc_loading.c

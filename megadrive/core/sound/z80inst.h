@@ -38,6 +38,10 @@ unsigned int z80_read_memory_16(unsigned int address);
 unsigned int z80_read_memory_8(unsigned int address);
 void z80_irq_line(unsigned int value);
 
+/* the Z80's memory map, called by redcode (core/cpus/redcode) */
+unsigned char z80_read(unsigned short address);
+void z80_write(int address, int value);
+
 void gwenesis_z80inst_save_state();
 void gwenesis_z80inst_load_state();
 

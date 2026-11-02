@@ -1,0 +1,35 @@
+/* a26_video.h -- Atari 2600 lines -> ST7789, sent by core 1.
+ *
+ * No frame buffer: the core hands over each line as 160 TIA colour
+ * indices; core 0 turns it into 240 panel words at once (each pair of
+ * pixels becomes three, the middle one their average) and puts it into a
+ * small ring; core 1 sends the lines from there as they come. Of a frame,
+ * lines 26..265 after VSYNC are shown (240 of the NTSC picture's 262;
+ * the games put their picture between about 37 and 230).
+ */
+#ifndef PBC_A26_VIDEO_H
+#define PBC_A26_VIDEO_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
+/* Core 0, before core 1 starts. */
+void a26_video_init(unsigned mode);
+
+/* Core 0: a finished line (a2600_frame's callback). */
+void a26_video_line(int y, const uint8_t *pixels, bool blank);
+
+/* Core 1 entry point. */
+void a26_video_core1_main(void);
+
+/* Core 0: true if the last frame was drawn (counted for the statistics). */
+bool a26_video_frame_drawn(void);
+
+/* Core 0: stop core 1 using the panel (menus), and start it again. */
+void a26_video_pause(void);
+void a26_video_resume(void);
+
+/* Status line (fps, messages) under the picture; "" clears it. */
+void a26_video_set_status(const char *s);
+
+#endif /* PBC_A26_VIDEO_H */

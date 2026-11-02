@@ -36,7 +36,7 @@ beschreibung() {
         megadrive)    echo "Genesis-/Mega-Drive-Emulator, ROMs per USB (AGPL-3.0)" ;;
         nes)          echo "NES-Emulator, ROMs per USB (GPL-3.0)" ;;
         c64)          echo "C64-Emulator, Disk-Images per USB (GPL-2.0+)" ;;
-        sms)          echo "Master-System-/Game-Gear-Emulator, ROMs per USB (GPL-3.0)" ;;
+        sms)          echo "Master-System-/Game-Gear-/SG-1000-Emulator, ROMs per USB (GPL-3.0)" ;;
         pce)          echo "PC-Engine-Emulator, HuCards per USB (GPL-3.0)" ;;
         gbc)          echo "Game-Boy-Color-Emulator, ROMs per USB (GPL-3.0)" ;;
         pbcemu)       echo "PBCemu: alle Emulatoren hinter einem Starter, eine UF2 (GPL-3.0+)" ;;

@@ -40,6 +40,8 @@ add_executable(pbcemu
     src/usb_msc.c
     src/usb_descriptors.c
     ${CMAKE_CURRENT_LIST_DIR}/../common/pbc_rgb.c
+    ${CMAKE_CURRENT_LIST_DIR}/../common/pbc_lobby.c
+    ${CMAKE_CURRENT_LIST_DIR}/../common/usblink.c
     fatfs/ff.c
     fatfs/ffunicode.c
     fatfs/diskio.c

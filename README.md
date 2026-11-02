@@ -24,8 +24,10 @@ cd spout && ./build.sh      # oder ein einzelnes Projekt
 | [`micropolis`](micropolis/) | Micropolis — der quelloffene Kern von SimCity 1. | `micropolis.uf2` |
 | [`tyrian`](tyrian/) | OpenTyrian. Firmware plus 8,9 MB Spieldaten in einer Datei. | `tyrian-komplett.uf2` |
 | [`picoboygb`](picoboygb/) | Game-Boy-Emulator. ROMs kommen per USB-Stick-Modus aufs Gerät. | `picoboygb.uf2` |
-| [`pbcemu`](pbcemu/) | **PBCemu**: alle Emulatoren unten (C64, NES, Master System, PC Engine, Mega Drive, Game Gear, Game Boy Color) in einer Firmware, mit Gerätewahl samt Gerätebildern und Spieleliste. | `pbcemu.uf2` |
-| [`sms`](sms/) | Sega Master System und Game Gear (SMS Plus aus pico-smsplus). Game Gear 1,5-fach vergrößert. | `sms.uf2` |
+| [`pbcemu`](pbcemu/) | **PBCemu**: alle Emulatoren unten (Atari 2600, C64, NES, SG-1000, MSX, Master System, PC Engine, Mega Drive, Game Gear, Game Boy Color) in einer Firmware, mit Gerätewahl samt Gerätebildern und Spieleliste; sieben Systeme auch zu zweit über USB-C ([`docs/LINKSPIEL.md`](docs/LINKSPIEL.md)). | `pbcemu.uf2` |
+| [`a2600`](a2600/) | Atari 2600 (eigener Kern), nur in PBCemu. | — |
+| [`msx`](msx/) | MSX1 (eigener Kern, C-BIOS), nur in PBCemu. | — |
+| [`sms`](sms/) | Sega Master System, Game Gear und SG-1000 (SMS Plus aus pico-smsplus). Game Gear 1,5-fach vergrößert. | `sms.uf2` |
 | [`pce`](pce/) | PC Engine / TurboGrafx-16, HuCards (pce-go aus retro-go über pico-pcePlus). | `pce.uf2` |
 | [`gbc`](gbc/) | Game Boy Color und klassischer Game Boy (Peanut-GB mit Farberweiterung), 1,5-fach vergrößert, Spielstände als `.sav`. | `gbc.uf2` |
 | [`c64`](c64/) | Commodore-64-Emulator (Frodo4 aus frank-c64). Disk-Images per USB-Stick-Modus, startet mit `LOAD"*",8,1`, Joystick-Port pro Spiel. | `c64.uf2` |
@@ -44,9 +46,10 @@ warum.
 
 ## Zwei Geräte koppeln
 
-Vier Projekte spielen zu zweit über ein **USB-C-Kabel** zwischen zwei
-PicoBoys: `doom`, `jumpnbump`, `i2collection` und die Zweispieler-Betriebsart
-von `tyrian`.
+Fünf Projekte spielen zu zweit über ein **USB-C-Kabel** zwischen zwei
+PicoBoys: `doom`, `jumpnbump`, `i2collection`, die Zweispieler-Betriebsart
+von `tyrian` und `pbcemu` (Atari 2600, C64, NES, SG-1000, MSX, Master System,
+PC Engine; [`docs/LINKSPIEL.md`](docs/LINKSPIEL.md)).
 
 Verkabelung überall gleich: **D+, D− und GND verbinden, VBUS nicht** — beide
 Geräte versorgen sich selbst. Die Rolle (Host oder Gast) wird im Menü gewählt,

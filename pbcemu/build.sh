@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 #
-# Baut PBCemu — alle Emulatoren hinter einem Starter, als eine Firmware.
+# Baut PBCemu — alle Emulatoren hinter dem Starter (Atari 2600, C64, NES, SG-1000, MSX,
+# Master System/Game Gear, PC Engine, Mega Drive, Game Boy Color), Link-Spiel bei Atari 2600,
+# C64, NES, SG-1000, MSX, Master System, PC Engine.
 #
 # Aufruf:   ./build.sh              bauen
 #           ./build.sh clean        Bauordner löschen und neu bauen
@@ -18,7 +20,7 @@ HIER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAUNCHER_SIZE=0x40000
 APPS_END=0x200000                  # ab hier: ROM-Bereich (5 MB), ab 0x700000 FatFs
 # Reihenfolge im Flash; Name im Starter (APP_*), Projektordner, Programmname
-APPS="MD:megadrive:pbc_megadrive SMS:sms:pbc_sms NES:nes:pbc_nes PCE:pce:pbc_pce GBC:gbc:pbc_gbc C64:c64:pbc_c64"
+APPS="MD:megadrive:pbc_megadrive SMS:sms:pbc_sms NES:nes:pbc_nes PCE:pce:pbc_pce GBC:gbc:pbc_gbc C64:c64:pbc_c64 MSX:msx:pbc_msx A26:a2600:pbc_a2600"
 
 if [ "${1:-}" = clean ]; then
     rm -rf "${HIER}/build"
@@ -26,7 +28,7 @@ if [ "${1:-}" = clean ]; then
     shift
 fi
 
-pbc_head "PBCemu — Starter mit allen Emulatoren"
+pbc_head "PBCemu — Starter mit allen Emulatoren und Link-Spiel"
 pbc_need cmake git python3 arm-none-eabi-gcc gcc || exit 1
 pbc_sdk || exit 1
 

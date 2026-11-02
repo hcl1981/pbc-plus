@@ -45,6 +45,7 @@
 #include "audio_pwm.h"
 #include "settings.h"
 #include "shared.h"           /* SMS Plus */
+#include "pbc_link.h"
 
 /* ---- build-time configuration (see CMakeLists.txt) ---------------------- */
 #ifndef CPU_MHZ
@@ -243,6 +244,16 @@ static int16_t dc_block(int32_t x)
     return (int16_t)y;
 }
 
+/* Bit 8 of a player's word: the start button */
+#define LINK_START 0x100
+
+static uint16_t link_word(void)
+{
+    bool start;
+    int pad = input_poll_sms(&start);
+    return (uint16_t)(pad | (start ? LINK_START : 0));
+}
+
 static void __attribute__((noreturn)) emulation_loop(bool gg, bool show_stats)
 {
     /* 262 lines of 228 Z80 cycles at 3.579545 MHz: 59.92 Hz */
@@ -255,10 +266,11 @@ static void __attribute__((noreturn)) emulation_loop(bool gg, bool show_stats)
     uint32_t stat_drawn = 0, stat_emulated = 0;
 
     for (;;) {
-        bool start;
-        input.pad[0] = input_poll_sms(&start);
-        input.pad[1] = 0;
-        input.system = start ? (gg ? INPUT_START : INPUT_PAUSE) : 0;
+        uint16_t p1, p2;
+        pbc_link_frame(link_word(), sms.ram, RAMSIZEBYTES, &p1, &p2);
+        input.pad[0] = p1 & 0xFF;
+        input.pad[1] = p2 & 0xFF;
+        input.system = (p1 | p2) & LINK_START ? (gg ? INPUT_START : INPUT_PAUSE) : 0;
 
         uint64_t frame_start = time_us_64();
         sms_frame(0);
@@ -276,12 +288,16 @@ static void __attribute__((noreturn)) emulation_loop(bool gg, bool show_stats)
         next_frame += period;
         uint64_t now = time_us_64();
         stat_busy_us += now - frame_start;
-        if (now < next_frame)
+        if (pbc_link_follows())
+            next_frame = now;               /* the partner's frames are the clock */
+        else if (now < next_frame)
             sleep_until(from_us_since_boot(next_frame));
         else if (now > next_frame + 4 * period)
             next_frame = now;               /* hopelessly behind: stop catching up */
 
-        if (!show_stats)
+        if (pbc_link_out_of_sync_news())
+            sms_video_set_status("LINK OUT OF SYNC");
+        if (!show_stats || pbc_link_out_of_sync())
             continue;
         now = time_us_64();
         if (now - stat_t0 >= 1000000) {
@@ -394,6 +410,7 @@ int main(void)
 
     const char *ext = strrchr(rom, '.');
     bool gg = ext && strcasecmp(ext, ".gg") == 0;
+    bool sg = ext && strcasecmp(ext, ".sg") == 0;     /* SG-1000 */
 
     const menu_control_t controls[] = {
         { "D-pad",   "Joystick" },
@@ -422,12 +439,14 @@ int main(void)
     bool show_stats = SHOW_FPS;
 #endif
     sms_video_set_mode(gg, video_mode);
-    load_rom((uintptr_t)rom_store_data(), (int)rom_store_size(), gg ? TYPE_GG : TYPE_SMS);
+    load_rom((uintptr_t)rom_store_data(), (int)rom_store_size(), gg ? TYPE_GG : sg ? TYPE_SG : TYPE_SMS);
     system_init(AUDIO_RATE);
     if (!snd.enabled || !cachePtr || !sms.ram)
         fatal("Out of memory", "for the emulator");
     system_reset();
 
+    pbc_link_start(pbc_link_hash(PBC_LINK_HASH_START ^ 2, rom_store_data(), rom_store_size()));
+    pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
     multicore_launch_core1(sms_video_core1_main);
     sms_video_wait_ready();         /* the sample timer belongs to core 1 */
 #if PBC_MULTI

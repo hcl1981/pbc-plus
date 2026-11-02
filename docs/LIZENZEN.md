@@ -16,12 +16,14 @@ sagt, welche das ist und woher sie kommt. Die Kurzfassung steht als
 | `picoboygb` | MIT | `picoboygb/LICENSE` | Peanut-GB → RP2040-GB → Pico-GB, siehe `picoboygb/HERKUNFT.md` |
 | `picoboygb-arduino` | MIT | `picoboygb-arduino/LICENSE` | dieselbe Kette, Arduino-Fassung |
 | `c64` | GPL-2.0+ | `c64/LICENSE` | Frodo4 (Christian Bauer) → frank-c64 (rh1tech); C64-ROMs: MEGA65 OpenROMs (LGPL-3.0+, `c64/tools/openroms/`); Flash-Laufwerk und USB-Stick aus `picoboygb` (MIT, `c64/LICENSE.picoboygb`) |
-| `sms` | GPL-3.0 | `sms/LICENSE` | SMS Plus (Charles MacDonald, GPL-2.0+) → pico-smsplus (PicoPlus-devel, GPL-3.0); Flash/USB aus `picoboygb` (MIT) |
+| `sms` | GPL-3.0 | `sms/LICENSE` | SMS Plus (Charles MacDonald, GPL-2.0+) → pico-smsplus (PicoPlus-devel, GPL-3.0); Z80 redcode/Z80 (Manuel Sainz de Baranda y Goñi, LGPL-3.0+, `sms/core/redcode/`); PSG eigener Code (GPL-2.0+); Flash/USB aus `picoboygb` (MIT) |
 | `pce` | GPL-3.0 | `pce/LICENSE` | pce-go aus retro-go (ducalex, GPL-2.0) → pico-pcePlus (PicoPlus-devel, GPL-3.0); Flash/USB aus `picoboygb` (MIT) |
 | `pbcemu` | GPL-3.0+ | `pbcemu/LICENSE` | eigener Starter; Plattformteile aus `picoboygb` (MIT), Port/Programm-Einstellungen aus `c64` (GPL-2.0+), Schrift Lato (OFL-1.1, `pbcemu/LICENSE.lato`). `dist/pbcemu.uf2` bündelt alle Emulatoren, jeder unter seiner eigenen Lizenz |
 | `gbc` | GPL-3.0 | `gbc/LICENSE` | Peanut-GB (MIT) mit GBC-Erweiterung von tvecera → pico-peanutGB (PicoPlus-devel, GPL-3.0); minigb_apu, Flash/USB aus `picoboygb` (MIT) |
 | `nes` | GPL-3.0 | `nes/LICENSE` | QuickNES (Shay Green, LGPL-2.1+) → frank-nes (rh1tech); Flash-Laufwerk und USB-Stick aus `picoboygb` (MIT, `nes/LICENSE.picoboygb`) |
-| `megadrive` | AGPL-3.0 | `megadrive/LICENSE` | Gwenesis → frank-genesis (rh1tech); Flash-Laufwerk und USB-Stick aus `picoboygb` (MIT, `megadrive/LICENSE.picoboygb`) |
+| `megadrive` | AGPL-3.0 | `megadrive/LICENSE` | Gwenesis → frank-genesis (rh1tech); 68000 Musashi 4.10 (Karl Stenerud, MIT, `megadrive/core/cpus/musashi/`); Z80 redcode/Z80 (LGPL-3.0+); YM2612 und SN76489 eigener Code (GPL-3.0+); Flash-Laufwerk und USB-Stick aus `picoboygb` (MIT, `megadrive/LICENSE.picoboygb`) |
+| `msx` | GPL-3.0 | `msx/LICENSE` | eigener MSX1-Kern (TMS9918A, AY-3-8910, SCC); Z80 redcode/Z80 (LGPL-3.0+); System-ROM C-BIOS 0.29a (BSD-artig, `msx/core/cbios/LICENSE.cbios`); Flash/USB aus `picoboygb` (MIT) |
+| `a2600` | GPL-3.0 | `a2600/LICENSE` | eigener Atari-2600-Kern (6507, TIA, RIOT); Flash/USB aus `picoboygb` (MIT) |
 | `i2collection` | MIT | `i2collection/LICENSE` | Eigenentwicklung |
 | `micropython` | MIT | Upstream | MicroPython, hier nur die Board-Portierung |
 
@@ -69,7 +71,7 @@ Aufräumen nicht entfernen.
 | Game-Boy-ROMs | fremdes Urheberrecht — liegen **nicht** bei |
 | Genesis-/Mega-Drive-ROMs | fremdes Urheberrecht — liegen **nicht** bei |
 | NES-ROMs | fremdes Urheberrecht — liegen **nicht** bei |
-| Master-System-, Game-Gear-, PC-Engine- und Game-Boy-Color-ROMs | fremdes Urheberrecht — liegen **nicht** bei |
+| Master-System-, Game-Gear-, SG-1000-, PC-Engine-, Game-Boy-Color-, MSX- und Atari-2600-ROMs | fremdes Urheberrecht — liegen **nicht** bei |
 | C64-Disk-Images | fremdes Urheberrecht — liegen **nicht** bei |
 
 `.gitignore` schließt WADs und ROMs aus, damit eigene Kopien nicht

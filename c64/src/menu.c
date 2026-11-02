@@ -401,12 +401,26 @@ static void draw_disks(const char *title, const char *const *names, int n, int s
 #endif
 }
 
-int menu_pick_disk(const char *title, const char *const *names, int n, int cur)
+static void pick_wait_release(void (*idle)(void))
+{
+    if (!idle) {
+        menu_wait_release();
+        return;
+    }
+    while (input_raw()) {
+        idle();
+        sleep_ms(15);
+    }
+}
+
+int menu_pick_disk(const char *title, const char *const *names, int n, int cur, void (*idle)(void))
 {
     int sel = cur >= 0 ? cur : 0;
-    menu_wait_release();
+    pick_wait_release(idle);
     draw_disks(title, names, n, sel, cur);
     for (;;) {
+        if (idle)
+            idle();
         uint32_t e = input_menu_edges();
         if (!e) {
 #if PBC_MULTI
@@ -429,6 +443,6 @@ int menu_pick_disk(const char *title, const char *const *names, int n, int cur)
         if (sel != old)
             draw_disks(title, names, n, sel, cur);
     }
-    menu_wait_release();
+    pick_wait_release(idle);
     return sel;
 }

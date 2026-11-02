@@ -54,6 +54,7 @@
 #include "c64_roms.h"
 #include "cart_store.h"
 #include "pbc_rgb.h"
+#include "pbc_link.h"
 
 /* ---- build-time configuration (see CMakeLists.txt) ---------------------- */
 #ifndef CPU_MHZ
@@ -354,6 +355,40 @@ static int by_name(const void *a, const void *b)
 }
 
 /* The game is paused meanwhile. Returns a status line to show, or NULL. */
+/* In link play one player chooses. Both have stopped after the same frame
+ * and go on swapping words, without emulating, until they agree: the chooser
+ * sends the hash of the file's name (none: nothing changes), then both send
+ * the hash of what they have under that name. Only if these match do both
+ * put the disk in, so they go on from the same state. */
+#define LINK_DISK_DONE 0x8000u
+
+static uint32_t hash_file(uint32_t h, const char *path);
+
+static uint16_t link_fold(uint32_t h)
+{
+    uint16_t v = (uint16_t)((h ^ h >> 16) & 0x7FFF);
+    return v ? v : 1;                   /* 0: nothing */
+}
+
+static uint16_t link_swap(uint16_t mine)
+{
+    uint16_t p1, p2;
+    pbc_link_frame(mine, NULL, 0, &p1, &p2);
+    return pbc_link_player() == 1 ? p2 : p1;
+}
+
+static void link_idle(void)
+{
+    link_swap(0);
+}
+
+static bool link_disk_agree(const char *path)
+{
+    uint16_t mine = path ? link_fold(hash_file(PBC_LINK_HASH_START, path)) : 0;
+    uint16_t other = link_swap((uint16_t)(LINK_DISK_DONE | mine)) & 0x7FFF;
+    return path && mine == other;
+}
+
 static const char *disk_menu(void)
 {
     static DIR dir;
@@ -374,6 +409,8 @@ static const char *disk_menu(void)
     const char *status = NULL;
     if (n == 0) {
         status = "No disk images";
+        if (pbc_link_active())
+            link_swap(LINK_DISK_DONE);
     } else {
         qsort(files, (size_t)n, sizeof *files, by_name);
         int cur = -1;
@@ -387,22 +424,78 @@ static const char *disk_menu(void)
             rows[i] = shown[i];
         }
         c64_video_wait_idle();
-        int sel = menu_pick_disk("Insert disk", rows, n, cur);
+        int sel = menu_pick_disk("Insert disk", rows, n, cur, pbc_link_active() ? link_idle : NULL);
         pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
         if (sel >= 0 && sel != cur) {
             char path[ROM_NAME_MAX + 2];
             snprintf(path, sizeof path, "/%s", files[sel]);
-            c64_mount_disk(NULL, 0, path);
-            strcpy(disk_now, files[sel]);
-            static char msg[32];
-            snprintf(msg, sizeof msg, "%s", shown[sel]);
-            status = msg;
+            bool agreed = true;
+            if (pbc_link_active()) {
+                link_swap((uint16_t)(LINK_DISK_DONE |
+                          link_fold(pbc_link_hash(PBC_LINK_HASH_START, files[sel], strlen(files[sel])))));
+                agreed = link_disk_agree(path);
+            }
+            if (agreed) {
+                c64_mount_disk(NULL, 0, path);
+                strcpy(disk_now, files[sel]);
+                static char msg[32];
+                snprintf(msg, sizeof msg, "%s", shown[sel]);
+                status = msg;
+            } else {
+                status = "Partner has no such disk";
+            }
+        } else if (pbc_link_active()) {
+            link_swap(LINK_DISK_DONE);
         }
     }
     free(rows);
     free(shown);
     free(files);
     return status;
+}
+
+/* The player who is not choosing. */
+static const char *disk_wait(void)
+{
+    c64_video_wait_idle();
+#if PBC_MULTI                           /* link play: only in PBCemu */
+    pbc_loading_message("Disk change", "Your partner is", "choosing a disk", NULL);
+#endif
+    uint16_t r;
+    do {
+        r = link_swap(0);
+    } while (!(r & LINK_DISK_DONE));
+    pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
+    uint16_t wanted = r & 0x7FFF;
+    if (!wanted)
+        return NULL;
+
+    /* the file with that name, if this drive has one */
+    static DIR dir;
+    static FILINFO fi;
+    static char name[ROM_NAME_MAX];
+    bool found = false;
+    if (f_opendir(&dir, "/") == FR_OK) {
+        while (!found && f_readdir(&dir, &fi) == FR_OK && fi.fname[0])
+            found = is_disk(fi.fname) && strlen(fi.fname) < ROM_NAME_MAX &&
+                    link_fold(pbc_link_hash(PBC_LINK_HASH_START, fi.fname, strlen(fi.fname))) == wanted;
+        f_closedir(&dir);
+    }
+    char path[ROM_NAME_MAX + 2];
+    if (found) {
+        strcpy(name, fi.fname);
+        snprintf(path, sizeof path, "/%s", name);
+    }
+    if (!link_disk_agree(found ? path : NULL))
+        return "This drive lacks that disk";
+    c64_mount_disk(NULL, 0, path);
+    strcpy(disk_now, name);
+    static char msg[32];
+    snprintf(msg, sizeof msg, "%s", name);
+    char *dot = strrchr(msg, '.');
+    if (dot)
+        *dot = 0;
+    return msg;
 }
 
 /* ---- emulator ------------------------------------------------------------ */
@@ -423,6 +516,7 @@ static void __attribute__((noreturn)) emulation_loop(const char *path, const cha
     }
 
     for (;;) {
+        c64_input_frame(c64_get_ram());
         uint64_t frame_start = time_us_64();
         c64_run_frame();
         c64_audio_flush();
@@ -431,7 +525,7 @@ static void __attribute__((noreturn)) emulation_loop(const char *path, const cha
         stat_emulated++;
         autostart_step(path, file);
         if (c64_input_disk_change()) {
-            const char *s = disk_menu();
+            const char *s = c64_input_disk_mine() ? disk_menu() : disk_wait();
             c64_video_set_status(s ? s : "");
             status_until = s ? time_us_64() + 2000000 : 0;
             next_frame = time_us_64();      /* the pause is not to be caught up */
@@ -445,12 +539,18 @@ static void __attribute__((noreturn)) emulation_loop(const char *path, const cha
         next_frame += FRAME_US;
         uint64_t now = time_us_64();
         stat_busy_us += now - frame_start;
-        if (now < next_frame)
+        if (pbc_link_follows())
+            next_frame = now;               /* the partner's frames are the clock */
+        else if (now < next_frame)
             sleep_until(from_us_since_boot(next_frame));
         else if (now > next_frame + 4 * FRAME_US)
             next_frame = now;               /* hopelessly behind: stop catching up */
 
+        if (pbc_link_out_of_sync_news())
+            c64_video_set_status("LINK OUT OF SYNC");
         now = time_us_64();
+        if (pbc_link_out_of_sync())
+            continue;
         if (status_until && now >= status_until) {
             status_until = 0;
             c64_video_set_status("");
@@ -500,6 +600,47 @@ void __attribute__((naked)) isr_hardfault(void)
         "mrsne r0, psp   \n"
         "mov r1, lr      \n"
         "b hardfault_report \n");
+}
+
+/* ---- link play ------------------------------------------------------------- */
+
+static uint32_t hash_file(uint32_t h, const char *path)
+{
+    /* heap: a FIL carries a 4 KB sector buffer. Before c64_init(). */
+    FIL *f = malloc(sizeof *f);
+    uint8_t *buf = malloc(4096);
+    UINT got;
+    if (f && buf && f_open(f, path, FA_READ) == FR_OK) {
+        while (f_read(f, buf, 4096, &got) == FR_OK && got)
+            h = pbc_link_hash(h, buf, got);
+        f_close(f);
+    }
+    free(buf);
+    free(f);
+    return h;
+}
+
+/* All that makes the game start differently: the disk as it is on this
+ * device (a game may have saved to it), the ROMs and the options. */
+static uint32_t link_config(const char *game, int port, bool cart)
+{
+    uint32_t h = PBC_LINK_HASH_START ^ 3;
+    char path[ROM_NAME_MAX + 2], file[SETTINGS_FILE_MAX + 1] = "";
+    snprintf(path, sizeof path, "/%s", game);
+    h = hash_file(h, path);
+    settings_file(game, file);
+    h = pbc_link_hash(h, file, strlen(file));
+    uint8_t opts[4] = { (uint8_t)port, true_drive, own_roms, cart };
+    h = pbc_link_hash(h, opts, sizeof opts);
+    if (own_roms) {
+        h = pbc_link_hash(h, c64_roms_basic(), 8192);
+        h = pbc_link_hash(h, c64_roms_kernal(), 8192);
+        if (c64_roms_chargen())
+            h = pbc_link_hash(h, c64_roms_chargen(), 4096);
+    }
+    if (true_drive)
+        h = pbc_link_hash(h, c64_roms_drive(), 16384);
+    return h;
 }
 
 /* ---- main ---------------------------------------------------------------- */
@@ -611,6 +752,11 @@ int main(void)
     pbc_rgb_set(0, 0, 0);           /* the drive LED (C64::SetDriveLEDs), at the new clock */
     audio_pwm_init();
 
+#if PBC_MULTI                           /* link play: only in PBCemu */
+    pbc_link_start(link_config(game, port, cart));
+#endif
+    pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
+    srand(1);                       /* the C64 uses rand(): as the partner's */
     c64_init();
 #if PBC_MULTI
     show_stats = pbc_launch_stats();
