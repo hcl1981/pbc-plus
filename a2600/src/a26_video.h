@@ -21,6 +21,9 @@ void a26_video_set_pal(bool pal);
 /* Core 0: a finished line (a2600_frame's callback). */
 void a26_video_line(int y, const uint8_t *pixels, bool blank);
 
+/* Core 0: a 7800 line (a7800.h): 320 palette indices, y 0..239 */
+void a26_video_line320(int y, const uint8_t *pixels);
+
 /* Core 1 entry point. */
 void a26_video_core1_main(void);
 

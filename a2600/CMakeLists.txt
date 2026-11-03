@@ -48,6 +48,8 @@ add_executable(pbc_a2600
 
     # Atari 2600 core
     ${CORE}/a2600.c
+    ${CORE}/a7800.c
+    ${CORE}/pokey.c
     ${CORE}/tia.c
 )
 

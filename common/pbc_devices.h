@@ -12,12 +12,14 @@
 #define PBC_DEVICES(X) \
     X("Atari 2600",     "Atari  \xfa  1977",     ".a26",            APP_A26,  0xd88a3a, pic_a26, icon_a26, c_a26,  m_a26) \
     X("ZX Spectrum",    "Sinclair  \xfa  1982",  ".tap.tzx.z80.sna", APP_ZX,   0x22c7d6, pic_zx,  icon_zx,  c_zx,   m_zx)  \
+    X("ColecoVision",   "Coleco  \xfa  1982",    ".col.rom.bin",     APP_SMS,  0x4f8fe0, pic_cv,  icon_cv,  c_cv,   m_cv)  \
     X("Commodore 64",   "Commodore  \xfa  1982", ".d64.prg.crt",    APP_C64,  0xd9a55b, pic_c64, icon_c64, c_c64,  m_c64) \
     X("NES",            "Nintendo  \xfa  1983",  ".nes",            APP_NES,  0xe5483c, pic_nes, icon_nes, c_nes,  m_nes) \
     X("SG-1000",        "Sega  \xfa  1983",      ".sg",             APP_SMS,  0x9aa2b0, pic_sg,  icon_sg,  c_sg,   m_sg)  \
     X("MSX",            "ASCII  \xfa  1983",     ".rom.mx1.mx2.dsk",APP_MSX,  0x35b779, pic_msx, icon_msx, c_msx,  m_msx) \
     X("Amstrad CPC",    "Amstrad  \xfa  1984",   ".dsk.cdt.sna",     APP_CPC,  0xe8b33a, pic_cpc, icon_cpc, c_cpc,  m_cpc) \
     X("Master System",  "Sega  \xfa  1985",      ".sms",            APP_SMS,  0x3d8bfd, pic_sms, icon_sms, c_sms,  m_sms) \
+    X("Atari 7800",     "Atari  \xfa  1986",     ".a78",            APP_A26,  0xd8573a, pic_a78, icon_a78, c_a78,  m_a78) \
     X("PC Engine",      "NEC  \xfa  1987",       ".pce",            APP_PCE,  0xff8a3d, pic_pce, icon_pce, c_pce,  m_pce) \
     X("Mega Drive",     "Sega  \xfa  1988",      ".md.gen.smd.bin", APP_MD,   0xe0407a, pic_md,  icon_md,  c_md,   m_md)  \
     X("Game Gear",      "Sega  \xfa  1990",      ".gg",             APP_SMS,  0x2cc6d8, pic_gg,  icon_gg,  c_gg,   m_gg)  \

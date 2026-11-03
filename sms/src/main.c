@@ -244,14 +244,89 @@ static int16_t dc_block(int32_t x)
     return (int16_t)y;
 }
 
-/* Bit 8 of a player's word: the start button */
+/* Bit 8 of a player's word: the start button; bits 9-12 the ColecoVision
+ * keypad key (coleco_key) */
 #define LINK_START 0x100
+#define LINK_KEY_SHIFT 9
+
+static bool coleco;
+
+/* ColecoVision keypad (index as coleco_key: 1-9, 10 '0', 11 '*', 12 '#'):
+ *   Center + Up/Right/Down/Left       1 2 3 4
+ *   Center + B + Up/Right/Down/Left   5 6 7 8
+ *   Center + A + Up/Right/Down/Left   9 0 * #
+ * A key counts once the buttons have stayed the same for three frames, so
+ * the buttons of a chord pressed one after the other give no other key on
+ * the way. */
+static int coleco_keypad(void)
+{
+    static uint32_t last;
+    static int same;
+    uint32_t r = input_raw() & (IN_CENTER | IN_A | IN_B | IN_UP | IN_RIGHT | IN_DOWN | IN_LEFT);
+    if (r != last) {
+        last = r;
+        same = 0;
+    } else if (same < 3) {
+        same++;
+    }
+    if (!(r & IN_CENTER) || same < 2)
+        return 0;
+    int d = (r & IN_UP) ? 0 : (r & IN_RIGHT) ? 1 : (r & IN_DOWN) ? 2 : (r & IN_LEFT) ? 3 : -1;
+    if (d < 0)
+        return 0;
+    if (r & IN_A) return 9 + d;
+    if (r & IN_B) return 5 + d;
+    return 1 + d;
+}
 
 static uint16_t link_word(void)
 {
     bool start;
     int pad = input_poll_sms(&start);
+    if (coleco) {
+        int k = coleco_keypad();
+        if (input_raw() & IN_CENTER)
+            pad &= ~0x0f;               /* Center + a direction is a key, not a move */
+        return (uint16_t)(pad | k << LINK_KEY_SHIFT);
+    }
     return (uint16_t)(pad | (start ? LINK_START : 0));
+}
+
+/* The ColecoVision's BIOS: coleco.rom from the drive, or a small one of our
+ * own that starts the cartridge at the address in its header and sends the
+ * NMI and RST vectors to the jumps there, as the real one does -- enough for
+ * games that do not call the BIOS's routines. */
+static uint8_t coleco_bios_buf[0x2000];
+
+static bool coleco_bios_load(void)
+{
+    static FIL f;                       /* a FIL carries a 4 KB buffer */
+    UINT got = 0;
+    if (f_open(&f, "/coleco.rom", FA_READ) == FR_OK) {
+        bool ok = f_size(&f) == sizeof coleco_bios_buf &&
+                  f_read(&f, coleco_bios_buf, sizeof coleco_bios_buf, &got) == FR_OK &&
+                  got == sizeof coleco_bios_buf;
+        f_close(&f);
+        if (ok)
+            return true;
+    }
+    memset(coleco_bios_buf, 0xff, sizeof coleco_bios_buf);
+    static const uint8_t start[] = {
+        0xf3,                           /* DI */
+        0x31, 0x00, 0x74,               /* LD SP,7400h */
+        0x2a, 0x0a, 0x80,               /* LD HL,(800Ah): the game's start */
+        0xe9,                           /* JP (HL) */
+    };
+    memcpy(coleco_bios_buf, start, sizeof start);
+    for (int v = 1; v < 8; v++) {       /* RST 08h-38h -> 800Ch, 800Fh, ... 801Eh */
+        coleco_bios_buf[v * 8] = 0xc3;
+        coleco_bios_buf[v * 8 + 1] = (uint8_t)(0x09 + 3 * v);
+        coleco_bios_buf[v * 8 + 2] = 0x80;
+    }
+    coleco_bios_buf[0x66] = 0xc3;       /* NMI -> 8021h */
+    coleco_bios_buf[0x67] = 0x21;
+    coleco_bios_buf[0x68] = 0x80;
+    return false;
 }
 
 static void __attribute__((noreturn)) emulation_loop(bool gg, bool show_stats)
@@ -271,6 +346,8 @@ static void __attribute__((noreturn)) emulation_loop(bool gg, bool show_stats)
         input.pad[0] = p1 & 0xFF;
         input.pad[1] = p2 & 0xFF;
         input.system = (p1 | p2) & LINK_START ? (gg ? INPUT_START : INPUT_PAUSE) : 0;
+        coleco_key[0] = (uint8_t)((p1 >> LINK_KEY_SHIFT) & 15);
+        coleco_key[1] = (uint8_t)((p2 >> LINK_KEY_SHIFT) & 15);
 
         uint64_t frame_start = time_us_64();
         sms_frame(0);
@@ -406,11 +483,16 @@ int main(void)
         if (err)
             fatal(err, rom);
     }
-    fs_unmount();
-
     const char *ext = strrchr(rom, '.');
     bool gg = ext && strcasecmp(ext, ".gg") == 0;
     bool sg = ext && strcasecmp(ext, ".sg") == 0;     /* SG-1000 */
+    /* ColecoVision: .col, or .rom/.bin, which the launcher gives this
+     * emulator only for the ColecoVision (by their AA 55 / 55 AA header) */
+    coleco = ext && (strcasecmp(ext, ".col") == 0 || strcasecmp(ext, ".rom") == 0 ||
+                     strcasecmp(ext, ".bin") == 0);
+    bool own_bios = coleco && coleco_bios_load();
+    (void)own_bios;
+    fs_unmount();
 
     const menu_control_t controls[] = {
         { "D-pad",   "Joystick" },
@@ -439,9 +521,11 @@ int main(void)
     bool show_stats = SHOW_FPS;
 #endif
     sms_video_set_mode(gg, video_mode);
-    load_rom((uintptr_t)rom_store_data(), (int)rom_store_size(), gg ? TYPE_GG : sg ? TYPE_SG : TYPE_SMS);
+    coleco_bios = coleco_bios_buf;
+    load_rom((uintptr_t)rom_store_data(), (int)rom_store_size(),
+             gg ? TYPE_GG : sg ? TYPE_SG : coleco ? TYPE_COLECO : TYPE_SMS);
     system_init(AUDIO_RATE);
-    if (!snd.enabled || !cachePtr || !sms.ram)
+    if (!snd.enabled || (!cachePtr && !IS_TMS_SYS) || !sms.ram)
         fatal("Out of memory", "for the emulator");
     system_reset();
 

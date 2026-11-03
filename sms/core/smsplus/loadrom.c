@@ -106,7 +106,7 @@ int load_rom(uintptr_t addr, int size, int cartType)
        then did not start. In 5083 Master System and Game Gear roms the old
        test matched 42 files and this one the 24 that have a header.
        SG-1000 images have no copier header, so none is looked for. */
-    if (cartType != TYPE_SG && (size % 1024) == 512)
+    if (cartType != TYPE_SG && cartType != TYPE_COLECO && (size % 1024) == 512)
     {
         size -= 512;
         start += 512;
@@ -135,7 +135,7 @@ int load_rom(uintptr_t addr, int size, int cartType)
        conversions clear all of work RAM and then enter the game through the
        MSX header at $4002, which a Sega mapper would have switched to page 0. */
     cart.mapper = (size > 0xC000) ? MAPPER_SEGA : MAPPER_NONE;
-    if (cartType != TYPE_SG && size > 0x8000)
+    if (cartType != TYPE_SG && cartType != TYPE_COLECO && size > 0x8000)
     {
         int checksum = start[0x7FE6] | (start[0x7FE7] << 8);
         int complement = start[0x7FE8] | (start[0x7FE9] << 8);

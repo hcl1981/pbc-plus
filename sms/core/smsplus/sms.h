@@ -21,9 +21,10 @@ static int palette444[32];
 
 #define SRAMSIZE 0x8000
 #define SRAMSIZEBYTES ( 0x8000 * sizeof(uint8) )
-/* SG-1000 has no battery RAM; sms.sram is an 8 KB cartridge RAM expansion there */
+/* SG-1000 has no battery RAM; sms.sram is an 8 KB cartridge RAM expansion
+   there, and on the ColecoVision its 1 KB of RAM mirrored over $6000-$7FFF */
 #define SG_EXTRAMSIZE 0x2000
-#define SRAM_BYTES ( IS_SG ? (SG_EXTRAMSIZE * sizeof(uint8)) : SRAMSIZEBYTES )
+#define SRAM_BYTES ( IS_TMS_SYS ? (SG_EXTRAMSIZE * sizeof(uint8)) : SRAMSIZEBYTES )
 #define RAMSIZE  0x2000
 #define RAMSIZEBYTES  (0x2000 * sizeof(uint8))
 
@@ -62,6 +63,12 @@ void sms_mapper_w(int address, int data);
 void sms_memory_map(void);
 
 void sg_memory_map(void);
+
+/* ColecoVision: the BIOS (8 KB, set before system_init) and the keypad key
+   held on each controller: 0 none, 1-9, 10 '0', 11 '*', 12 '#' */
+extern const uint8 *coleco_bios;
+extern uint8 coleco_key[2];
+void coleco_memory_map(void);
 
 void cpu_reset(void);
 

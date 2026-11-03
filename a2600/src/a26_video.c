@@ -21,11 +21,13 @@ static int win_y0 = 26;                 /* first line shown: NTSC 26, PAL 42 */
  * so the ring holds half a frame and core 0 never waits for the panel. */
 
 #define RING_N 128
+#define LINE_MAX 320                    /* the 7800's lines */
 
-static uint8_t __aligned(4) ring[RING_N][TIA_WIDTH];
+static uint8_t __aligned(4) ring[RING_N][LINE_MAX];
 static int16_t ring_y[RING_N];
 static uint8_t ring_h[RING_N];
 static bool ring_blank[RING_N];
+static bool ring_wide[RING_N];          /* 320 pixels (7800), else 160 */
 static volatile uint32_t ring_head, ring_tail;
 
 static const int frame_h = WIN_H;
@@ -64,8 +66,28 @@ void __not_in_flash_func(a26_video_line)(int y, const uint8_t *px, bool blank)
         __wfe();                        /* core 1 frees a slot and signals */
     int slot = (int)(ring_head % RING_N);
     ring_blank[slot] = blank;
+    ring_wide[slot] = false;
     if (!blank)
         memcpy(ring[slot], px, TIA_WIDTH);
+    ring_y[slot] = (int16_t)y;
+    ring_h[slot] = (uint8_t)frame_h;
+    __dmb();
+    ring_head++;
+    __sev();
+    lines_this_frame = true;
+}
+
+/* Core 0: a 7800 line, 320 pixels, y 0..239 */
+void __not_in_flash_func(a26_video_line320)(int y, const uint8_t *px)
+{
+    if (y < 0 || y >= frame_h || !core1_running || pause_req)
+        return;
+    while (ring_head - ring_tail >= RING_N)
+        __wfe();
+    int slot = (int)(ring_head % RING_N);
+    ring_blank[slot] = false;
+    ring_wide[slot] = true;
+    memcpy(ring[slot], px, LINE_MAX);
     ring_y[slot] = (int16_t)y;
     ring_h[slot] = (uint8_t)frame_h;
     __dmb();
@@ -120,11 +142,21 @@ void a26_video_set_status(const char *s)
 
 #define STATUS_Y (PBC_LCD_H - 12)
 
-/* two pixels become three: a, avg(a, b), b */
-static void __not_in_flash_func(convert)(uint16_t *dst, const uint8_t *px, bool blank)
+/* two pixels become three: a, avg(a, b), b; a 7800 line's four become
+ * three: a, avg(b, c), d */
+static void __not_in_flash_func(convert)(uint16_t *dst, const uint8_t *px, bool blank, bool wide)
 {
     if (blank) {
         memset(dst, 0, PBC_LCD_W * sizeof dst[0]);
+        return;
+    }
+    if (wide) {
+        for (int i = 0; i < LINE_MAX; i += 4, dst += 3) {
+            uint16_t b = pal565[px[i + 1]], c = pal565[px[i + 2]];
+            dst[0] = pal565[px[i]];
+            dst[1] = b == c ? b : pbc_avg565(b, c);
+            dst[2] = pal565[px[i + 3]];
+        }
         return;
     }
     for (int i = 0; i < TIA_WIDTH; i += 2, dst += 3) {
@@ -176,7 +208,7 @@ void __not_in_flash_func(a26_video_core1_main)(void)
         int slot = (int)(ring_tail % RING_N);
         int y = ring_y[slot];
         int slot_h = ring_h[slot];
-        convert(lbuf[cur], ring[slot], ring_blank[slot]);  /* while the last line goes out */
+        convert(lbuf[cur], ring[slot], ring_blank[slot], ring_wide[slot]);  /* while the last line goes out */
         __dmb();
         ring_tail++;
         __sev();

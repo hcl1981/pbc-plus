@@ -23,6 +23,7 @@ enum { CART_2K, CART_4K, CART_F8, CART_F6, CART_F4, CART_E0, CART_FE, CART_3F };
 #define A26_LEFT  0x04
 #define A26_RIGHT 0x08
 #define A26_FIRE  0x10
+#define A26_FIRE2 0x20             /* the 7800's right button */
 
 /* console switches (active high: pressed / set) */
 #define A26_RESET  0x01

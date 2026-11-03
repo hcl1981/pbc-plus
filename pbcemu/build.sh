@@ -10,14 +10,14 @@
 # Ablauf: Jeder Emulator wird für den Verbund gebaut (eigener Bauordner
 # build-multi/, gelinkt an seine Flash-Adresse, siehe common/pbc_multi.cmake).
 # Die Adressen ergeben sich der Reihe nach aus den Größen, auf 4 KB gerundet,
-# beginnend hinter den 256 KB des Starters. Dann wird der Starter mit der
+# beginnend hinter den 272 KB des Starters. Dann wird der Starter mit der
 # Adressliste (build/gen/pbc_apps.h) gebaut und alles zu ../dist/pbcemu.uf2 verpackt.
 #
 set -uo pipefail
 HIER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "${HIER}/../tools/pbc_build.sh"
 
-LAUNCHER_SIZE=0x40000
+LAUNCHER_SIZE=0x44000
 APPS_END=0x200000                  # ab hier: ROM-Bereich (5 MB), ab 0x700000 FatFs
 # Reihenfolge im Flash; Name im Starter (APP_*), Projektordner, Programmname
 APPS="MD:megadrive:pbc_megadrive SMS:sms:pbc_sms NES:nes:pbc_nes PCE:pce:pbc_pce GBC:gbc:pbc_gbc C64:c64:pbc_c64 MSX:msx:pbc_msx A26:a2600:pbc_a2600 ZX:zx:pbc_zx CPC:cpc:pbc_cpc"

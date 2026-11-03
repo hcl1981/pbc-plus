@@ -78,7 +78,8 @@ static bool ends_with_ci(const char *s, const char *ext)
 
 bool rom_store_is_rom_name(const char *name)
 {
-    return ends_with_ci(name, ".sms") || ends_with_ci(name, ".gg") || ends_with_ci(name, ".sg");
+    return ends_with_ci(name, ".sms") || ends_with_ci(name, ".gg") || ends_with_ci(name, ".sg") ||
+           ends_with_ci(name, ".col");
 }
 
 static bool file_fingerprint(const char *name, uint32_t *size, uint32_t *hash, uint8_t *buf)
@@ -148,7 +149,7 @@ const char *rom_store_program(const char *name, uint8_t *scratch, rom_progress_f
         return "Cannot read file";
     size = (uint32_t)f_size(&f);
 
-    if (size < 0x2000)
+    if (size < 0x400)                   /* ColecoVision cartridges from 2 KB on */
         { f_close(&f); return "Not a valid ROM"; }
     if (size > ROM_FLASH_SIZE)
         { f_close(&f); return "ROM larger than 5 MB"; }

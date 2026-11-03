@@ -1,8 +1,9 @@
 # PBCemu — alle Emulatoren in einer Firmware
 
 Ein Starter mit Gerätewahl und Spieleliste vor allen Emulatoren dieses Repos:
-Atari 2600, ZX Spectrum, Commodore 64, NES, SG-1000, MSX, Amstrad CPC,
-Master System, PC Engine, Mega Drive, Game Gear und Game Boy (Color). Fertig als **`dist/pbcemu.uf2`**,
+Atari 2600, ZX Spectrum, ColecoVision, Commodore 64, NES, SG-1000, MSX,
+Amstrad CPC, Master System, Atari 7800, PC Engine, Mega Drive, Game Gear und
+Game Boy (Color). Fertig als **`dist/pbcemu.uf2`**,
 eine Datei für alles. Zwei Geräte am USB-C-Kabel spielen Atari 2600, C64,
 NES, SG-1000, MSX, Master System, PC Engine und Mega Drive zu zweit
 ([`../docs/LINKSPIEL.md`](../docs/LINKSPIEL.md)); im Karussell tragen diese
@@ -49,6 +50,8 @@ Anzeigemodi (der erste ist jeweils die Vorgabe):
 | System | Modi |
 |---|---|
 | Atari 2600 | Scale 1.5x (160 → 240 Pixel breit) |
+| ColecoVision | Crop 1:1, Fit width, Zoom 1.25x (wie SG-1000) |
+| Atari 7800 | Fit width (320 → 240) |
 | ZX Spectrum | Fit width (256 → 240, mit Rand oben und unten), Crop 1:1 |
 | Commodore 64 | Standard (320×240-Ausschnitt verkleinert), Full border (ganzer Rand), No border (nur 320×200) |
 | NES | Crop 1:1 (240×240), Fit width (240×225), No overscan (240×224) |
@@ -70,6 +73,8 @@ nach Endung:
 | System | Endungen |
 |---|---|
 | Atari 2600 | `.a26` |
+| ColecoVision | `.col`, auch `.rom` und `.bin` (erkannt an AA 55 / 55 AA am Anfang); BIOS `coleco.rom` ins Hauptverzeichnis, sonst ein eigenes Mini-BIOS, siehe `../sms` |
+| Atari 7800 | `.a78` (mit oder ohne Kopf), siehe `../a2600` |
 | ZX Spectrum | `.tap` `.tzx` (Bänder, starten von selbst) `.z80` `.sna` (Snapshots); die ROMs sind eingebaut, siehe `../zx` |
 | Commodore 64 | `.d64` `.prg` `.crt` (eigene ROMs: `kernal.rom`, `basic.rom`, siehe `../c64`) |
 | NES | `.nes` |
@@ -113,8 +118,8 @@ eigenständige Firmwares (`dist/nes.uf2` usw.).
 
 | Adresse | Inhalt |
 |---|---|
-| `0x000000` | Starter (256 KB vorgesehen, ca. 180 KB belegt) |
-| `0x040000` … | Mega Drive, Master System/Game Gear/SG-1000, NES, PC Engine, Game Boy Color, C64, MSX, Atari 2600, ZX Spectrum, Amstrad CPC — dicht gepackt, auf 4 KB gerundet (zusammen ca. 1,7 MB, bis `0x200000`) |
+| `0x000000` | Starter (272 KB vorgesehen, ca. 265 KB belegt: Schriften und Gerätebilder) |
+| `0x044000` … | Mega Drive, Master System/Game Gear/SG-1000, NES, PC Engine, Game Boy Color, C64, MSX, Atari 2600, ZX Spectrum, Amstrad CPC — dicht gepackt, auf 4 KB gerundet (zusammen ca. 1,7 MB, bis `0x200000`) |
 | `0x200000` | ROM des laufenden Spiels (5 MB) |
 | `0x700000` | FatFs = USB-Laufwerk `PBC-ROMS`, ca. 9 MB (Einzel-Firmwares: ab `0x600000`) |
 | `0xFF0000` | gehört den Einzel-Firmwares (welches Spiel in *ihrem* ROM-Bereich liegt); der Starter löscht es, weil dort jetzt Emulatoren liegen |

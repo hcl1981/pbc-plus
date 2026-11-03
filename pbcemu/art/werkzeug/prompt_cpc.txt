@@ -1,0 +1,15 @@
+Create one illustration of an Amstrad CPC 464 home computer with a small joystick, for an icon set.
+
+The first two attached images show the exact style the icon set uses (ZX Spectrum and earlier consoles): copy that style precisely – modern flat vector illustration with subtle shading, like a premium app icon set, NO black outlines, clean shapes, soft gradients. The third attached image is an earlier drawing of the same computer: keep its overall look, colours and arrangement, but its keyboard is wrong (keys are missing, there are holes in the rows) – fix that.
+
+Requirements:
+- Front view, slightly from above (about 20 degrees), the computer facing the viewer straight on, keyboard rows running left to right. Light from the upper left.
+- A long, flat, dark grey/black keyboard computer, clearly wider than deep.
+- Main keyboard on the left: COMPLETE, regular rows of keys with no gaps at all – every row filled edge to edge like a real typewriter keyboard: 5 rows of light grey keys, with the coloured special keys at the row ends as in the reference (green, red, blue), a large blue ENTER key at the right end, and a long light grey space bar in the bottom row.
+- To the right of it a complete numeric keypad block (4 rows of 3 keys, no missing keys) with the cursor keys above it.
+- At the far right, built into the case: the cassette deck with a dark transparent lid and a row of coloured piano-style buttons below it.
+- To the right of the computer: a small simple black joystick with a short stick and one red fire button.
+- All keys and buttons blank – no letters, numbers or symbols anywhere.
+- Background: one single solid flat pure magenta colour (#FF00FF) everywhere, no gradient, no floor, no shadow at all (the shadow is added later).
+- Objects centered, generous empty magenta space around them, nothing touching the image border.
+- No text, no labels, no logos, no brand names anywhere.

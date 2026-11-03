@@ -1,0 +1,11 @@
+Create one illustration of a ColecoVision video game console with one of its controllers, for an icon set.
+
+The first two attached images show the exact style the icon set uses (ZX Spectrum and earlier consoles): copy that style precisely – modern flat vector illustration with subtle shading, like a premium app icon set, NO black outlines, clean shapes, soft gradients. The third attached image shows an earlier ColecoVision drawing: use it only for the shape and arrangement of the console and the controller, NOT for its line style.
+
+Requirements:
+- Front view, slightly from above (about 20 degrees), console facing the viewer straight on. Light from the upper left.
+- The console: wide, low, rectangular black console with a flat top: left a recessed bay, right ventilation ribs and the cartridge slot, a horizontal brushed-silver band across the front. No lettering.
+- One controller standing in front of the console at the right: tall black rectangular handheld, round joystick knob at the top, a 12-key keypad below (4 rows of 3 blank light-grey keys), a small fire button on each side. NO cable at all (no coiled cord).
+- Background: one single solid flat pure magenta colour (#FF00FF) everywhere, no gradient, no vignette, no floor, no shadow at all (the shadow is added later).
+- Objects centered, generous empty magenta space around them, nothing touching the image border.
+- No text, no labels, no logos, no brand names anywhere.

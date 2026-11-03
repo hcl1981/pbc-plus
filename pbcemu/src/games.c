@@ -13,41 +13,54 @@
 
 static char (*names)[GAME_NAME_MAX];
 
-/* .sna and .dsk are both the Spectrum's or MSX's and the CPC's: the CPC's
- * files start with their own signature ("MV - SNA", "MV - CPC",
- * "EXTENDED"), the others do not. Read once per file. */
+/* Extensions two systems share: .sna and .dsk (Spectrum or MSX, and the
+ * CPC), .rom and .bin (MSX or Mega Drive, and the ColecoVision). The first
+ * bytes tell them apart: the CPC's files start with "MV - SNA", "MV - CPC"
+ * or "EXTENDED", a ColecoVision cartridge with AA 55 or 55 AA. Read once
+ * per file. */
 static bool ext_is(const char *name, const char *ext)
 {
     const char *dot = strrchr(name, '.');
     return dot && strcasecmp(dot, ext) == 0;
 }
 
-static bool cpc_file(const char *name)
+enum { K_UNKNOWN = -1, K_OTHER, K_CPC, K_COLECO };
+
+static int file_kind(const char *name)
 {
     static FIL f;                       /* a FIL carries a 4 KB buffer: not on the stack */
-    char path[GAME_NAME_MAX + 2], head[8];
+    char path[GAME_NAME_MAX + 2];
+    uint8_t head[8];
     UINT got = 0;
     snprintf(path, sizeof path, "/%s", name);
     if (f_open(&f, path, FA_READ) != FR_OK)
-        return false;
+        return K_OTHER;
     bool ok = f_read(&f, head, sizeof head, &got) == FR_OK && got == sizeof head;
     f_close(&f);
-    return ok && (memcmp(head, "MV - SNA", 8) == 0 || memcmp(head, "MV - CPC", 8) == 0 ||
-                  memcmp(head, "EXTENDED", 8) == 0);
+    if (!ok)
+        return K_OTHER;
+    if (memcmp(head, "MV - SNA", 8) == 0 || memcmp(head, "MV - CPC", 8) == 0 ||
+        memcmp(head, "EXTENDED", 8) == 0)
+        return K_CPC;
+    if ((head[0] == 0xaa && head[1] == 0x55) || (head[0] == 0x55 && head[1] == 0xaa))
+        return K_COLECO;
+    return K_OTHER;
 }
 
-/* the file is this device's game; *cpc caches the look into it (-1: not yet) */
-static bool belongs(const device_t *d, const char *name, int *cpc)
+/* the file is this device's game; *kind caches the look into it */
+static bool belongs(const device_t *d, const char *name, int *kind)
 {
     if (!device_has_ext(d, name))
         return false;
-    if (d->app != APP_CPC && d->app != APP_ZX && d->app != APP_MSX)
+    bool cpc_ext = ext_is(name, ".sna") || ext_is(name, ".dsk");
+    bool cv_ext = ext_is(name, ".rom") || ext_is(name, ".bin");
+    if (!cpc_ext && !cv_ext)
         return true;
-    if (!ext_is(name, ".sna") && !ext_is(name, ".dsk"))
-        return true;
-    if (*cpc < 0)
-        *cpc = cpc_file(name);
-    return (d->app == APP_CPC) == (*cpc != 0);
+    if (*kind == K_UNKNOWN)
+        *kind = file_kind(name);
+    if (cpc_ext)
+        return (d->app == APP_CPC) == (*kind == K_CPC);
+    return device_is_coleco(d) == (*kind == K_COLECO);
 }
 
 void games_count(int *counts)
@@ -61,9 +74,9 @@ void games_count(int *counts)
     while (f_readdir(&dir, &fi) == FR_OK && fi.fname[0]) {
         if (fi.fattrib & (AM_DIR | AM_HID | AM_SYS) || strlen(fi.fname) >= GAME_NAME_MAX)
             continue;
-        int cpc = -1;
+        int kind = K_UNKNOWN;
         for (int d = 0; d < device_count; d++)
-            if (belongs(&devices[d], fi.fname, &cpc))
+            if (belongs(&devices[d], fi.fname, &kind))
                 counts[d]++;
     }
     f_closedir(&dir);
@@ -87,8 +100,8 @@ int games_list(int device, char (**out)[GAME_NAME_MAX])
     while (n < GAMES_MAX && f_readdir(&dir, &fi) == FR_OK && fi.fname[0]) {
         if (fi.fattrib & (AM_DIR | AM_HID | AM_SYS) || strlen(fi.fname) >= GAME_NAME_MAX)
             continue;
-        int cpc = -1;
-        if (belongs(&devices[device], fi.fname, &cpc))
+        int kind = K_UNKNOWN;
+        if (belongs(&devices[device], fi.fname, &kind))
             strcpy(names[n++], fi.fname);
     }
     f_closedir(&dir);

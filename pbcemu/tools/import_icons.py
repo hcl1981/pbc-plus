@@ -13,11 +13,21 @@ object, scaled to fit W x H, placed on the common baseline and given the
 same soft floor shadow as the drawn pictures (tools/devices.py), so all of
 them sit alike in the launcher. Writes <outdir>/<name>.png (RGBA).
 
-art/sg1000.jpeg is a single picture (SG-1000), art/zx.jpeg (ZX Spectrum) and
-art/cpc.jpeg (Amstrad CPC) too:
+art/sg1000.jpeg is a single picture (SG-1000), art/zx.jpeg (ZX Spectrum) too:
     import_icons.py art/sg1000.jpeg art 1x1 sg
     import_icons.py art/zx.jpeg art 1x1 zx
-    import_icons.py art/cpc.jpeg art 1x1 cpc
+
+art/7800cc.jpeg is a 2 x 1 sheet: ColecoVision, Atari 7800:
+    import_icons.py art/7800cc.jpeg art 2x1 cv a78
+
+All art/*.png were then reworked with the tools in art/werkzeug/ (see
+LIESMICH.md there; werkzeug/quellen/ holds the outputs of this script):
+kontaktschatten.py takes the floor shadow out again, gives every part
+(console, controller) a contact shadow of its own along its lower edge,
+scales the object down to at most 188 x 108 if larger and centres it in
+the 200 x 128 picture. The pictures of nes, pce, md, c64, sms, msx, cv and
+cpc are newer single images (werkzeug/gemini-roh/), imported with
+1x1 <name> into werkzeug/quellen/ before that step.
 
 art/sheet_msx.jpeg is a second sheet in the same order whose last cell is
 the MSX2 instead of the USB stick -- the MSX picture:

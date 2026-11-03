@@ -2,6 +2,21 @@
 
 #include "shared.h"
 
+/* The TMS9918A's interrupt output: on the SG-1000 the Z80's INT line, on
+   the ColecoVision its NMI, which takes the rising edge only (sms.irq keeps
+   the output's level for that). */
+static void tms_int_out(int on)
+{
+    if (IS_COLECO) {
+        if (on && !sms.irq)
+            z80_set_nmi_line(ASSERT_LINE), z80_set_nmi_line(CLEAR_LINE);
+        sms.irq = on;
+        return;
+    }
+    sms.irq = on;
+    z80_set_irq_line(0, on ? ASSERT_LINE : CLEAR_LINE);
+}
+
 
 /* VDP context */
 t_vdp vdp;
@@ -101,17 +116,15 @@ void in_ram(vdp_ctrl_w)(int data) {
             vdp.addr += 1;
         }
 
-        if (IS_SG) {
+        if (IS_TMS_SYS) {
             /* TMS9918A: bit 7 selects a register write, 8 registers */
             if (data & 0x80) {
                 vdp.reg[data & 7] = vdp.latch;
 
                 /* INT output follows F && IE, so enabling or disabling
                    interrupts with a frame interrupt pending takes effect now */
-                if (((data & 7) == 1) && (vdp.status & 0x80)) {
-                    sms.irq = (vdp.latch & 0x20) ? 1 : 0;
-                    z80_set_irq_line(0, sms.irq ? ASSERT_LINE : CLEAR_LINE);
-                }
+                if (((data & 7) == 1) && (vdp.status & 0x80))
+                    tms_int_out((vdp.latch & 0x20) ? 1 : 0);
             }
             return;
         }
@@ -173,7 +186,7 @@ void in_ram(vdp_data_w)(int data) {
     /* Clear the pending flag */
     vdp.pending = 0;
 
-    if (IS_SG) {
+    if (IS_TMS_SYS) {
         /* TMS9918A has no CRAM, and the SG renderer uses no tile cache */
         vdp.vram[vdp.addr & 0x3FFF] = data;
         vdp.addr = (vdp.addr + 1) & 0x3FFF;
@@ -234,16 +247,14 @@ int in_ram(vdp_data_r)(void) {
 
 /* Process frame events */
 void in_ram(vdp_run)(void) {
-    if (IS_SG) {
+    if (IS_TMS_SYS) {
         /* TMS9918A: frame interrupt only. Status bit 6 is the fifth sprite
            flag there, so the Mode 4 line counter must not touch it. */
         if (vdp.line == 0xC0) {
             vdp.status |= 0x80;
         }
-        if ((vdp.status & 0x80) && (vdp.reg[1] & 0x20)) {
-            sms.irq = 1;
-            z80_set_irq_line(0, ASSERT_LINE);
-        }
+        if ((vdp.status & 0x80) && (vdp.reg[1] & 0x20))
+            tms_int_out(1);
         return;
     }
 

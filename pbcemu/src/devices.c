@@ -54,6 +54,13 @@ static const control_t c_zx[] = {
 static const control_t c_cpc[] = {
     { "Joystick", "Joystick" }, { "Fire", "B" }, { "SPACE", "A" }, { "RETURN", "Center + B" },
     { "Menu", "Center + A" }, { NULL } };
+static const control_t c_cv[] = {
+    { "Joystick", "Joystick" }, { "Left fire", "B" }, { "Right fire", "A" },
+    { "Keys 1-4", "Center + Joy" }, { "Keys 5-8", "Center+B+Joy" }, { "9 0 * #", "Center+A+Joy" },
+    { NULL } };
+static const control_t c_a78[] = {
+    { "Joystick", "Joystick" }, { "Button 1", "B" }, { "Button 2", "A" }, { "RESET", "Center + B" },
+    { "SELECT", "Center + A" }, { "PAUSE", "Center + Down" }, { NULL } };
 static const control_t c_none[] = { { NULL } };
 
 /* Display modes, in the order the emulators number them (their video.c);
@@ -62,12 +69,14 @@ static const char *const m_c64[] = { "Standard", "Full border", "No border", NUL
 static const char *const m_nes[] = { "Crop 1:1", "Fit width", "No overscan", NULL };
 static const char *const m_sms[] = { "Crop 1:1", "Fit width", "Zoom 1.25x", NULL };
 static const char *const m_sg[]  = { "Crop 1:1", "Fit width", "Zoom 1.25x", NULL };
+static const char *const m_cv[]  = { "Crop 1:1", "Fit width", "Zoom 1.25x", NULL };
 static const char *const m_pce[] = { "Standard", "Crop 1:1", NULL };
 static const char *const m_md[]  = { "Fit width", "Crop 1:1", NULL };
 static const char *const m_gg[]  = { "Scale 1.5x", "Original", NULL };
 static const char *const m_gbc[] = { "Scale 1.5x", "Original", NULL };
 static const char *const m_msx[] = { "Fit width", "Crop 1:1", NULL };
 static const char *const m_a26[] = { "Scale 1.5x", NULL };
+static const char *const m_a78[] = { "Fit width", NULL };
 static const char *const m_zx[]  = { "Fit width", "Crop 1:1", NULL };
 static const char *const m_cpc[] = { "Fit width", "Crop 1:1", NULL };
 
@@ -82,6 +91,7 @@ static const char *const system_files[] = {
     "kernal.rom", "kernal.bin", "basic.rom", "basic.bin", "chargen.rom", "chargen.bin",
     "1541.rom", "1541.bin", "dos1541.rom",                          /* C64 */
     "msx2.rom", "msx2ext.rom", "disk.rom",                          /* MSX2 */
+    "coleco.rom",                                                   /* ColecoVision */
     NULL };
 
 bool device_has_ext(const device_t *d, const char *filename)
@@ -113,13 +123,18 @@ uint32_t app_offset(int app)
     return app >= 0 && app < APP_COUNT ? offsets[app] : 0;
 }
 
+bool device_is_coleco(const device_t *d)
+{
+    return d->controls == c_cv;
+}
+
 bool device_link(const device_t *d)
 {
     switch (d->app) {
     case APP_NES: case APP_PCE: case APP_C64: case APP_MSX: case APP_A26: case APP_MD:
         return true;
     case APP_SMS:
-        return d->controls == c_sms || d->controls == c_sg;    /* not the Game Gear */
+        return d->controls == c_sms || d->controls == c_sg || d->controls == c_cv;  /* not the Game Gear */
     default:
         return false;
     }

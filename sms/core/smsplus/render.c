@@ -286,7 +286,7 @@ void in_ram(render_reset)(void)
     }
 
     /* Invalidate pattern cache (not allocated for SG-1000) */
-    if (!IS_SG)
+    if (!IS_TMS_SYS)
     {
         for (i = 0; i < 512 * 4; i++)
             cachePtr[i] = -1;

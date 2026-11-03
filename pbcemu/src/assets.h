@@ -28,6 +28,8 @@ extern const pbc_picture_t pic_sg, icon_sg;
 extern const pbc_picture_t pic_a26, icon_a26;
 extern const pbc_picture_t pic_zx, icon_zx;
 extern const pbc_picture_t pic_cpc, icon_cpc;
+extern const pbc_picture_t pic_cv, icon_cv;
+extern const pbc_picture_t pic_a78, icon_a78;
 extern const pbc_picture_t pic_usb, icon_usb;
 
 #endif

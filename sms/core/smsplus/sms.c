@@ -77,6 +77,11 @@ void sms_reset(void) {
     sms.paused = sms.save = sms.port_3F = sms.port_F2 = sms.irq = 0x00;
     sms.psg_mask = 0xFF;
 
+    if (IS_COLECO) {
+        coleco_memory_map();
+        return;
+    }
+
     if (IS_SG) {
         /* Linear paging for the > 48 KB images that use the Sega mapper */
         sms.fcr[0] = 0x00;
@@ -239,6 +244,82 @@ static void sg_writemem(int address, int data) {
     }
 }
 
+/* ColecoVision                                                             */
+/*
+ * $0000 the BIOS (8 KB), $2000-$5FFF nothing, $6000-$7FFF 1 KB of RAM eight
+ * times over, $8000-$FFFF the cartridge (up to 32 KB). Ports by A7-A5:
+ * $80 keypad mode, $C0 joystick mode, $A0 the video chip (A0: data or
+ * control), $E0 the PSG (write) and the controllers (read, A1: which).
+ */
+const uint8 *coleco_bios;
+uint8 coleco_key[2];
+static uint8 coleco_keypad_mode;
+
+void coleco_memory_map(void) {
+    int page;
+    cpu_readmap[0] = (uint8 *)coleco_bios;
+    cpu_readmap[1] = (uint8 *)sg_open_bus;
+    cpu_readmap[2] = (uint8 *)sg_open_bus;
+    cpu_readmap[3] = sms.sram;
+    for (page = 4; page < 8; page++) {
+        uint32 off = (uint32)(page - 4) << 13;
+        cpu_readmap[page] = off < (uint32)cart.size ? &cart.rom[off] : (uint8 *)sg_open_bus;
+    }
+    for (page = 0; page < 8; page++)
+        cpu_writemap[page] = sms.dummy;
+}
+
+static void coleco_writemem(int address, int data) {
+    if ((address & 0xE000) == 0x6000) {
+        int o = address & 0x3FF, m;
+        for (m = 0; m < 0x2000; m += 0x400)
+            sms.sram[m + o] = data;
+    }
+}
+
+/* The controller in its current mode: joystick (directions, left fire) or
+   keypad (the key's code, right fire); low active */
+static uint8 coleco_pad(int p) {
+    static const uint8 code[13] = {
+        0x0F, 0x0D, 0x07, 0x0C, 0x02, 0x03, 0x0E, 0x05, 0x01, 0x0B, 0x0A, 0x09, 0x06,
+    };
+    uint8 v;
+    if (coleco_keypad_mode) {
+        v = 0xF0 | code[coleco_key[p] <= 12 ? coleco_key[p] : 0];
+        if (input.pad[p] & INPUT_BUTTON1) v &= ~0x40;
+    } else {
+        v = 0xFF;
+        if (input.pad[p] & INPUT_UP) v &= ~0x01;
+        if (input.pad[p] & INPUT_RIGHT) v &= ~0x02;
+        if (input.pad[p] & INPUT_DOWN) v &= ~0x04;
+        if (input.pad[p] & INPUT_LEFT) v &= ~0x08;
+        if (input.pad[p] & INPUT_BUTTON2) v &= ~0x40;
+    }
+    return v;
+}
+
+static void coleco_writeport(int port, int data) {
+    switch (port & 0xE0) {
+        case 0x80: coleco_keypad_mode = 1; break;
+        case 0xC0: coleco_keypad_mode = 0; break;
+        case 0xA0:
+            if (port & 1) vdp_ctrl_w(data);
+            else vdp_data_w(data);
+            break;
+        case 0xE0:
+            if (snd.enabled) SN76496Write(0, data);
+            break;
+    }
+}
+
+static int coleco_readport(int port) {
+    switch (port & 0xE0) {
+        case 0xA0: return (port & 1) ? vdp_ctrl_r() : vdp_data_r();
+        case 0xE0: return coleco_pad((port >> 1) & 1);
+    }
+    return 0xFF;
+}
+
 /* Pad bits shared by the SMS port $DC and the SG-1000 even $C0-$FF ports */
 static uint8 read_port_dc(void) {
     uint8 temp = 0xFF;
@@ -295,6 +376,10 @@ static int sg_readport(int port) {
 
 /* Write to memory */
 void in_ram(cpu_writemem16)(int address, int data) {
+    if (IS_COLECO) {
+        coleco_writemem(address, data);
+        return;
+    }
     if (IS_SG) {
         sg_writemem(address, data);
         return;
@@ -318,6 +403,10 @@ void in_ram(cpu_writemem16)(int address, int data) {
    repeats through its quarter of the range: the MSX conversions reach the
    video chip at $98/$99, where an MSX has it, instead of at $BE/$BF. */
 void in_ram(cpu_writeport)(int port, int data) {
+    if (IS_COLECO) {
+        coleco_writeport(port & 0xFF, data);
+        return;
+    }
     if (IS_SG) {
         sg_writeport(port, data);
         return;
@@ -385,6 +474,7 @@ void in_ram(cpu_writeport)(int port, int data) {
 int in_ram(cpu_readport)(int port) {
     uint8 temp = 0xFF;
 
+    if (IS_COLECO) return coleco_readport(port & 0xFF);
     if (IS_SG) return sg_readport(port);
     port &= 0xFF;
 

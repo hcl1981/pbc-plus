@@ -79,6 +79,8 @@ Aufräumen nicht entfernen.
 | ZX-Spectrum-Spiele (`.tap` `.tzx` `.z80` `.sna`) | fremdes Urheberrecht — liegen **nicht** bei |
 | CPC-ROMs (`cpc/roms/`) | **Amstrad/Locomotive** — liegen bei: Amstrad erlaubt die Weitergabe mit Emulatoren (Copyright-Meldungen unverändert, kostenlos); für Locomotives Anteil bräuchte es laut Amstrad auch deren Zustimmung |
 | CPC-Spiele (`.dsk` `.cdt` `.sna`) | fremdes Urheberrecht — liegen **nicht** bei |
+| ColecoVision-BIOS (`coleco.rom`) | Coleco — liegt **nicht** bei; eingebaut ist nur ein eigenes Mini-BIOS (GPL-3.0, `sms/src/main.c`) |
+| ColecoVision- und Atari-7800-Spiele | fremdes Urheberrecht — liegen **nicht** bei |
 
 `.gitignore` schließt WADs und ROMs aus, damit eigene Kopien nicht
 versehentlich im Repo landen. Die beiliegende `freedoom1.wad` ist davon

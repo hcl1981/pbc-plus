@@ -1,0 +1,12 @@
+Create one illustration of an MSX2 home computer with a joystick, for an icon set.
+
+Attached images:
+1. ZX Spectrum with joystick: copy this style AND this arrangement exactly – flat vector illustration with subtle shading, NO outlines; the joystick stands to the right of the computer, close to it, on the same floor line, its base bottom level with the computer's bottom.
+2. An earlier MSX2 drawing: keep the computer's shapes, colours and details (black case, raised cartridge slot with a cartridge at the back, medium grey keys, function keys, cursor-key cluster on the right) and the black square-base joystick with a red fire button.
+
+Requirements:
+- Front view, slightly from above (about 20 degrees), facing the viewer straight on. Light from the upper left.
+- Absolutely no dark outlines or contour strokes; edges only by flat colour and soft shading, exactly like image 1.
+- Blank keys, no arrows, no symbols, no text, no logos anywhere. No cables.
+- Background: one single solid flat pure magenta colour (#FF00FF), no gradient, no floor, no shadow at all.
+- The group centered with generous empty magenta space, nothing touching the border.

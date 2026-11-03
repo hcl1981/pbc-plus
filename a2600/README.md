@@ -36,6 +36,49 @@ PAL-Farben und einem tiefer liegenden Bildausschnitt (Zeilen 42 bis 281). Die
 Umschaltung hängt nur von der Emulation ab, im Link-Spiel schalten beide
 Geräte im selben Bild. SECAM gibt es nicht.
 
+## Atari 7800
+
+Der Emulator spielt auch **Atari-7800-Module** (`.a78`, mit oder ohne den
+128 Byte langen Kopf); im Starter ist der 7800 ein eigenes System. Der
+Kern `core/a7800.c` benutzt denselben 6502 (zweimal übersetzt), den TIA für
+Ton und Knöpfe und dieselben Joystick-Bits. Neu ist MARIA: Display-List-List,
+Display-Lists mit direkter und indirekter (Zeichen-)Grafik, die Modi 160A/B
+und 320A–D, acht Paletten, Kangaroo- und Holey-DMA, die DMA-Zeit, die der
+CPU pro Zeile fehlt, und die Display-List-Interrupts als NMI (wenn MARIA den
+markierten Eintrag holt). Dazu RIOT (mit dem Sofort-Schritt des Timers nach
+dem Schreiben, auf den sich 7800basic verlässt), 4 KB RAM, Module flach bis
+48 KB und SuperGame-Bankumschaltung (mit RAM oder zusätzlicher Bank bei
+4000h). Ein BIOS braucht es nicht: das Spiel startet an seinem Reset-Vektor.
+PAL-Module (laut Kopf) laufen mit 313 Zeilen und 50 Hz.
+
+**POKEY** (`core/pokey.c`): hat das Modul laut Kopf einen (bei 4000h, 450h
+oder 440h), kommt sein Ton zum TIA dazu. Vier Kanäle mit 64-kHz-, 15-kHz-
+oder 1,79-MHz-Takt, 16-Bit-Paare, die Polynomzähler (4, 5, 9, 17 Bit),
+Nur-Lautstärke, die beiden Hochpassfilter, STIMER und RANDOM; gerechnet
+wird von Ereignis zu Ereignis und über jede halbe Zeile gemittelt. Es
+fehlen die Timer-Interrupts, die serielle Schnittstelle, Paddles und
+Tastatur. Geprüft mit eigenen Testmodulen gegen die Formeln des
+Datenblatts (reine Töne in allen Taktarten, 16 Bit, Rauschen), noch nicht
+mit einem Spiel: die Demo von Black Forest meldet zwar einen POKEY an,
+spielt aber keine Musik.
+
+Gezeigt werden 240 der 243 Zeilen, 320 Pixel (die 160er-Modi doppelt) auf
+240 verkleinert (aus vier Pixeln drei, das mittlere gemittelt).
+
+**Stand:** am PC mit zwei freien Homebrews getestet: Side Bounce (7800basic,
+Ton) und die Demo von Black Forest (272 KB SuperGame); auf dem Gerät Side
+Bounce mit vollen 60 Bildern/s, Kern 0 zu 69 % ausgelastet. **Was fehlt:**
+XM und YM2151 (z. B. 1942), Activision-
+und Absolute-Bankumschaltung, die Zeitabläufe von MARIA innerhalb der Zeile.
+
+| PicoBoy | Atari 7800 |
+|---|---|
+| Joystick | Joystick |
+| B / A | linker / rechter Knopf |
+| Center + B | RESET |
+| Center + A | SELECT |
+| Center + Runter | PAUSE |
+
 ## Tasten
 
 | PicoBoy | Atari 2600 |
@@ -55,6 +98,8 @@ Konsolenschalter können beide drücken.
 |---|---|
 | `core/cpu6502.c` | 6507: jeder Buszyklus ist ein Zugriff, auch die Blindzugriffe, damit die TIA die Schreibzugriffe am richtigen Takt sieht |
 | `core/a2600.c` | Maschine: Adressdekodierung, RIOT (Timer wird erst beim Lesen ausgerechnet), Bankumschaltung, Bildablauf (76 CPU-Takte pro Zeile, WSYNC springt ans Zeilenende); der CPU-Kern wird hier mitübersetzt, damit Befehle aus dem ROM ohne Umweg gelesen werden |
+| `core/a7800.c` | Atari 7800: MARIA, RIOT, Speicher, Bankumschaltung; der 6502 ein zweites Mal unter eigenen Namen |
+| `core/pokey.c` | POKEY-Ton für 7800-Module, die einen haben |
 | `core/tia.c` | TIA: Spielfeld, zwei Spieler, zwei Raketen, Ball, Kollisionen, HMOVE, vertikale Verzögerung; das Bild wird bis zum aktuellen Takt nachgezeichnet, bevor ein Register sich ändert. Zwei Tonkanäle mit allen AUDC-Formen |
 | `src/main.c` | Start, Spielschleife, Link |
 | `src/a26_video.c` | jede fertige Zeile geht als Farbindizes über einen Ring (halbes Bild) an Kern 1; der rechnet 160 → 240 Pixel (a, Mittelwert, b) und schickt sie ans Display. Gezeigt werden die Zeilen 26 bis 265 |

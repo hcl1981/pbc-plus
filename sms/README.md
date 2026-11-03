@@ -184,6 +184,39 @@ Am Kern geändert: `SMS_AUD_RATE` in `sms.h` lässt sich von außen setzen
   verlieren ihren Stand beim Ausschalten; das Batterie-RAM startet leer.
 * Nur NTSC-Takt (60 Hz). SG-1000 (`.sg`) bisher nur am PC getestet.
 
+## ColecoVision (nur in PBCemu)
+
+Die ColecoVision ist fast ein SG-1000 (Z80, TMS9918A, SN76489) und läuft als
+eigener Modus im Kern (`TYPE_COLECO`): BIOS bei 0000h, 1 KB RAM achtfach
+über 6000h–7FFFh, das Modul ab 8000h (bis 32 KB), Ports nach A7–A5, der
+Interrupt des Videochips am NMI, der Controller mit Joystick- und
+Ziffernfeld-Modus. Im Starter ist sie ein eigenes System; Module heißen
+`.col`, oft auch `.rom` oder `.bin` – der Starter erkennt sie an ihren ersten
+Bytes (AA 55 oder 55 AA) und zeigt sie nur bei der ColecoVision.
+
+**BIOS:** `coleco.rom` (8 KB) ins Hauptverzeichnis des Laufwerks, es gehört
+Coleco und liegt nicht bei. Fehlt es, nimmt der Emulator ein eigenes
+Mini-BIOS: es startet das Modul an der Adresse in seinem Kopf und leitet NMI
+und RST-Vektoren wie das echte weiter. Das reicht für Spiele, die keine
+BIOS-Routinen aufrufen; die meisten älteren brauchen das echte.
+
+| PicoBoy | ColecoVision |
+|---|---|
+| Joystick | Joystick |
+| B / A | linker / rechter Feuerknopf |
+| Mitte + Hoch/Rechts/Runter/Links | Ziffern 1, 2, 3, 4 |
+| Mitte + B + Hoch/Rechts/Runter/Links | Ziffern 5, 6, 7, 8 |
+| Mitte + A + Hoch/Rechts/Runter/Links | 9, 0, `*`, `#` |
+
+Eine Ziffer zählt, sobald die Tasten drei Bilder lang (50 ms) gleich
+bleiben; solange Mitte gedrückt ist, bewegt der Joystick nichts.
+
+Am PC mit dem echten BIOS und fünf Homebrews getestet (Space Trainer,
+Breakout, Slither, Frogs and Flies, Kaboom), auf dem Gerät mit Breakout:
+volle 60 Bilder/s, Kern 0 zu 76 % ausgelastet. Ohne
+BIOS laufen sie nicht. Zusatzcontroller (Lenkrad, Roller Controller, Super
+Action) fehlen.
+
 ## Lizenzen
 
 * Gesamtwerk: **GPL-3.0** wie pico-smsplus, siehe `LICENSE`. SMS Plus selbst

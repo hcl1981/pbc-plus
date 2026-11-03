@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
 #include "hardware/clocks.h"
@@ -42,6 +43,7 @@
 #include "settings.h"
 #include "a26_video.h"
 #include "a2600.h"
+#include "a7800.h"
 
 #if !PBC_MULTI
 #error "PBC 2600 exists only as part of the combined firmware (pbcemu/build.sh)"
@@ -111,16 +113,26 @@ static void overclock(void)
 /* ---- input ------------------------------------------------------------------
  *
  * A player's state for one frame is the IN_* bits of the buttons (link
- * play swaps them with the partner). */
+ * play swaps them with the partner). 2600: B or A is the button; 7800: B
+ * the left one, A the right one, Center + Down PAUSE. */
+static bool is7800;
+
 static uint8_t joy_of(uint16_t w)
 {
     uint8_t j = 0;
-    if (w & IN_UP)    j |= A26_UP;
-    if (w & IN_DOWN)  j |= A26_DOWN;
+    bool center = w & IN_CENTER;
+    if ((w & IN_UP) && !center)    j |= A26_UP;
+    if ((w & IN_DOWN) && !center)  j |= A26_DOWN;
     if (w & IN_LEFT)  j |= A26_LEFT;
     if (w & IN_RIGHT) j |= A26_RIGHT;
-    if (!(w & IN_CENTER) && (w & (IN_A | IN_B)))
-        j |= A26_FIRE;
+    if (!center) {
+        if (is7800) {
+            if (w & IN_B) j |= A26_FIRE;
+            if (w & IN_A) j |= A26_FIRE2;
+        } else if (w & (IN_A | IN_B)) {
+            j |= A26_FIRE;
+        }
+    }
     return j;
 }
 
@@ -129,6 +141,7 @@ static uint8_t switches_of(uint16_t w)
     uint8_t s = 0;
     if ((w & IN_CENTER) && (w & IN_B)) s |= A26_RESET;
     if ((w & IN_CENTER) && (w & IN_A)) s |= A26_SELECT;
+    if (is7800 && (w & IN_CENTER) && (w & IN_DOWN)) s |= A26_BW;      /* PAUSE */
     return s;
 }
 
@@ -145,7 +158,7 @@ static void __attribute__((noreturn)) emulation_loop(bool show_stats, const char
     /* PAL or NTSC: what the game makes, 312 or 262 lines a frame; the
      * switch waits for 30 frames in a row (the lines count is the
      * emulation's, so both devices switch in the same frame) */
-    bool pal = false;
+    bool pal = is7800 && a7800_pal();
     int pal_votes = 0;
 
     if (start_status) {
@@ -156,7 +169,8 @@ static void __attribute__((noreturn)) emulation_loop(bool show_stats, const char
 
     for (;;) {
         uint16_t p1, p2;
-        pbc_link_frame((uint16_t)(input_raw() & 0x7F), a2600_ram(), 128, &p1, &p2);
+        pbc_link_frame((uint16_t)(input_raw() & 0x7F), is7800 ? a7800_ram() : a2600_ram(),
+                       is7800 ? 0x1000 : 128, &p1, &p2);
         a26_joy[0] = joy_of(p1);
         a26_joy[1] = joy_of(p2);
         a26_switches = switches_of(p1 | p2);
@@ -166,9 +180,15 @@ static void __attribute__((noreturn)) emulation_loop(bool show_stats, const char
         sample_acc += AUDIO_RATE;
         unsigned n = sample_acc / fps;
         sample_acc -= n * fps;
-        int lines = a2600_frame(a26_video_line, samples, (int)n);
+        int lines;
+        if (is7800) {
+            a7800_frame(a26_video_line320, samples, (int)n);
+            lines = pal ? 313 : 263;
+        } else {
+            lines = a2600_frame(a26_video_line, samples, (int)n);
+        }
         audio_pwm_push(samples, (int)n);
-        if ((lines >= 290) != pal) {
+        if (!is7800 && (lines >= 290) != pal) {
             if (++pal_votes >= 30) {
                 pal = !pal;
                 pal_votes = 0;
@@ -182,8 +202,9 @@ static void __attribute__((noreturn)) emulation_loop(bool show_stats, const char
             stat_drawn++;
         stat_emulated++;
 
-        /* 262 lines at 1.193 MHz (NTSC), 312 at 1.182 MHz (PAL) */
-        const uint32_t period = pal ? 20056 : 16688;
+        /* 262 lines at 1.193 MHz (NTSC), 312 at 1.182 MHz (PAL); the 7800
+         * 263 or 313 lines of 454 clocks at 7.16 / 7.09 MHz */
+        const uint32_t period = is7800 ? (pal ? 20033 : 16683) : pal ? 20056 : 16688;
         next_frame += period;
         uint64_t now = time_us_64();
         stat_busy_us += now - frame_start;
@@ -293,12 +314,21 @@ int main(void)
     audio_pwm_init();
     a26_video_init(pbc_launch_video());
 
-    int type = a2600_insert(rom_store_data(), rom_store_size());
-    if (type < 0)
-        fatal("Unknown cartridge type", game);
-    a2600_reset();
+    const char *ext = strrchr(game, '.');
+    is7800 = ext && strcasecmp(ext, ".a78") == 0;
+    if (is7800) {
+        if (!a7800_insert(rom_store_data(), rom_store_size()))
+            fatal("Not a 7800 cartridge", game);
+        a26_video_set_pal(a7800_pal());
+        a7800_reset();
+    } else {
+        int type = a2600_insert(rom_store_data(), rom_store_size());
+        if (type < 0)
+            fatal("Unknown cartridge type", game);
+        a2600_reset();
+    }
 
-    pbc_link_start(pbc_link_hash(PBC_LINK_HASH_START ^ 8, rom_store_data(), rom_store_size()));
+    pbc_link_start(pbc_link_hash(PBC_LINK_HASH_START ^ (is7800 ? 9 : 8), rom_store_data(), rom_store_size()));
     pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
     multicore_launch_core1(a26_video_core1_main);
     pbc_fade_in(false);

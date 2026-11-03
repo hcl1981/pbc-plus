@@ -53,7 +53,7 @@ void system_init(int rate) {
     // initialize memory. cart.type is already set by load_rom().
     // The SG-1000 renderer does not use the Mode 4 tile cache, and its
     // cartridge RAM is 8 KB instead of the 32 KB SMS battery RAM.
-    if (!IS_SG) {
+    if (!IS_TMS_SYS) {
         cachePtr = (int16 *)frens_f_malloc(512 * 4 * sizeof(int16));
         cacheStore = (uint8 *)frens_f_malloc(CACHEDTILES * 64 * sizeof(uint8));
         cacheStoreUsed = (uint8 *)frens_f_malloc(CACHEDTILES * sizeof(uint8));
@@ -163,7 +163,7 @@ void system_reset(void) {
     vdp_reset();
     sms_reset();
     render_reset();
-    if (!IS_SG) system_load_sram();
+    if (!IS_TMS_SYS) system_load_sram();
     if (snd.enabled) {
 #if PICO_RP2350
         if (opll) {
@@ -314,7 +314,9 @@ bool system_load_state(FIL *fd) {
     /* Restore callbacks */
     z80_set_irq_callback(sms_irq_callback);
 
-    if (IS_SG) {
+    if (IS_COLECO) {
+        coleco_memory_map();
+    } else if (IS_SG) {
         /* Rebuilds ROM/RAM pages, detected RAM adaptor and mapper paging */
         sg_memory_map();
     } else {

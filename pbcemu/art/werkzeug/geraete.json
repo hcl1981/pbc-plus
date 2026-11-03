@@ -1,0 +1,26 @@
+{
+ "nes": [
+  "a Nintendo Entertainment System (NES) console with one controller",
+  "The console: the grey-and-dark-grey front-loading box as in image 4. The controller: the flat rectangular grey NES pad with a cross-shaped d-pad, two small black buttons in the middle and two round red buttons, lying slightly tilted."
+ ],
+ "pce": [
+  "a PC Engine console with one controller",
+  "The console: the small, nearly square white PC Engine with the HuCard slot on the front, as in image 4. The controller: the flat light grey pad with a d-pad, two small buttons and two round buttons, as in image 4."
+ ],
+ "md": [
+  "a Sega Mega Drive console with one controller",
+  "The console: the black Mega Drive with the round raised centre, the cartridge slot and the red accent, as in image 4. The controller: the black three-button pad with its rounded crescent shape, as in image 4."
+ ],
+ "c64": [
+  "a Commodore 64 home computer with a joystick",
+  "The computer: the beige/brown 'breadbin' keyboard computer with dark brown keys and the four function keys on the right, as in image 4. The joystick: the black square-base joystick with a black stick and a red fire button, as in image 4."
+ ],
+ "sms": [
+  "a Sega Master System console with one controller",
+  "The console: the black angular Master System with the red cartridge area and the red stripe, as in image 4. The controller: the black rectangular pad with a square d-pad and two round buttons, as in image 4."
+ ],
+ "msx": [
+  "an MSX2 home computer with a joystick",
+  "The computer: the black MSX2 keyboard computer with the raised cartridge slot at the back and the cursor keys on the right, as in image 4. The joystick: the small black square-base joystick with a black stick and a red fire button, as in image 4. IMPORTANT: absolutely no dark outlines or contour strokes around any shape – edges are defined only by flat colour and soft shading, exactly like the ZX Spectrum in image 1. Medium grey keys on the black case, blank keys, no arrows or symbols on the cursor keys. The joystick is placed directly against the front edge of the computer at its lower right corner, overlapping the computer's front-right corner like in image 3, its base bottom only slightly lower than the computer's bottom edge – it must NOT stand far in front of the computer."
+ ]
+}

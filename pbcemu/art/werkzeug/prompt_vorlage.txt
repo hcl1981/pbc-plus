@@ -1,0 +1,15 @@
+Create one illustration of {GERAET}, for an icon set.
+
+Attached images:
+1. and 2. show the exact style of the icon set (ZX Spectrum and an earlier set of consoles): copy that style precisely – modern flat vector illustration with subtle shading, like a premium app icon set, NO black outlines, clean shapes, soft gradients.
+3. shows the ARRANGEMENT to copy (Atari 7800): the console seen from the front and slightly above, and its controller standing just in front of the console's lower right corner, slightly overlapping it, the controller's bottom only a little lower than the console's bottom. Copy only this arrangement, not its outline style.
+4. is an earlier drawing of this very device in the icon set's style: keep its shapes, colours and details for the console and the controller.
+
+Requirements:
+- Front view, slightly from above (about 20 degrees), the console facing the viewer straight on. Light from the upper left.
+- {DETAILS}
+- The controller stands just in front of the lower right corner of the console and overlaps it a little, exactly like in image 3. The whole group is wide and compact, not tall.
+- No cables at all.
+- Background: one single solid flat pure magenta colour (#FF00FF) everywhere, no gradient, no floor, no shadow at all (the shadow is added later).
+- The group centered, generous empty magenta space around it, nothing touching the image border.
+- No text, no labels, no logos, no brand names anywhere; all buttons and keys blank.

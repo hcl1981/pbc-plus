@@ -151,6 +151,8 @@ static void fs_write_readme(void)
            "by itself; pick the system, then the game.\r\n"
            "\r\n"
            "  Atari 2600       .a26\r\n"
+           "  Atari 7800       .a78\r\n"
+           "  ColecoVision     .col .rom .bin  (coleco.rom here: the BIOS)\r\n"
            "  ZX Spectrum      .tap .tzx .z80 .sna\r\n"
            "  Commodore 64     .d64 .prg\r\n"
            "  NES              .nes\r\n"

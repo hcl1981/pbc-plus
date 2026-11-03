@@ -605,6 +605,53 @@ def amstrad_cpc():
     return p.done()
 
 
+def colecovision():
+    p = Pic()
+    p.shadow(92, 112, 86, 9)
+    body = '#1e1e22'
+    x, y, w, h, dep = 10, 84, 120, 16, 34
+    p.box(x, y, w, h, dep, body, r=3, inset=4)
+    # silver ribbing on the top, the cartridge slot at the back right
+    for k in range(7):
+        yy = y - dep + 6 + k * 3.6
+        p.line([(x + 10 + k * 0.6, yy), (x + 70 - k * 0.6, yy)], '#8a8a92', 1.1)
+    p.rrect(x + 80, y - dep + 4, x + w - 12, y - dep + 10, 1.5, '#0e0e10')
+    p.rrect(x + 4, y + 4, x + 30, y + 7, 1, '#5a5a62')
+    # the controller: a slab with a keypad and a short stick
+    cx, cy = 160, 96
+    p.rrect(cx - 15, cy - 26, cx + 15, cy + 14, 4, '#26262b')
+    p.ellipse(cx - 6, cy - 23, cx + 6, cy - 15, '#141417')
+    p.line([(cx, cy - 19), (cx, cy - 32)], '#141417', 3)
+    p.ellipse(cx - 3.5, cy - 36, cx + 3.5, cy - 29, '#1b1b1e')
+    for r in range(4):
+        for c in range(3):
+            p.rrect(cx - 10 + c * 7, cy - 10 + r * 5.6, cx - 5 + c * 7, cy - 6 + r * 5.6, 1, '#b8b8c0')
+    p.rrect(cx - 18, cy - 6, cx - 15, cy + 2, 1, '#d83a2e')
+    p.rrect(cx + 15, cy - 6, cx + 18, cy + 2, 1, '#d83a2e')
+    return p.done()
+
+
+def atari7800():
+    p = Pic()
+    p.shadow(92, 112, 84, 9)
+    body = '#1d1d21'
+    x, y, w, h, dep = 16, 86, 116, 14, 40
+    # the wedge with its silver band and the cartridge slot
+    p.box(x, y, w, h, dep, body, r=3, inset=8)
+    p.poly([(x + 10, y - dep + 14), (x + w - 10, y - dep + 14), (x + w - 6, y - dep + 24), (x + 6, y - dep + 24)], '#a9a9b1')
+    p.rrect(x + 34, y - dep + 3, x + w - 34, y - dep + 9, 1.5, '#0c0c0e')
+    for k in range(4):
+        p.rrect(x + 14 + k * 24, y + 4, x + 26 + k * 24, y + 8, 1, '#4a4a52')
+    # ProLine joystick: a grip with a button on each side
+    cx, cy = 160, 104
+    p.rrect(cx - 12, cy - 6, cx + 12, cy + 8, 3, '#26262b')
+    p.line([(cx, cy - 2), (cx, cy - 24)], '#141417', 4)
+    p.rrect(cx - 5, cy - 34, cx + 5, cy - 20, 3, '#1c1c20')
+    p.rrect(cx - 8, cy - 31, cx - 5, cy - 26, 1, '#d83a2e')
+    p.rrect(cx + 5, cy - 31, cx + 8, cy - 26, 1, '#d83a2e')
+    return p.done()
+
+
 DEVICES = {
     'nes': nes,
     'sms': master_system,
@@ -618,6 +665,8 @@ DEVICES = {
     'a26': atari2600,
     'zx': zx_spectrum,
     'cpc': amstrad_cpc,
+    'cv': colecovision,
+    'a78': atari7800,
     'usb': usb_drive,
 }
 

@@ -34,6 +34,9 @@ bool device_has_ext(const device_t *d, const char *filename);
  * Master System emulator, has not. */
 bool device_link(const device_t *d);
 
+/* the ColecoVision (run by the Master System emulator) */
+bool device_is_coleco(const device_t *d);
+
 /* Flash offset of an emulator, 0 if it is not part of this build. */
 uint32_t app_offset(int app);
 
