@@ -33,8 +33,9 @@ Locomotive bräuchte es nach Amstrads eigener Aussage auch deren Zustimmung
 | `.cdt` | Kassette (TZX-Format) | tippt `|TAPE`, `RUN"` und eine Taste für „Press PLAY“ |
 | `.sna` | Snapshot (64 oder 128 KB) | sofort |
 
-`.dsk` und `.sna` gibt es auch bei MSX bzw. Spectrum; im Starter stehen
-solche Dateien bei beiden, der jeweils falsche Emulator sagt das.
+`.dsk` und `.sna` gibt es auch bei MSX bzw. Spectrum; der Starter schaut
+in solche Dateien hinein und zeigt sie nur beim passenden System (CPC-Dateien
+beginnen mit „MV - SNA“, „MV - CPC“ oder „EXTENDED“).
 
 Läuft der Kassettenmotor, rechnet die Emulation so schnell sie kann, ohne
 Ton, und zeichnet nur jedes 16. Bild; unten steht „LOADING“. Findet sich
