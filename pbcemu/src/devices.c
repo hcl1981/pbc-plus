@@ -16,6 +16,8 @@
 #define PBC_APP_C64 0
 #define PBC_APP_MSX 0
 #define PBC_APP_A26 0
+#define PBC_APP_ZX  0
+#define PBC_APP_CPC 0
 #endif
 
 /* Same as the emulators map them (their input.c). */
@@ -46,6 +48,12 @@ static const control_t c_msx[] = {
 static const control_t c_a26[] = {
     { "Joystick", "Joystick" }, { "Button", "B or A" }, { "RESET", "Center + B" },
     { "SELECT", "Center + A" }, { NULL } };
+static const control_t c_zx[] = {
+    { "Joystick", "Joystick" }, { "Fire", "B" }, { "SPACE", "A" }, { "ENTER", "Center + B" },
+    { "Menu", "Center + A" }, { NULL } };
+static const control_t c_cpc[] = {
+    { "Joystick", "Joystick" }, { "Fire", "B" }, { "SPACE", "A" }, { "RETURN", "Center + B" },
+    { "Menu", "Center + A" }, { NULL } };
 static const control_t c_none[] = { { NULL } };
 
 /* Display modes, in the order the emulators number them (their video.c);
@@ -60,6 +68,8 @@ static const char *const m_gg[]  = { "Scale 1.5x", "Original", NULL };
 static const char *const m_gbc[] = { "Scale 1.5x", "Original", NULL };
 static const char *const m_msx[] = { "Fit width", "Crop 1:1", NULL };
 static const char *const m_a26[] = { "Scale 1.5x", NULL };
+static const char *const m_zx[]  = { "Fit width", "Crop 1:1", NULL };
+static const char *const m_cpc[] = { "Fit width", "Crop 1:1", NULL };
 
 /* The list itself is in common/pbc_devices.h: the emulators' loading
  * screen takes name, colour and icon from it by the same index. */
@@ -71,6 +81,7 @@ const int device_count = sizeof devices / sizeof devices[0];
 static const char *const system_files[] = {
     "kernal.rom", "kernal.bin", "basic.rom", "basic.bin", "chargen.rom", "chargen.bin",
     "1541.rom", "1541.bin", "dos1541.rom",                          /* C64 */
+    "msx2.rom", "msx2ext.rom", "disk.rom",                          /* MSX2 */
     NULL };
 
 bool device_has_ext(const device_t *d, const char *filename)
@@ -96,7 +107,8 @@ uint32_t app_offset(int app)
     static const uint32_t offsets[APP_COUNT] = {
         [APP_MD] = PBC_APP_MD, [APP_SMS] = PBC_APP_SMS, [APP_NES] = PBC_APP_NES,
         [APP_PCE] = PBC_APP_PCE, [APP_GBC] = PBC_APP_GBC, [APP_C64] = PBC_APP_C64,
-        [APP_MSX] = PBC_APP_MSX, [APP_A26] = PBC_APP_A26,
+        [APP_MSX] = PBC_APP_MSX, [APP_A26] = PBC_APP_A26, [APP_ZX] = PBC_APP_ZX,
+        [APP_CPC] = PBC_APP_CPC,
     };
     return app >= 0 && app < APP_COUNT ? offsets[app] : 0;
 }
@@ -104,7 +116,7 @@ uint32_t app_offset(int app)
 bool device_link(const device_t *d)
 {
     switch (d->app) {
-    case APP_NES: case APP_PCE: case APP_C64: case APP_MSX: case APP_A26:
+    case APP_NES: case APP_PCE: case APP_C64: case APP_MSX: case APP_A26: case APP_MD:
         return true;
     case APP_SMS:
         return d->controls == c_sms || d->controls == c_sg;    /* not the Game Gear */

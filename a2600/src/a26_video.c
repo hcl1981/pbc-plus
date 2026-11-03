@@ -11,8 +11,8 @@
 
 static uint16_t pal565[128];            /* the TIA colours */
 
-#define WIN_Y0 26                       /* first line shown */
 #define WIN_H  240
+static int win_y0 = 26;                 /* first line shown: NTSC 26, PAL 42 */
 
 /* ---- ring of finished lines: core 0 -> core 1 ---------------------------------
  *
@@ -33,19 +33,31 @@ static bool lines_this_frame;
 
 static volatile bool core1_running, pause_req, pause_ack;
 
-void a26_video_init(unsigned mode)
+static void make_pal565(void)
 {
-    (void)mode;                         /* one mode: 160 -> 240 */
-    tia_make_palette();
     for (int i = 0; i < 128; i++) {
         uint32_t c = tia_palette[i];
         pal565[i] = PBC_RGB((c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff);
     }
 }
 
+void a26_video_init(unsigned mode)
+{
+    (void)mode;                         /* one mode: 160 -> 240 */
+    tia_make_palette(false);
+    make_pal565();
+}
+
+void a26_video_set_pal(bool pal)
+{
+    tia_make_palette(pal);
+    make_pal565();
+    win_y0 = pal ? 42 : 26;
+}
+
 void __not_in_flash_func(a26_video_line)(int y, const uint8_t *px, bool blank)
 {
-    y -= WIN_Y0;
+    y -= win_y0;
     if (y < 0 || y >= frame_h || !core1_running || pause_req)
         return;
     while (ring_head - ring_tail >= RING_N)

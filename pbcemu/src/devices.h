@@ -7,7 +7,7 @@
 #include "assets.h"
 
 /* Emulator firmwares packed behind the launcher (pbcemu/build.sh). */
-enum { APP_MD, APP_SMS, APP_NES, APP_PCE, APP_GBC, APP_C64, APP_MSX, APP_A26, APP_COUNT, APP_NONE = APP_COUNT };
+enum { APP_MD, APP_SMS, APP_NES, APP_PCE, APP_GBC, APP_C64, APP_MSX, APP_A26, APP_ZX, APP_CPC, APP_COUNT, APP_NONE = APP_COUNT };
 
 /* One line of the controls card: the console's button, the PicoBoy's. */
 typedef struct { const char *button, *key; } control_t;

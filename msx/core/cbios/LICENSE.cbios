@@ -1,4 +1,4 @@
-C-BIOS 0.29a, http://cbios.sourceforge.net/ -- roms/cbios_main_msx2.rom and roms/cbios_sub.rom
+C-BIOS 0.29a, http://cbios.sourceforge.net/ -- roms/cbios_main_msx1.rom, cbios_logo_msx1.rom, cbios_main_msx2.rom, cbios_logo_msx2.rom, cbios_sub.rom and cbios_disk.rom (C-DISK, src/disk.asm)
 
 License
 -------

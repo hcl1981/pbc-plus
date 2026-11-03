@@ -523,6 +523,88 @@ def atari2600():
     return p.done()
 
 
+def zx_spectrum():
+    p = Pic()
+    p.shadow(92, 112, 84, 9)
+    black, panel, key = '#1b1b1f', '#26262c', '#c9c9cf'
+    x, y, w, h, dep = 14, 86, 140, 10, 50
+    # a flat wedge: the top face slopes up to the back
+    p.poly([(x + 6, y - dep), (x + w - 6, y - dep), (x + w, y), (x, y)], panel)
+    p.poly([(x + 6, y - dep), (x + w - 6, y - dep), (x + w - 5.6, y - dep + 2.2), (x + 6.4, y - dep + 2.2)],
+           shade(panel, 0.18))
+    # 4 rows of 10 small rubber keys, narrowing to the back
+    rows, cols = 4, 10
+    for r in range(rows):
+        f0, f1 = r / rows, (r + 0.62) / rows
+        ya, yb = y - dep + 6 + f0 * (dep - 14), y - dep + 6 + f1 * (dep - 14)
+        ins_a, ins_b = 12 - f0 * 5, 12 - f1 * 5
+        xa0, xa1 = x + ins_a, x + w - ins_a
+        xb0, xb1 = x + ins_b, x + w - ins_b
+        for k in range(cols):
+            m = 0.18
+            a0 = xa0 + (xa1 - xa0) * (k + m) / cols
+            a1 = xa0 + (xa1 - xa0) * (k + 1 - m) / cols
+            b0 = xb0 + (xb1 - xb0) * (k + m) / cols
+            b1 = xb0 + (xb1 - xb0) * (k + 1 - m) / cols
+            p.poly([(a0, ya), (a1, ya), (b1, yb), (b0, yb)], key)
+            p.line([(a0 + 0.3, ya + 0.4), (a1 - 0.3, ya + 0.4)], shade(key, 0.35), 0.5)
+    # the four diagonal stripes in the lower right corner
+    for i, c in enumerate(['#e0302b', '#f2c12e', '#3fae3c', '#29b6d8']):
+        o = i * 3.2
+        p.poly([(x + w - 30 + o, y), (x + w - 26.8 + o, y), (x + w - 14.8 + o, y - 12), (x + w - 18 + o, y - 12)], c)
+    # front edge
+    p.rrect(x, y, x + w, y + h, 2, black)
+    p.rrect(x, y, x + w, y + 1.6, 1, shade(black, 0.25))
+    # joystick
+    cx, cy = 172, 104
+    p.rrect(cx - 13, cy - 8, cx + 13, cy + 8, 3, '#1c1c20')
+    p.rrect(cx - 13, cy - 10, cx + 13, cy + 5, 3, '#2a2a30')
+    p.button(cx - 7, cy - 4, 2.6, '#d83a2e')
+    p.ellipse(cx - 4, cy - 4, cx + 6, cy, '#141417')
+    p.line([(cx + 1, cy - 2), (cx + 1, cy - 24)], '#141417', 3)
+    p.ellipse(cx - 3.5, cy - 29, cx + 5.5, cy - 20, '#1b1b1e')
+    p.ellipse(cx - 1.5, cy - 27.5, cx + 1.5, cy - 24.5, '#55555c')
+    return p.done()
+
+
+def amstrad_cpc():
+    p = Pic()
+    p.shadow(96, 112, 90, 9)
+    body, panel, key = '#2c2c31', '#1d1d21', '#3a3a40'
+    x, y, w, h, dep = 6, 88, 168, 12, 46
+    p.poly([(x + 5, y - dep), (x + w - 5, y - dep), (x + w, y), (x, y)], panel)
+    p.poly([(x + 5, y - dep), (x + w - 5, y - dep), (x + w - 4.6, y - dep + 2), (x + 5.4, y - dep + 2)],
+           shade(panel, 0.2))
+    # keyboard: 5 rows of dark keys, a red row at the top, green and blue keys to the right
+    rows, cols = 5, 14
+    kw = 112
+    for r in range(rows):
+        f0, f1 = r / rows, (r + 0.68) / rows
+        ya, yb = y - dep + 6 + f0 * (dep - 12), y - dep + 6 + f1 * (dep - 12)
+        ins_a, ins_b = 10 - f0 * 4, 10 - f1 * 4
+        xa0, xa1 = x + ins_a, x + ins_a + kw
+        xb0, xb1 = x + ins_b, x + ins_b + kw + 2
+        for k in range(cols):
+            m = 0.14
+            a0 = xa0 + (xa1 - xa0) * (k + m) / cols
+            a1 = xa0 + (xa1 - xa0) * (k + 1 - m) / cols
+            b0 = xb0 + (xb1 - xb0) * (k + m) / cols
+            b1 = xb0 + (xb1 - xb0) * (k + 1 - m) / cols
+            col = '#c8372d' if r == 0 and k in (0, 13) else key
+            p.poly([(a0, ya), (a1, ya), (b1, yb), (b0, yb)], col)
+        # the keypad on the right
+        for k in range(3):
+            c = '#3f9e4a' if r < 4 else '#3b6fc4'
+            a0 = x + w - 44 + k * 8.5 + f0 * 2
+            p.poly([(a0, ya), (a0 + 6.5, ya), (a0 + 6.8 + 0.6, yb), (a0 + 0.3, yb)], c)
+    # the 3-inch drive slot at the right, above the keypad
+    p.rrect(x + w - 46, y - dep + 1.5, x + w - 14, y - dep + 5, 1.2, '#111114')
+    p.rrect(x + w - 20, y - dep + 2, x + w - 15, y - dep + 4.5, 1, '#d8d8dc')
+    p.rrect(x, y, x + w, y + h, 2, body)
+    p.rrect(x, y, x + w, y + 1.6, 1, shade(body, 0.25))
+    return p.done()
+
+
 DEVICES = {
     'nes': nes,
     'sms': master_system,
@@ -534,6 +616,8 @@ DEVICES = {
     'msx': msx2,
     'sg': sg1000,
     'a26': atari2600,
+    'zx': zx_spectrum,
+    'cpc': amstrad_cpc,
     'usb': usb_drive,
 }
 

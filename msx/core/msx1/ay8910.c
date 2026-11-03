@@ -9,6 +9,7 @@
  * average of the chip's states over its duration, which keeps high tones
  * from aliasing.
  */
+#include <stdbool.h>
 #include <string.h>
 #include "ay8910.h"
 
@@ -137,17 +138,104 @@ static inline int level(const ay8910_t *ay)
     return sum;
 }
 
+/* Steps where nothing changes the level are counted at once -- the same
+ * result as stepping one by one, at a fraction of the work. A counter
+ * whose output is not heard right now (tone off in the mixer, volume 0,
+ * noise used by no channel) is wound on by arithmetic, flips included,
+ * so its phase is right when it is heard again; the others and the
+ * envelope set how far the level stays as it is. */
+static inline int tone_period(const ay8910_t *ay, int c)
+{
+    int p = ay->reg[c * 2] | (ay->reg[c * 2 + 1] << 8);
+    return p ? p : 1;
+}
+
+static inline int noise_period(const ay8910_t *ay)
+{
+    return ay->reg[6] ? ay->reg[6] * 2 : 2;
+}
+
+/* n steps of the tone and noise counters */
+static inline void wind(ay8910_t *ay, int n)
+{
+    for (int c = 0; c < 3; c++) {
+        int p = tone_period(ay, c), cnt = ay->tone_cnt[c];
+        int first = p - cnt < 1 ? 1 : p - cnt;          /* steps to the next flip */
+        if (n < first) {
+            ay->tone_cnt[c] = (uint16_t)(cnt + n);
+        } else {
+            int rest = n - first;
+            ay->tone_out[c] ^= (uint8_t)((1 + rest / p) & 1);
+            ay->tone_cnt[c] = (uint16_t)(rest % p);
+        }
+    }
+    int q = noise_period(ay), cnt = ay->noise_cnt;
+    int first = q - cnt < 1 ? 1 : q - cnt;
+    if (n < first) {
+        ay->noise_cnt = (uint8_t)(cnt + n);
+    } else {
+        int rest = n - first;
+        for (int e = 1 + rest / q; e > 0; e--) {
+            uint32_t bit = (ay->lfsr ^ (ay->lfsr >> 3)) & 1;
+            ay->lfsr = (ay->lfsr >> 1) | (bit << 16);
+        }
+        ay->noise_out = ay->lfsr & 1;
+        ay->noise_cnt = (uint8_t)(rest % q);
+    }
+}
+
+/* steps until a heard counter or the envelope runs out (>= 1) */
+static inline int next_event(const ay8910_t *ay, int limit)
+{
+    int d = limit, mix = ay->reg[7];
+    bool noise_heard = false;
+    for (int c = 0; c < 3; c++) {
+        int v = ay->reg[8 + c];
+        if (!(v & 0x1f))
+            continue;                   /* volume 0: not heard */
+        if (!((mix >> (c + 3)) & 1))
+            noise_heard = true;
+        if ((mix >> c) & 1)
+            continue;                   /* tone off */
+        int t = tone_period(ay, c) - ay->tone_cnt[c];
+        if (t < d) d = t;
+    }
+    if (noise_heard) {
+        int t = noise_period(ay) - ay->noise_cnt;
+        if (t < d) d = t;
+    }
+    if (!ay->env_hold) {
+        int ep = ay->reg[11] | (ay->reg[12] << 8);
+        int t = (ep ? ep : 1) * 2 - (int)ay->env_cnt;
+        if (t < d) d = t;
+    }
+    return d < 1 ? 1 : d;
+}
+
 AY_RAM void ay_render(ay8910_t *ay, int32_t *out, int n)
 {
     for (int s = 0; s < n; s++) {
         ay->frac += ay->step;
         int k = (int)(ay->frac >> 16);
         ay->frac &= 0xffff;
+        if (!k) {
+            out[s] += level(ay);
+            continue;
+        }
         int acc = 0;
-        for (int i = 0; i < k; i++) {
+        for (int left = k; left > 0; ) {
+            int d = next_event(ay, left);
+            int quiet = d - 1;          /* steps without a heard change */
+            if (quiet) {
+                acc += level(ay) * quiet;
+                wind(ay, quiet);
+                if (!ay->env_hold)
+                    ay->env_cnt += (uint32_t)quiet;
+            }
             tick(ay);
             acc += level(ay);
+            left -= d;
         }
-        out[s] += k ? acc / k : level(ay);
+        out[s] += acc / k;
     }
 }

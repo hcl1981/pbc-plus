@@ -44,6 +44,7 @@
 #if PBC_MULTI
 #include "pbc_loading.h"
 #endif
+#include "pbc_link.h"
 #include "rom_store.h"
 #include "ssf2.h"
 #include "video.h"
@@ -418,9 +419,13 @@ static void __attribute__((noreturn)) emulation_loop(void)
     gwenesis_vdp_render_config();
 
     for (;;) {
-        /* ---- input ---- */
+        /* ---- input ----
+         * Link play: both devices exchange their pads (active high on the
+         * link), as late as possible: the partner waits for this. */
         genesis_input_t in = input_poll_genesis();
-        button_state[0] = in.pad;
+        uint16_t p1, p2;
+        pbc_link_frame((uint8_t)~in.pad, M68K_RAM, 0x10000, &p1, &p2);
+        button_state[0] = (uint8_t)~p1;
 #if TEST_SONIC2_ZONE >= 0
         /* Test build for Sonic 2: press START through title and menu until
          * a level runs (Game_Mode $FFF600 is $0C, or $8C while loading). */
@@ -444,7 +449,7 @@ static void __attribute__((noreturn)) emulation_loop(void)
                 button_state[0] &= (uint8_t)~0x80;
         }
 #endif
-        button_state[1] = 0xFF;
+        button_state[1] = (uint8_t)~p2;     /* 0xFF without a partner */
         button_state[2] = 0xFF;
         uint64_t frame_start = time_us_64();
 
@@ -575,7 +580,9 @@ static void __attribute__((noreturn)) emulation_loop(void)
         next_frame += period;
         now = time_us_64();
         stat_busy_us += now - frame_start;
-        if (now < next_frame) {
+        if (pbc_link_follows()) {
+            next_frame = now;               /* the partner's frames are the clock */
+        } else if (now < next_frame) {
             sleep_until(from_us_since_boot(next_frame));   /* WFE: saves battery */
         } else if (now > next_frame + 4 * period) {
             next_frame = now;               /* hopelessly behind: stop catching up */
@@ -584,7 +591,9 @@ static void __attribute__((noreturn)) emulation_loop(void)
         stat_emulated++;
         if (render)
             stat_drawn++;
-        if (show_stats && (now = time_us_64()) - stat_t0 >= 1000000) {
+        if (pbc_link_out_of_sync_news())
+            video_set_status("LINK OUT OF SYNC");
+        else if (show_stats && !pbc_link_out_of_sync() && (now = time_us_64()) - stat_t0 >= 1000000) {
             char s[48];
             uint32_t full = is_pal ? 50 : 60;
             uint64_t span = now - stat_t0;
@@ -747,6 +756,10 @@ int main(void)
     genesis_init();
     if (audio_enabled)
         ym_core1_init();
+    /* the ROM decides everything else (region from its header); sound and
+     * picture settings do not change the emulation */
+    pbc_link_start(pbc_link_hash(PBC_LINK_HASH_START ^ 16, rom_store_data(), rom_store_size()));
+    pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
     multicore_launch_core1(core1_main);
 
 #if PBC_MULTI

@@ -22,8 +22,10 @@ sagt, welche das ist und woher sie kommt. Die Kurzfassung steht als
 | `gbc` | GPL-3.0 | `gbc/LICENSE` | Peanut-GB (MIT) mit GBC-Erweiterung von tvecera → pico-peanutGB (PicoPlus-devel, GPL-3.0); minigb_apu, Flash/USB aus `picoboygb` (MIT) |
 | `nes` | GPL-3.0 | `nes/LICENSE` | QuickNES (Shay Green, LGPL-2.1+) → frank-nes (rh1tech); Flash-Laufwerk und USB-Stick aus `picoboygb` (MIT, `nes/LICENSE.picoboygb`) |
 | `megadrive` | AGPL-3.0 | `megadrive/LICENSE` | Gwenesis → frank-genesis (rh1tech); 68000 Musashi 4.10 (Karl Stenerud, MIT, `megadrive/core/cpus/musashi/`); Z80 redcode/Z80 (LGPL-3.0+); YM2612 und SN76489 eigener Code (GPL-3.0+); Flash-Laufwerk und USB-Stick aus `picoboygb` (MIT, `megadrive/LICENSE.picoboygb`) |
-| `msx` | GPL-3.0 | `msx/LICENSE` | eigener MSX1-Kern (TMS9918A, AY-3-8910, SCC); Z80 redcode/Z80 (LGPL-3.0+); System-ROM C-BIOS 0.29a (BSD-artig, `msx/core/cbios/LICENSE.cbios`); Flash/USB aus `picoboygb` (MIT) |
+| `msx` | GPL-3.0 | `msx/LICENSE` | eigener MSX1-Kern (TMS9918A, AY-3-8910, SCC); Z80 redcode/Z80 (LGPL-3.0+); eigener MSX2-Kern (V9938); System-ROMs C-BIOS 0.29a für MSX1/MSX2 mit C-DISK (BSD-artig, `msx/core/cbios/LICENSE.cbios`); Flash/USB aus `picoboygb` (MIT) |
 | `a2600` | GPL-3.0 | `a2600/LICENSE` | eigener Atari-2600-Kern (6507, TIA, RIOT); Flash/USB aus `picoboygb` (MIT) |
+| `cpc` | GPL-3.0 | `cpc/LICENSE` | eigener CPC-6128-Kern (Gate Array, CRTC, PPI, µPD765, Band, Snapshots); Z80 redcode/Z80 (LGPL-3.0+); AY und Bandlogik aus `zx`; die ROMs (OS, BASIC 1.1, AMSDOS) gehören Amstrad und Locomotive Software (`cpc/roms/LICENSE.roms`); Flash/USB aus `picoboygb` (MIT) |
+| `zx` | GPL-3.0 | `zx/LICENSE` | eigener ZX-Spectrum-Kern (ULA, 128K, Band, Snapshots); Z80 redcode/Z80 (LGPL-3.0+); AY aus `msx`; die ROMs des 48K/128K gehören Amstrad (`zx/roms/LICENSE.roms`); Flash/USB aus `picoboygb` (MIT) |
 | `i2collection` | MIT | `i2collection/LICENSE` | Eigenentwicklung |
 | `micropython` | MIT | Upstream | MicroPython, hier nur die Board-Portierung |
 
@@ -73,6 +75,10 @@ Aufräumen nicht entfernen.
 | NES-ROMs | fremdes Urheberrecht — liegen **nicht** bei |
 | Master-System-, Game-Gear-, SG-1000-, PC-Engine-, Game-Boy-Color-, MSX- und Atari-2600-ROMs | fremdes Urheberrecht — liegen **nicht** bei |
 | C64-Disk-Images | fremdes Urheberrecht — liegen **nicht** bei |
+| ZX-Spectrum-ROMs (`zx/roms/`) | **Amstrad** — liegen bei: Amstrad erlaubt die Weitergabe mit Emulatoren, solange die Copyright-Meldungen bleiben und niemand Geld dafür nimmt |
+| ZX-Spectrum-Spiele (`.tap` `.tzx` `.z80` `.sna`) | fremdes Urheberrecht — liegen **nicht** bei |
+| CPC-ROMs (`cpc/roms/`) | **Amstrad/Locomotive** — liegen bei: Amstrad erlaubt die Weitergabe mit Emulatoren (Copyright-Meldungen unverändert, kostenlos); für Locomotives Anteil bräuchte es laut Amstrad auch deren Zustimmung |
+| CPC-Spiele (`.dsk` `.cdt` `.sna`) | fremdes Urheberrecht — liegen **nicht** bei |
 
 `.gitignore` schließt WADs und ROMs aus, damit eigene Kopien nicht
 versehentlich im Repo landen. Die beiliegende `freedoom1.wad` ist davon

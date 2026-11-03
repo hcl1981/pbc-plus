@@ -1,0 +1,19 @@
+Amstrad CPC 6128 ROMs: cpc6128.rom (OS and BASIC 1.1), amsdos.rom
+
+These are the original ROMs of the Amstrad CPC 6128, copyright Amstrad
+Consumer Electronics plc and Locomotive Software Ltd (1985); AMSDOS also
+carries work of Digital Research. They are not under this repository's
+licence.
+
+Amstrad have kindly given their permission for the redistribution of their
+copyrighted material but retain that copyright.
+
+The permission (Cliff Lawson, Amstrad plc, comp.sys.sinclair, 1999) allows
+emulators to include the ROM images as long as the copyright messages are
+not altered, and nobody may charge for the ROM code. For the parts that
+are also Locomotive's, Cliff Lawson said their permission would be needed
+too, though he did not think they would object. The emulator and these
+ROMs are given away free of charge.
+
+The files are the ones the Caprice32 emulator ships (rom/cpc6128.rom,
+rom/amsdos.rom).

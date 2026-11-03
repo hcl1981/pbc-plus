@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
 #include "hardware/clocks.h"
@@ -25,6 +26,8 @@
 #include "hardware/vreg.h"
 #include "hardware/spi.h"
 #include "hardware/watchdog.h"
+#include "hardware/flash.h"
+#include "hardware/sync.h"
 #include "hardware/structs/qmi.h"
 
 #include "ff.h"
@@ -43,6 +46,7 @@
 #include "msx_video.h"
 #include "msx_input.h"
 #include "msx1.h"
+#include "v9938.h"
 
 #if !PBC_MULTI
 #error "PBC MSX exists only as part of the combined firmware (pbcemu/build.sh)"
@@ -59,8 +63,14 @@
 #define FLASH_MAX_FREQ_MHZ 88
 #endif
 
-/* C-BIOS for MSX1, built in (core/cbios/cbios.S) */
-extern const uint8_t cbios_main[], cbios_logo[];
+/* C-BIOS for MSX1 and MSX2 and its disk ROM C-DISK, built in (core/cbios/cbios.S),
+ * as 8 KB pages: one page is shared by the main ROMs and the sub-ROM */
+extern const uint8_t cbios_shared[], cbios_main01[], cbios_main3[], cbios_logo[];
+extern const uint8_t cbios2_main01[], cbios2_main3[], cbios2_logo[], cbios2_sub0[];
+extern const uint8_t cbios_disk[], cbios_disk_tail[];
+static const uint8_t *const cbios1_pages[4] = { cbios_main01, cbios_main01 + 0x2000, cbios_shared, cbios_main3 };
+static const uint8_t *const cbios2_pages[4] = { cbios2_main01, cbios2_main01 + 0x2000, cbios_shared, cbios2_main3 };
+static const uint8_t *const cbios2_sub_pages[2] = { cbios2_sub0, cbios_shared };
 
 static FATFS g_fs;
 
@@ -121,6 +131,103 @@ static void overclock(void)
 /* ---- the game being played ------------------------------------------------- */
 
 static char game[ROM_NAME_MAX];
+
+/* ---- MSX2: system ROMs ----------------------------------------------------------
+ *
+ * Built in is C-BIOS for MSX2 with C-DISK: cartridges run, disks only when
+ * they boot by themselves (no BASIC, no MSX-DOS). If the drive's root holds
+ * msx2.rom (main ROM, 32 KB), msx2ext.rom (sub-ROM, 16 KB) and, for disks,
+ * disk.rom (16 KB), that set is used instead -- whole, never mixed with
+ * C-BIOS. The disk ROM is patched (traps), so it goes into flash behind the
+ * cartridge room of the ROM region, as do the drive's ROMs; written only
+ * when they differ from what is there (another emulator's game may have
+ * covered them). */
+#define SYS_OFF   (ROM_FLASH_OFFSET + ROM_STORE_MAX)
+#define SYS_MAIN  0
+#define SYS_SUB   0x8000
+#define SYS_DISK  0xc000
+#define SYS_ROM(o) ((const uint8_t *)(XIP_BASE + SYS_OFF + (o)))
+
+static bool ends_ci(const char *s, const char *ext)
+{
+    size_t n = strlen(s), m = strlen(ext);
+    return n >= m && strcasecmp(s + n - m, ext) == 0;
+}
+
+/* `size` bytes from the drive's file `name` (or from `rom` if name is NULL)
+ * to flash at `off`, patched as a disk ROM if `disk`; false if the file is
+ * missing or of another size. buf: room for size bytes. */
+static bool sys_store(const char *name, const uint8_t *rom, uint32_t size, uint32_t off,
+                      bool disk, uint8_t *buf)
+{
+    if (name) {
+        static FIL f;                   /* a FIL carries a 4 KB sector buffer, the stack is 4 KB */
+        UINT n;
+        if (f_open(&f, name, FA_READ) != FR_OK)
+            return false;
+        bool ok = f_size(&f) == size && f_read(&f, buf, size, &n) == FR_OK && n == size;
+        f_close(&f);
+        if (!ok)
+            return false;
+    } else if (rom != buf) {
+        memcpy(buf, rom, size);
+    }
+    if (disk)
+        msx2_patch_disk_rom(buf);
+    for (uint32_t done = 0; done < size; done += FLASH_SECTOR_SIZE) {
+        if (memcmp(buf + done, SYS_ROM(off + done), FLASH_SECTOR_SIZE) != 0) {
+            uint32_t irq = save_and_disable_interrupts();
+            flash_range_erase(SYS_OFF + off + done, FLASH_SECTOR_SIZE);
+            flash_range_program(SYS_OFF + off + done, buf + done, FLASH_SECTOR_SIZE);
+            restore_interrupts(irq);
+        }
+    }
+    return true;
+}
+
+/* C-DISK has no MSX-DOS: a boot sector that opens files through the BDOS
+ * (LD C,fn / CALL F37Dh) right at its start, like the standard MSX-DOS
+ * one, cannot boot, nor can a disk without boot code. Only the start of
+ * the code is looked at: a game's own boot code may leave parts of a
+ * standard one behind it, never run. C-DISK's BDOS knows 02h 09h 0Dh 19h
+ * 1Ah 2Eh 2Fh (console, DTA, absolute sectors). */
+static bool boot_needs_dos(const uint8_t *s)
+{
+    if ((s[0] != 0xeb && s[0] != 0xe9) || (s[0x1e] == 0 && s[0x1f] == 0))
+        return true;
+    for (int i = 0x1e; i + 5 <= 0x1e + 48; i++) {
+        if (s[i] == 0x0e && s[i + 2] == 0xcd && s[i + 3] == 0x7d && s[i + 4] == 0xf3) {
+            switch (s[i + 1]) {
+            case 0x02: case 0x09: case 0x0d: case 0x19: case 0x1a: case 0x2e: case 0x2f:
+                break;
+            default:
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/* ---- MSX2: the disk in drive A ---------------------------------------------------
+ *
+ * Sectors are read from and written to the .dsk file on the USB drive
+ * itself; a write goes to flash at once (core 1 waits meanwhile). */
+static FIL disk_file;
+
+static bool disk_io(bool write, uint32_t sector, uint8_t *buf)
+{
+    UINT n;
+    if (f_lseek(&disk_file, (FSIZE_t)sector * 512) != FR_OK)
+        return false;
+    if (write)
+        return f_write(&disk_file, buf, 512, &n) == FR_OK && n == 512 && f_sync(&disk_file) == FR_OK;
+    return f_read(&disk_file, buf, 512, &n) == FR_OK && n == 512;
+}
+
+static uint16_t rgb565(int r, int g, int b)
+{
+    return PBC_RGB(r, g, b);
+}
 
 /* ---- the in-game menu (Center + A) -----------------------------------------------
  *
@@ -190,7 +297,7 @@ static void __attribute__((noreturn)) emulation_loop(bool show_stats, const char
 
     for (;;) {
         uint16_t p1, p2;
-        pbc_link_frame(msx_input_word(), msx1_ram(), 0x10000, &p1, &p2);
+        pbc_link_frame(msx_input_word(), msx1_ram(), msx_is_msx2() ? 0x20000 : 0x10000, &p1, &p2);
         bool menu_now = ((p1 | p2) & MSX_WORD_MENU) != 0;
         if (menu_now && pbc_link_active())
             menu_mine = ((p1 & MSX_WORD_MENU) != 0) == (pbc_link_player() == 1);
@@ -309,11 +416,28 @@ static void __attribute__((noreturn)) fatal(const char *what, const char *detail
 }
 
 /* All that makes the game start differently on two devices. */
-static uint32_t link_config(void)
+static uint32_t link_config(bool msx2, bool disk, const uint8_t *const *main_rom, const uint8_t *const *sub_rom)
 {
     uint32_t h = PBC_LINK_HASH_START ^ 7;
-    h = pbc_link_hash(h, rom_store_data(), rom_store_size());
-    h = pbc_link_hash(h, cbios_main, 0x8000);
+    if (disk) {
+        static uint8_t buf[512];
+        uint32_t n = (uint32_t)(f_size(&disk_file) / 512);
+        for (uint32_t s = 0; s < n; s++)
+            if (disk_io(false, s, buf))
+                h = pbc_link_hash(h, buf, sizeof buf);
+    } else {
+        h = pbc_link_hash(h, rom_store_data(), rom_store_size());
+    }
+    if (msx2) {
+        for (int p = 0; p < 4; p++)
+            h = pbc_link_hash(h, main_rom[p], 0x2000);
+        for (int p = 0; p < 2; p++)
+            h = pbc_link_hash(h, sub_rom[p], 0x2000);
+        if (disk)
+            h = pbc_link_hash(h, SYS_ROM(SYS_DISK), 0x4000);
+    } else
+        for (int p = 0; p < 4; p++)
+            h = pbc_link_hash(h, cbios1_pages[p], 0x2000);
     return h;
 }
 
@@ -329,31 +453,84 @@ int main(void)
         reboot_to_menu();
     strncpy(game, launch->game, sizeof game - 1);
 
-    if (!rom_store_matches(game)) {
-        uint8_t *scratch = malloc(0x8000);
-        if (!scratch)
-            fatal("Out of memory", "for loading", NULL);
+    /* .mx2: an MSX2 cartridge, .dsk: an MSX2 disk (C-BIOS for MSX2 or the
+     * drive's system ROMs). Everything else runs on C-BIOS for MSX1. */
+    bool disk = ends_ci(game, ".dsk");
+    bool msx2 = disk || ends_ci(game, ".mx2");
+    uint8_t *scratch = malloc(0x8000);
+    if (!scratch)
+        fatal("Out of memory", "for loading", NULL);
+    if (!disk && !rom_store_matches(game)) {
         menu_progress_begin(game);
         const char *err = rom_store_program(game, scratch, menu_progress);
-        free(scratch);
         if (err)
             fatal(err, game, NULL);
     }
-    f_unmount("");
+    static const uint8_t *const own_pages[4] = MSX_PAGES(SYS_ROM(SYS_MAIN));
+    static const uint8_t *const own_sub_pages[2] = { SYS_ROM(SYS_SUB), SYS_ROM(SYS_SUB + 0x2000) };
+    const uint8_t *const *main_rom = cbios1_pages, *const *sub_rom = NULL;
+    const uint8_t *logo_rom = NULL, *disk_rom = NULL;
+    bool own = false;                   /* the drive's system ROMs */
+    if (msx2) {
+        own = sys_store("msx2.rom", NULL, 0x8000, SYS_MAIN, false, scratch) &&
+              sys_store("msx2ext.rom", NULL, 0x4000, SYS_SUB, false, scratch) &&
+              (!disk || sys_store("disk.rom", NULL, 0x4000, SYS_DISK, true, scratch));
+        if (own) {
+            main_rom = own_pages;
+            sub_rom = own_sub_pages;
+        } else {
+            main_rom = cbios2_pages;
+            logo_rom = cbios2_logo;
+            sub_rom = cbios2_sub_pages;
+            if (disk) {                 /* C-DISK without its FFh filling (cbios.S) */
+                memset(scratch, 0xff, 0x4000);
+                memcpy(scratch, cbios_disk, 0x500);
+                memcpy(scratch + 0x3f00, cbios_disk_tail, 0x100);
+                sys_store(NULL, scratch, 0x4000, SYS_DISK, true, scratch);
+            }
+        }
+        if (disk)
+            disk_rom = SYS_ROM(SYS_DISK);
+    }
+    free(scratch);
+    if (disk) {
+        /* the drive stays mounted: the game reads and writes its disk */
+        if (f_open(&disk_file, game, FA_READ | FA_WRITE) != FR_OK &&
+            f_open(&disk_file, game, FA_READ) != FR_OK)
+            fatal("Cannot open", game, NULL);
+        static uint8_t boot[512];
+        if (disk_io(false, 0, boot) && (memcmp(boot, "MV - CPC", 8) == 0 || memcmp(boot, "EXTENDED", 8) == 0))
+            fatal("Not an MSX disk:", "this is an Amstrad CPC disk", NULL);
+        if (!own && (!disk_io(false, 0, boot) || boot_needs_dos(boot)))
+            fatal("Disk needs MSX-DOS/BASIC:", "copy msx2.rom msx2ext.rom", "disk.rom to the drive");
+    } else {
+        f_unmount("");
+    }
 
     overclock();
     audio_pwm_init();
     msx_video_init(pbc_launch_video());
 
-    msx1_init(cbios_main, cbios_logo);
-    int mapper = msx1_insert(rom_store_data(), rom_store_size());
-    if (mapper < 0)
-        fatal("Not an MSX cartridge", game, NULL);
+    int mapper = 0;
+    if (msx2) {
+        v99_rgb565 = rgb565;
+        msx2_init(main_rom, logo_rom, sub_rom, disk_rom);
+        msx_line565 = msx_video_line565;
+    } else {
+        msx1_init(cbios1_pages, cbios_logo);
+    }
+    if (disk) {
+        msx2_insert_disk(disk_io, (uint32_t)(f_size(&disk_file) / 512));
+    } else {
+        mapper = msx1_insert(rom_store_data(), rom_store_size());
+        if (mapper < 0)
+            fatal("Not an MSX cartridge", game, NULL);
+    }
     msx1_reset();
 
-    pbc_link_start(link_config());
+    pbc_link_start(link_config(msx2, disk, main_rom, sub_rom));
     pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
     multicore_launch_core1(msx_video_core1_main);
     pbc_fade_in(false);                 /* over the first frames */
-    emulation_loop(pbc_launch_stats(), mapper ? msx1_mapper_name(mapper) : NULL);
+    emulation_loop(pbc_launch_stats(), mapper > 0 ? msx1_mapper_name(mapper) : msx2 ? (own ? "MSX2" : "MSX2 C-BIOS") : NULL);
 }

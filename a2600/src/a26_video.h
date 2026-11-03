@@ -1,11 +1,10 @@
 /* a26_video.h -- Atari 2600 lines -> ST7789, sent by core 1.
  *
  * No frame buffer: the core hands over each line as 160 TIA colour
- * indices; core 0 turns it into 240 panel words at once (each pair of
- * pixels becomes three, the middle one their average) and puts it into a
- * small ring; core 1 sends the lines from there as they come. Of a frame,
- * lines 26..265 after VSYNC are shown (240 of the NTSC picture's 262;
- * the games put their picture between about 37 and 230).
+ * indices into a ring; core 1 turns each into 240 panel words (each pair
+ * of pixels becomes three, the middle one their average) and sends it. Of
+ * a frame, 240 lines are shown: NTSC lines 26..265 of 262 (the games put
+ * their picture between about 37 and 230), PAL lines 42..281 of 312.
  */
 #ifndef PBC_A26_VIDEO_H
 #define PBC_A26_VIDEO_H
@@ -15,6 +14,9 @@
 
 /* Core 0, before core 1 starts. */
 void a26_video_init(unsigned mode);
+
+/* Core 0: PAL colours and window (true) or NTSC (false). */
+void a26_video_set_pal(bool pal);
 
 /* Core 0: a finished line (a2600_frame's callback). */
 void a26_video_line(int y, const uint8_t *pixels, bool blank);

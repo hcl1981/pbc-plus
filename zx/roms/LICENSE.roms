@@ -1,0 +1,16 @@
+ZX Spectrum ROMs: 48.rom, 128-0.rom, 128-1.rom
+
+These are the original ROMs of the ZX Spectrum 48K and 128K, copyright
+Sinclair Research Ltd (1982, 1986), now owned by Amstrad. They are not
+under this repository's licence.
+
+Amstrad have kindly given their permission for the redistribution of their
+copyrighted material but retain that copyright.
+
+The permission (Cliff Lawson, Amstrad plc, comp.sys.sinclair, 1999) allows
+emulators to include the ROM images as long as the copyright messages are
+not altered, and nobody may charge for the ROM code. The emulator and these
+ROMs are given away free of charge.
+
+The files come from the Debian package spectrum-roms (20081224), which
+collected them from Philip Kendall's site for the Fuse emulator.

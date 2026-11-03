@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "pico/stdlib.h"
+#include "hardware/structs/watchdog.h"
 #include "gfx.h"
 #include "display.h"
 #include "pbc_launch.h"
@@ -25,6 +26,30 @@
 #define BAR_H      8
 
 extern uint16_t *gfx_fb;                /* gfx.c, built with GFX_STRIP */
+
+/* The fonts are the launcher's (pbc_launch.h, watchdog scratch[2]): each
+ * emulator saves some 25 KB that way. Without them -- not expected, the
+ * launcher always starts the emulators -- the text is left out. */
+static const pbc_glyph_t no_glyphs[256 - 32];
+static const pbc_font_t no_font = { 1, 1, no_glyphs, NULL };
+
+static const pbc_font_t *font_of(int i)
+{
+    static const pbc_font_t *f[3];
+    if (!f[0]) {
+        const pbc_shared_t *s = (const pbc_shared_t *)watchdog_hw->scratch[2];
+        uint32_t a = (uint32_t)s;
+        bool ok = !(a & 3) && a >= XIP_BASE && a + sizeof *s <= XIP_BASE + PBC_LAUNCHER_SIZE &&
+                  s->magic == PBC_SHARED_MAGIC;
+        f[0] = ok ? s->font_head : &no_font;
+        f[1] = ok ? s->font_body : &no_font;
+        f[2] = ok ? s->font_small : &no_font;
+    }
+    return f[i];
+}
+#define font_head  (*font_of(0))
+#define font_body  (*font_of(1))
+#define font_small (*font_of(2))
 
 /* Only the icons of this emulator's own devices (PBC_APP, set by
  * pbc_multi.cmake): the others would cost every emulator some 15 KB. */

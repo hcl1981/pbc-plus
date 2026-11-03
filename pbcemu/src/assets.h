@@ -7,7 +7,7 @@
 typedef struct { uint32_t off; uint8_t w, h; int8_t x, y; uint8_t adv; } pbc_glyph_t;
 /* glyphs[c - 32] for code page 437 characters 32..255; 4 bit coverage,
  * two pixels per byte (high nibble first), rows padded to whole bytes. */
-typedef struct { uint8_t height, ascent; const pbc_glyph_t *glyphs; const uint8_t *bits; } pbc_font_t;
+typedef struct pbc_font_s { uint8_t height, ascent; const pbc_glyph_t *glyphs; const uint8_t *bits; } pbc_font_t;
 /* palette of RGB565 colours with 4 bit alpha; pixels as PackBits runs */
 typedef struct { uint16_t w, h; const uint16_t *pal; const uint8_t *alpha; const uint8_t *rle; } pbc_picture_t;
 
@@ -26,6 +26,8 @@ extern const pbc_picture_t pic_c64, icon_c64;
 extern const pbc_picture_t pic_msx, icon_msx;
 extern const pbc_picture_t pic_sg, icon_sg;
 extern const pbc_picture_t pic_a26, icon_a26;
+extern const pbc_picture_t pic_zx, icon_zx;
+extern const pbc_picture_t pic_cpc, icon_cpc;
 extern const pbc_picture_t pic_usb, icon_usb;
 
 #endif

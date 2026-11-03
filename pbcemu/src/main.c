@@ -39,6 +39,7 @@
 
 static FATFS g_fs;
 extern volatile bool usb_msc_ejected;
+void usb_msc_flush(void);
 
 static bool fs_mount(void)   { return f_mount(&g_fs, "", 1) == FR_OK; }
 static void fs_unmount(void) { f_mount(NULL, "", 0); }
@@ -150,10 +151,13 @@ static void fs_write_readme(void)
            "by itself; pick the system, then the game.\r\n"
            "\r\n"
            "  Atari 2600       .a26\r\n"
+           "  ZX Spectrum      .tap .tzx .z80 .sna\r\n"
            "  Commodore 64     .d64 .prg\r\n"
            "  NES              .nes\r\n"
            "  SG-1000          .sg\r\n"
            "  MSX              .rom .mx1   (MSX1 cartridges)\r\n"
+           "                   .mx2 .dsk   (MSX2 cartridges and disks)\r\n"
+           "  Amstrad CPC      .dsk .cdt .sna\r\n"
            "  Master System    .sms\r\n"
            "  PC Engine        .pce   (HuCards)\r\n"
            "  Mega Drive       .md .gen .smd .bin\r\n"
@@ -164,7 +168,10 @@ static void fs_write_readme(void)
            "the Commodore ROMs, copy kernal.rom and basic.rom (optionally\r\n"
            "chargen.rom) here; some games only run with the original KERNAL.\r\n"
            "\r\n"
-           "MSX: the free C-BIOS is built in; it starts MSX1 cartridges.\r\n"
+           "MSX: the free C-BIOS is built in; it starts cartridges and\r\n"
+           "disks that boot by themselves. BASIC and MSX-DOS disks need\r\n"
+           "the system ROMs here: msx2.rom (32 KB), msx2ext.rom (16 KB)\r\n"
+           "and disk.rom (16 KB).\r\n"
            "\r\n"
            "Back to this mode: \"Add Games\" (last page of the systems), or\r\n"
            "hold A or B while switching on.\r\n"
@@ -189,8 +196,15 @@ static void __attribute__((noreturn)) usb_mode(void)
     fs_write_readme();
     fs_unmount();                       /* the host owns the medium from now on */
 
+    /* Back to the menu when the host ejects the drive -- or, once it had
+     * the drive, when it lets go without saying so: it unconfigures the
+     * device, switches the port off ("safely remove" on Linux does that
+     * instead of an eject) or the cable comes out, and the bus stays
+     * quiet. Every write is in flash already, so nothing is lost. */
     tud_init(BOARD_TUD_RHPORT);
     int shown = -1;
+    bool had_host = false;
+    uint64_t gone_since = 0;
     for (;;) {
         tud_task();
         int state = tud_mounted() ? 2 : tud_connected() ? 1 : 0;
@@ -199,7 +213,15 @@ static void __attribute__((noreturn)) usb_mode(void)
             gfx_finish();
             shown = state;
         }
-        if (usb_msc_ejected) {
+        if (state == 2 && !tud_suspended())
+            had_host = true;
+        bool gone = had_host && (state != 2 || tud_suspended());
+        if (!gone)
+            gone_since = 0;
+        else if (!gone_since)
+            gone_since = time_us_64();
+        if (usb_msc_ejected || (gone_since && time_us_64() - gone_since > 3000000)) {
+            usb_msc_flush();
             uint64_t t = time_us_64() + 300000;
             while (time_us_64() < t)
                 tud_task();             /* let the host see the eject complete */
@@ -229,8 +251,12 @@ static void unexpected_reset_report(uint32_t r)
     ui_message("Unexpected restart", why, code, "Batteries low?");
 }
 
+/* for the emulators, see pbc_launch.h */
+static const pbc_shared_t shared = { PBC_SHARED_MAGIC, &font_head, &font_body, &font_small };
+
 int main(void)
 {
+    watchdog_hw->scratch[2] = (uint32_t)&shared;
     if (watchdog_hw->scratch[0] == PBC_JUMP_MAGIC) {
         uint32_t offset = watchdog_hw->scratch[1];
         watchdog_hw->scratch[0] = 0;

@@ -149,7 +149,7 @@ const char *rom_store_program(const char *name, uint8_t *scratch, rom_progress_f
         return "Cannot read file";
     size = (uint32_t)f_size(&f);
 
-    if (size < 0x2000)
+    if (size < 0x800)                   /* the smallest cartridges: 2 KB */
         { f_close(&f); return "Not a valid ROM"; }
     if (size > ROM_STORE_MAX)
         { f_close(&f); return "ROM larger than 4 MB"; }

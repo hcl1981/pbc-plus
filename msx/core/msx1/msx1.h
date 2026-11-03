@@ -2,7 +2,8 @@
  *
  * Written for the PicoBoy Color Plus (GPL-3.0-or-later). The machine of
  * C-BIOS' MSX1 configuration: slot 0 the BIOS (C-BIOS main ROM at 0000h,
- * its logo ROM at 8000h), slots 1 and 2 cartridges, slot 3 64 KB of RAM;
+ * its logo ROM, 8 KB at 8000h; A000h-BFFFh read FFh), slots 1 and 2
+ * cartridges, slot 3 64 KB of RAM;
  * TMS9918A video, AY-3-8910 sound with the joysticks on its port A,
  * 8255 PPI for the slots and the keyboard. Cartridges: plain ROMs up to
  * 64 KB and the Konami, Konami SCC, ASCII 8 KB and ASCII 16 KB MegaROM
@@ -48,7 +49,32 @@ extern uint8_t msx_keys[11];
 extern uint8_t msx_joy[2];
 static inline void msx_key_set(int k) { msx_keys[k >> 4] |= (uint8_t)(1 << (k & 15)); }
 
-void msx1_init(const uint8_t *bios_main, const uint8_t *bios_logo);
+/* The system ROMs come as 8 KB pages, which need not lie together (the
+ * built-in C-BIOS shares one between its ROMs); MSX_PAGES(p) for a ROM in
+ * one piece. */
+#define MSX_PAGES(p) { (p), (p) + 0x2000, (p) + 0x4000, (p) + 0x6000 }
+
+/* main ROM 32 KB (4 pages), logo ROM 8 KB at 8000h (may be NULL) */
+void msx1_init(const uint8_t *const bios_main[4], const uint8_t *bios_logo);
+
+/* MSX2: main ROM 32 KB (slot 0; `bios_logo` at 8000h may be NULL), sub-ROM
+ * 16 KB (2 pages, slots 3-0 and 3-1), disk ROM 16 KB (slot 3-3 at 4000h,
+ * patched by msx2_patch_disk_rom first; NULL: no disk), 128 KB RAM mapper
+ * in slot 3-2, V9938 with 128 KB VRAM, RP5C01 clock. Lines go to
+ * msx_line565. */
+void msx2_init(const uint8_t *const bios_main[4], const uint8_t *bios_logo,
+               const uint8_t *const sub_rom[2], const uint8_t *disk_rom);
+bool msx_is_msx2(void);
+typedef void (*msx_line565_fn)(int y, int lines, const uint16_t *pixels);
+extern msx_line565_fn msx_line565;
+
+/* The disk ROM's driver entries become traps (opcode 64h); the whole
+ * 16 KB image, which C-DISK (C-BIOS) needs patched in its body too */
+void msx2_patch_disk_rom(uint8_t *rom16k);
+/* Drive A: one 512-byte sector in or out; false on failure (a write:
+ * write protected). */
+typedef bool (*msx_disk_io_fn)(bool write, uint32_t sector, uint8_t *buf);
+void msx2_insert_disk(msx_disk_io_fn io, uint32_t sectors);
 /* the cartridge in slot 1 (stays where it is, e.g. in flash); returns the
  * mapper, -1 if it is no MSX cartridge */
 int msx1_insert(const uint8_t *rom, uint32_t size);
@@ -60,7 +86,7 @@ void msx1_reset(void);
 typedef void (*msx_line_fn)(int y, const uint8_t *pixels, int backdrop);
 void msx1_frame(msx_line_fn line, int16_t *audio, int samples);
 
-/* the 64 KB RAM (slot 3), for the link's comparison and typing text */
+/* the RAM (MSX1 64 KB in slot 3, MSX2 128 KB), for the link's comparison */
 uint8_t *msx1_ram(void);
 
 const char *msx1_mapper_name(int mapper);

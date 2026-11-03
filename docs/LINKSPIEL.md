@@ -1,12 +1,11 @@
 # Link-Spiel: zwei PicoBoy Color Plus, ein Spiel
 
 Zwei Geräte mit USB-C-Kabel verbunden spielen **ein** Atari-2600-, NES-, SG-1000-,
-MSX-, Master-System-, PC-Engine- oder C64-Spiel zu zweit: Das eine Gerät ist
+MSX-, Master-System-, PC-Engine-, Mega-Drive- oder C64-Spiel zu zweit: Das eine Gerät ist
 Controller 1, das andere Controller 2, beide zeigen dasselbe Bild.
 
 Das kann PBCemu (`dist/pbcemu.uf2`) seit November 2026; bis dahin war es eine
-eigene Firmware (PBClink). Mega Drive, Game Gear und Game Boy (Color) spielen
-nur allein. Im Karussell tragen die Konsolen mit Link-Spiel eine runde goldene
+eigene Firmware (PBClink). Game Gear und Game Boy (Color) spielen nur allein. Im Karussell tragen die Konsolen mit Link-Spiel eine runde goldene
 Plakette **LINK**. Die Einzel-Firmwares (`nes.uf2`, `sms.uf2`, …) haben kein
 Link-Spiel.
 
@@ -53,6 +52,7 @@ vom Controller.
 | SG-1000 | Controller 1 | Controller 2 |
 | MSX | Joystick 1 und Tastatur | Joystick 2 |
 | Atari 2600 | linker Joystick | rechter Joystick; RESET und SELECT gehen von beiden |
+| Mega Drive | Controller 1 | Controller 2 |
 
 Beim C64 hat jeder Spieler seine eigene Taste auf Center + B und RETURN auf A.
 **Diskettenwechsel:** Wer Center + A drückt, wählt die Diskette; beide Geräte
@@ -60,9 +60,14 @@ halten nach demselben Bild an, beim anderen steht *Your partner is choosing a
 disk*. Danach legen beide dieselbe Diskette ein. Dazu muss das andere Gerät sie
 unter demselben Namen und mit demselben Inhalt haben, sonst bleibt auf beiden
 die alte drin und unter dem Bild steht, was fehlt. Drücken beide gleichzeitig,
-wählt Spieler 1. Beim MSX geht das Tastenmenü (Center + A) genauso. Game Gear, Mega Drive und Game Boy bieten kein Link-Spiel an:
-Der Game Gear hat keinen zweiten Controller, die beiden anderen sind dafür nicht
-umgebaut.
+wählt Spieler 1. Beim MSX geht das Tastenmenü (Center + A) genauso; eine MSX2-Diskette wird
+auf beiden Geräten in die eigene Datei geschrieben, beide brauchen also
+dieselbe. Game Gear und Game Boy bieten kein Link-Spiel an: Der Game Gear hat
+keinen zweiten Controller, der Game Boy ist dafür nicht umgebaut.
+
+Beim Mega Drive liefert das Sprite-Overflow-Flag des Videochips im
+Link-Spiel immer 0: Es entsteht beim Zeichnen auf Kern 1 und hinge sonst
+davon ab, wann und ob ein Bild gezeichnet wird. Kaum ein Spiel liest es.
 
 ## Wie es funktioniert
 
@@ -107,4 +112,4 @@ geschrieben: fester Start, keine Zeit, kein Zufall.
 
 In den Emulatoren sind es nur wenige Zeilen, alle unter `#if PBC_MULTI`.
 
-`usblink.c` steht wie die Doom-Portierung unter GPLv2.
+`usblink.c` und `usblink.h` stehen wie die Doom-Portierung unter GPL-2.0-or-later.

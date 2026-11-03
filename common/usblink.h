@@ -23,7 +23,7 @@
 // Beide Frames haben feste Laenge (kein Laengen-Handshake noetig):
 //   [0xA5][len][payload ...][crc16_lo][crc16_hi]
 //
-// GPLv2 (wie der Rest des Ports).
+// GPL-2.0-or-later (wie der Rest des Ports).
 //
 
 #ifndef _USBLINK_H

@@ -26,6 +26,7 @@ __license__ = "GPLv3"
 #include "gwenesis_io.h"
 #include "gwenesis_bus.h"
 #include "gwenesis_savestate.h"
+#include "pbc_link.h"
 
 #include <assert.h>
 #include "gwenesis_sn76489.h"
@@ -518,7 +519,10 @@ unsigned short status_register_r(void) {
             status |= STATUS_HBLANK;
     }
 
-    if (sprite_overflow)
+    /* PBC: the flag comes from the line drawing on core 1, so it depends
+     * on when and whether a frame is drawn; link play needs both devices
+     * to read the same and goes without it. */
+    if (sprite_overflow && !pbc_link_active())
         status |= STATUS_SPRITEOVERFLOW;
     if (sprite_collision)
         status |= STATUS_SPRITECOLLISION;

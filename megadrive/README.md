@@ -21,6 +21,14 @@ der PBC+. Deshalb ist hier alles drumherum ersetzt:
 Last. Mit Ton bei 300 MHz / 1,30 V startete das Gerät neu (Spannungswandler,
 siehe unten), bei 200 MHz / 1,15 V nicht.
 
+**Link-Spiel** (nur in PBCemu, `../docs/LINKSPIEL.md`): zwei Geräte am
+USB-C-Kabel, Controller 1 und 2. Vor jedem Bild tauschen sie ihre Pads, das
+startende Gerät gibt den Takt vor. Die Emulation ist dafür deterministisch:
+Ton an/aus ändert nur die Ausgabe (die YM2612-Timer laufen immer auf Kern 0),
+das Auslassen von Bildern nur das Zeichnen. Einzige Ausnahme war das
+Sprite-Overflow-Flag des VDP, das beim Zeichnen auf Kern 1 entsteht; im
+Link-Spiel liest es sich als 0. Auf zwei Geräten noch nicht getestet.
+
 Die Oberfläche auf dem Gerät ist englisch (Menüs, Optionen, Meldungen, Hilfedatei auf dem Laufwerk).
 
 ## Benutzung

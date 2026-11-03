@@ -42,8 +42,8 @@ void tia_set_fire(int player, bool pressed);
 /* sound: two updates per line at 31.4 kHz into buf; returns the count */
 int tia_audio_line(int16_t *buf);
 
-/* the NTSC palette (0x00RRGGBB), index = colour register >> 1 */
+/* the palette (0x00RRGGBB), index = colour register >> 1: NTSC or PAL */
 extern uint32_t tia_palette[128];
-void tia_make_palette(void);
+void tia_make_palette(bool pal);
 
 #endif

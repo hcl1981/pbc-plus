@@ -12,7 +12,16 @@ Timer, Joysticks, Konsolenschalter) und die Bankumschaltung der Module.
 **Stand:** am PC mit fünf freien Homebrew-Spielen getestet (Pipes, Clock,
 Hello, Pickup laufen; Phazer ist ein unfertiges Tutorial und hängt). Auf dem
 Gerät läuft Pipes in Echtzeit mit Display und Ton (Benchmark: 1800 Bilder in
-30,0 s, CPU 62 %). Link-Spiel auf dem Gerät noch nicht getestet.
+30,0 s, CPU 62 %), ebenso ein PAL-Test-ROM (312 Zeilen, 49,86 Hz) und Kaz's
+Knickers (16 KB, F6). Link-Spiel auf dem Gerät noch nicht getestet.
+
+**Farben:** NTSC mit der Palette von Stella (Tabelle in `core/tia.c`), PAL
+berechnet (Farbton und Helligkeit nach der PAL-Farbfolge des TIA).
+
+**Was fehlt:** HMOVE wirkt sofort und ganz, egal wann in der Zeile es kommt.
+Tricks mit HMOVE mitten in der Zeile oder in Takt 73/74 (etwa die 96 Pixel
+breiten Titelbilder aus batari Basics „Titlescreen“-Kernel, Kaz's Knickers)
+erscheinen deshalb als Streifen.
 
 ## Spiele
 
@@ -20,6 +29,12 @@ Gerät läuft Pipes in Echtzeit mit Display und Ton (Benchmark: 1800 Bilder in
 Inhalt: 2 KB, 4 KB, F8 (8 KB), F6 (16 KB), F4 (32 KB), jeweils auch mit
 Superchip-RAM, E0 (Parker Brothers), FE (Activision) und 3F (Tigervision).
 Paddles, Keypads und andere Controller gibt es nicht, nur Joysticks.
+
+**PAL und NTSC** erkennt der Emulator an der Zeilenzahl, die das Spiel
+erzeugt (312 statt 262 pro Bild, 30 Bilder lang): PAL läuft dann mit 50 Hz,
+PAL-Farben und einem tiefer liegenden Bildausschnitt (Zeilen 42 bis 281). Die
+Umschaltung hängt nur von der Emulation ab, im Link-Spiel schalten beide
+Geräte im selben Bild. SECAM gibt es nicht.
 
 ## Tasten
 

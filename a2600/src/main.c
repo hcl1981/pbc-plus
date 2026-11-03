@@ -142,6 +142,11 @@ static void __attribute__((noreturn)) emulation_loop(bool show_stats, const char
     uint32_t stat_drawn = 0, stat_emulated = 0;
     uint64_t status_until = 0;
     uint32_t sample_acc = 0;
+    /* PAL or NTSC: what the game makes, 312 or 262 lines a frame; the
+     * switch waits for 30 frames in a row (the lines count is the
+     * emulation's, so both devices switch in the same frame) */
+    bool pal = false;
+    int pal_votes = 0;
 
     if (start_status) {
         a26_video_set_status(start_status);
@@ -157,17 +162,28 @@ static void __attribute__((noreturn)) emulation_loop(bool show_stats, const char
         a26_switches = switches_of(p1 | p2);
 
         uint64_t frame_start = time_us_64();
+        const unsigned fps = pal ? 50 : 60;
         sample_acc += AUDIO_RATE;
-        unsigned n = sample_acc / 60;
-        sample_acc -= n * 60;
-        a2600_frame(a26_video_line, samples, (int)n);
+        unsigned n = sample_acc / fps;
+        sample_acc -= n * fps;
+        int lines = a2600_frame(a26_video_line, samples, (int)n);
         audio_pwm_push(samples, (int)n);
+        if ((lines >= 290) != pal) {
+            if (++pal_votes >= 30) {
+                pal = !pal;
+                pal_votes = 0;
+                a26_video_set_pal(pal);
+            }
+        } else {
+            pal_votes = 0;
+        }
 
         if (a26_video_frame_drawn())
             stat_drawn++;
         stat_emulated++;
 
-        const uint32_t period = 16688;      /* 262 lines (NTSC) */
+        /* 262 lines at 1.193 MHz (NTSC), 312 at 1.182 MHz (PAL) */
+        const uint32_t period = pal ? 20056 : 16688;
         next_frame += period;
         uint64_t now = time_us_64();
         stat_busy_us += now - frame_start;
@@ -194,7 +210,7 @@ static void __attribute__((noreturn)) emulation_loop(bool show_stats, const char
             char s[32];
             snprintf(s, sizeof s, "%lufps %lu%% CPU%lu%%",
                      (unsigned long)stat_drawn,
-                     (unsigned long)(stat_emulated * 100 / 60),
+                     (unsigned long)(stat_emulated * 100 / fps),
                      (unsigned long)(stat_busy_us * 100 / (now - stat_t0)));
             a26_video_set_status(s);
             stat_t0 = now;

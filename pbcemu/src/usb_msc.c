@@ -120,6 +120,11 @@ int32_t tud_msc_scsi_cb(uint8_t lun, uint8_t const scsi_cmd[16],
     }
 }
 
+// Before the restart into the menu (main.c): nothing may stay in the buffer.
+void usb_msc_flush(void) {
+    flush_pending();
+}
+
 // Eject / start-stop: flush any buffered sector so nothing is lost.
 // The main loop restarts the device into the menu once the host has ejected.
 volatile bool usb_msc_ejected = false;

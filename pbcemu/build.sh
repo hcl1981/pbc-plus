@@ -20,7 +20,7 @@ HIER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAUNCHER_SIZE=0x40000
 APPS_END=0x200000                  # ab hier: ROM-Bereich (5 MB), ab 0x700000 FatFs
 # Reihenfolge im Flash; Name im Starter (APP_*), Projektordner, Programmname
-APPS="MD:megadrive:pbc_megadrive SMS:sms:pbc_sms NES:nes:pbc_nes PCE:pce:pbc_pce GBC:gbc:pbc_gbc C64:c64:pbc_c64 MSX:msx:pbc_msx A26:a2600:pbc_a2600"
+APPS="MD:megadrive:pbc_megadrive SMS:sms:pbc_sms NES:nes:pbc_nes PCE:pce:pbc_pce GBC:gbc:pbc_gbc C64:c64:pbc_c64 MSX:msx:pbc_msx A26:a2600:pbc_a2600 ZX:zx:pbc_zx CPC:cpc:pbc_cpc"
 
 if [ "${1:-}" = clean ]; then
     rm -rf "${HIER}/build"

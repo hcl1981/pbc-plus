@@ -2,7 +2,7 @@
 // usblink -- getakteter Halbduplex-Link ueber D+/D- des USB-C-Ports.
 // Siehe usblink.h fuer die Protokollbeschreibung.
 //
-// GPLv2 (wie der Rest des Ports).
+// GPL-2.0-or-later (wie der Rest des Ports).
 //
 
 #include "usblink.h"

@@ -1,4 +1,4 @@
-/* msx_video.h -- MSX1 scanlines -> ST7789, sent by core 1.
+/* msx_video.h -- MSX scanlines -> ST7789, sent by core 1.
  *
  * There is no frame buffer. The core hands over each of the 192 lines as
  * TMS9918 colour indices (256 wide); core 0 turns it into 240 panel words
@@ -25,6 +25,9 @@ void msx_video_init(unsigned mode);
 
 /* Core 0: a finished line (msx1_frame's callback). */
 void msx_video_line(int y, const uint8_t *pixels, int backdrop);
+/* Core 0: an MSX2 line (msx_line565), 256 RGB565 pixels of `lines` */
+#include <stdint.h>
+void msx_video_line565(int y, int lines, const uint16_t *pixels);
 
 /* Core 1 entry point. */
 void msx_video_core1_main(void);

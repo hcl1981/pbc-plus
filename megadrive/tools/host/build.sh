@@ -31,7 +31,7 @@ COMMON=(-O2 -g -w
     -DROM_SWAP=0 -DBUS_DISABLE_LOGGING=1 -DVDP_GFX_DISABLE_LOGGING=1 -DENABLE_LOGGING=0
     -DLSB_FIRST=1 -DGW_TARGET=1 -include stdint.h -include pico/platform.h
     -I"${HIER}/fake" -I"${M}/src" -I"${C}" -I"${C}/bus" -I"${C}/io" -I"${C}/vdp"
-    -I"${C}/sound" -I"${CPUINC}" -I"${C}/cpus/redcode" -I"${C}/savestate")
+    -I"${C}/sound" -I"${CPUINC}" -I"${C}/cpus/redcode" -I"${C}/savestate" -I"${M}/../common")
 
 # Z80: redcode/Z80 mit denselben Schaltern wie in CMakeLists.txt
 gcc "${COMMON[@]}" -DZ80_WITH_LOCAL_HEADER -DZ80_PBC_FETCH8K=Z80_RAM -DZ80_PBC_READ=z80_read \

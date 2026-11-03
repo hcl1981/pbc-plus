@@ -337,7 +337,6 @@ void a2600_reset(void)
     memset(ram, 0, sizeof ram);
     memset(sc_ram, 0, sizeof sc_ram);
     tia_reset();
-    tia_make_palette();
     swcha_out = swacnt = swbcnt = 0;
     line_cycle = 0;
     line_base = 0;

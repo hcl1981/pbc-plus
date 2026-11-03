@@ -53,6 +53,7 @@ add_executable(pbc_msx
     # MSX1 core and Z80
     ${MSX1}/msx1.c
     ${MSX1}/tms9918.c
+    ${MSX1}/v9938.c
     ${MSX1}/ay8910.c
     ${MSX1}/scc.c
     ${REDCODE}/Z80.c
@@ -64,7 +65,28 @@ add_executable(pbc_msx
 # .incbin finds the ROM images next to cbios.S; rebuild when they change
 set_source_files_properties(${CBIOS}/cbios.S PROPERTIES
     COMPILE_OPTIONS "-Wa,-I${CBIOS}"
-    OBJECT_DEPENDS "${CBIOS}/cbios_main_msx1.rom;${CBIOS}/cbios_logo_msx1.rom")
+    OBJECT_DEPENDS "${CBIOS}/cbios_main_msx1.rom;${CBIOS}/cbios_logo_msx1.rom;${CBIOS}/cbios_main_msx2.rom;${CBIOS}/cbios_logo_msx2.rom;${CBIOS}/cbios_sub.rom;${CBIOS}/cbios_disk.rom")
+
+# cbios.S keeps what C-BIOS' ROMs have in common once and leaves out their
+# FFh filling: check that this holds for the ROM files at hand
+file(READ ${CBIOS}/cbios_main_msx1.rom _cb_a OFFSET 16384 LIMIT 8192 HEX)
+file(READ ${CBIOS}/cbios_main_msx2.rom _cb_b OFFSET 16384 LIMIT 8192 HEX)
+file(READ ${CBIOS}/cbios_sub.rom       _cb_c OFFSET 8192  LIMIT 8192 HEX)
+if(NOT _cb_a STREQUAL _cb_b OR NOT _cb_a STREQUAL _cb_c)
+    message(FATAL_ERROR "C-BIOS: the shared 8 KB page differs (core/cbios/cbios.S)")
+endif()
+string(REPEAT "ff" 8192 _cb_ff8k)
+foreach(_cb_f cbios_logo_msx1.rom cbios_logo_msx2.rom)
+    file(READ ${CBIOS}/${_cb_f} _cb_x OFFSET 8192 LIMIT 8192 HEX)
+    if(NOT _cb_x STREQUAL _cb_ff8k)
+        message(FATAL_ERROR "C-BIOS: ${_cb_f} is not FFh from 2000h on (core/cbios/cbios.S)")
+    endif()
+endforeach()
+file(READ ${CBIOS}/cbios_disk.rom _cb_x OFFSET 1280 LIMIT 14848 HEX)
+string(REPEAT "ff" 14848 _cb_ff)
+if(NOT _cb_x STREQUAL _cb_ff)
+    message(FATAL_ERROR "C-BIOS: cbios_disk.rom is not FFh in 0500h-3EFFh (core/cbios/cbios.S)")
+endif()
 
 # redcode/Z80 with the PicoBoy switches (sms/tools/redcode_patch.py): reads
 # straight from the core's 8 KB page map, writes through its handler, code

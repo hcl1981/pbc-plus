@@ -4,8 +4,8 @@
     import_icons.py <sheet.jpg|png> <outdir>
     import_icons.py <sheet> <outdir> <cols>x<rows> <name|-> ...   other grids
 
-art/sheet_extra.jpeg (2 x 2: MSX, Atari 2600, two not used) is read with
-    import_icons.py art/sheet_extra.jpeg art 2x2 msx a26 - -
+art/sheet_extra.jpeg (2 x 2: MSX, Atari 2600, two not used) gives the 2600:
+    import_icons.py art/sheet_extra.jpeg art 2x2 - a26 - -
 
 The sheet is a 4 x 2 grid on a magenta background (made with the prompt in
 README.md), cells in the order of NAMES. Each cell is keyed out, cut to the
@@ -13,11 +13,15 @@ object, scaled to fit W x H, placed on the common baseline and given the
 same soft floor shadow as the drawn pictures (tools/devices.py), so all of
 them sit alike in the launcher. Writes <outdir>/<name>.png (RGBA).
 
-art/sg1000.jpeg is a single picture (SG-1000):
+art/sg1000.jpeg is a single picture (SG-1000), art/zx.jpeg (ZX Spectrum) and
+art/cpc.jpeg (Amstrad CPC) too:
     import_icons.py art/sg1000.jpeg art 1x1 sg
+    import_icons.py art/zx.jpeg art 1x1 zx
+    import_icons.py art/cpc.jpeg art 1x1 cpc
 
 art/sheet_msx.jpeg is a second sheet in the same order whose last cell is
-the MSX2 instead of the USB stick (art/msx.png until November 2026).
+the MSX2 instead of the USB stick -- the MSX picture:
+    import_icons.py art/sheet_msx.jpeg art 4x2 - - - - - - - msx
 """
 import sys
 from PIL import Image, ImageDraw, ImageFilter
