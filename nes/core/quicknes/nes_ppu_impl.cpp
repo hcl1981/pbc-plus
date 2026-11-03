@@ -41,6 +41,10 @@ Nes_Ppu_Impl::Nes_Ppu_Impl()
 	max_palette_size = 0;
 	tile_cache_mem = NULL;
 	tile_cache_mem_ext = false;
+	chr_off = false;
+	chr_mixed = false;
+	chr_rom_bytes = 0;
+	chr_off_byte = 0xFF;
 	ppu_state_t::unused = 0;
 
 	mmc24_enabled = false;
@@ -68,7 +72,7 @@ void Nes_Ppu_Impl::all_tiles_modified()
 	memset( modified_tiles, ~0, sizeof modified_tiles );
 }
 
-const char *Nes_Ppu_Impl::open_chr( uint8_t const* new_chr, long chr_data_size )
+const char *Nes_Ppu_Impl::open_chr( uint8_t const* new_chr, long chr_data_size, long extra_ram )
 {
 	printf("  open_chr(%p, %ld) impl=%p\n", new_chr, chr_data_size, impl);
 	close_chr();
@@ -84,14 +88,26 @@ const char *Nes_Ppu_Impl::open_chr( uint8_t const* new_chr, long chr_data_size )
 	
 	chr_data = new_chr;
 	chr_size = chr_data_size;
+	chr_rom_bytes = chr_data_size;
 	chr_is_writable = false;
+	chr_mixed = false;
+	chr_off = false;
 	
 	if ( chr_data_size == 0 )
 	{
 		// CHR RAM
 		chr_data = impl->chr_ram;
 		chr_size = sizeof impl->chr_ram;
+		chr_rom_bytes = 0;
 		chr_is_writable = true;
+	}
+	else if ( extra_ram )
+	{
+		// CHR ROM, then the 8 KB of CHR RAM: one space for the banks and
+		// the tile cache
+		chr_size = chr_data_size + sizeof impl->chr_ram;
+		chr_is_writable = true;
+		chr_mixed = true;
 	}
 	
 	// allocate aligned memory for cache
@@ -126,6 +142,10 @@ const char *Nes_Ppu_Impl::open_chr( uint8_t const* new_chr, long chr_data_size )
 	{
 		any_tiles_modified = false;
 		rebuild_chr( 0, chr_size );
+	}
+	else if ( chr_mixed )
+	{
+		rebuild_chr( 0, chr_rom_bytes ); // the RAM tiles follow as modified
 	}
 	
 	return 0;
@@ -217,7 +237,7 @@ void Nes_Ppu_Impl::save_state( Nes_State_* out ) const
 	out->chr_size = 0;
 	if ( chr_is_writable )
 	{
-		out->chr_size = chr_size;
+		out->chr_size = sizeof impl->chr_ram;
 		memcpy( out->chr, impl->chr_ram, out->chr_size );
 	}
 }
@@ -242,7 +262,7 @@ void Nes_Ppu_Impl::load_state( Nes_State_ const& in )
 	
 	if ( chr_is_writable && in.chr_size )
 	{
-		memcpy( impl->chr_ram, in.chr, in.chr_size );
+		memcpy( impl->chr_ram, in.chr, min( (int) in.chr_size, (int) sizeof impl->chr_ram ) );
 		all_tiles_modified();
 	}
 }
@@ -343,7 +363,8 @@ inline unsigned long reorder( unsigned long n )
 
 inline void Nes_Ppu_Impl::update_tile( int index )
 {
-	const uint8_t* in = chr_data + (index) * bytes_per_tile;
+	long at = (long) index * bytes_per_tile;
+	const uint8_t* in = at < chr_rom_bytes ? chr_data + at : chr_ram + (at - chr_rom_bytes);
 	uint8_t* out = (uint8_t*) tile_cache [index];
 	uint8_t* flipped_out = (uint8_t*) flipped_tiles [index];
 	
@@ -378,6 +399,17 @@ inline void Nes_Ppu_Impl::update_tile( int index )
 		SET_BE32( flipped_out, c );
 		flipped_out += 4;
 	}
+}
+
+// TQROM: a write to CHR lands in the RAM only where a RAM bank is mapped
+void Nes_Ppu_Impl::write_chr_mixed( int addr, int data )
+{
+	long o = chr_pages [addr / chr_page_size] + addr - chr_rom_bytes;
+	if ( o < 0 || o >= (long) sizeof impl->chr_ram )
+		return;
+	chr_ram [o] = data;
+	any_tiles_modified = true;
+	modified_tiles [o / (bytes_per_tile * 8)] |= 1 << (o / bytes_per_tile % 8);
 }
 
 void Nes_Ppu_Impl::rebuild_chr( unsigned long begin, unsigned long end )

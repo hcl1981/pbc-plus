@@ -7,6 +7,24 @@ t_sms sms;
 extern void ym2413_write(int chip, int offset, int data);
 
 /* Run the virtual console emulation for one frame */
+/* The Super Game Module's AY on top of the PSG (both unipolar; main.c
+   takes the offset out) */
+static void in_ram(coleco_mix_ay)(signed short *left, signed short *right, int n) {
+    while (n > 0) {
+        int32 v[8] = { 0 };
+        int k = n < 8 ? n : 8;
+        ay_render(&coleco_ay, v, k);
+        for (int i = 0; i < k; i++) {
+            int32 l = left[i] + v[i], r = right[i] + v[i];
+            left[i] = (signed short)(l > 32767 ? 32767 : l);
+            right[i] = (signed short)(r > 32767 ? 32767 : r);
+        }
+        left += k;
+        right += k;
+        n -= k;
+    }
+}
+
 void in_ram(sms_frame)(int skip_render) {
     /* Take care of hard resets */
     if (input.system & INPUT_HARD_RESET) {
@@ -55,6 +73,7 @@ void in_ram(sms_frame)(int skip_render) {
                 };
                 SN76496Update(0, part, n, sms.psg_mask);
                 system_mix_fm(part[0], part[1], n);
+                if (coleco_ay_on) coleco_mix_ay(part[0], part[1], n);
                 samples_rendered = target;
             }
         }
@@ -78,6 +97,7 @@ void sms_reset(void) {
     sms.psg_mask = 0xFF;
 
     if (IS_COLECO) {
+        coleco_sgm_reset();
         coleco_memory_map();
         return;
     }
@@ -250,10 +270,19 @@ static void sg_writemem(int address, int data) {
  * times over, $8000-$FFFF the cartridge (up to 32 KB). Ports by A7-A5:
  * $80 keypad mode, $C0 joystick mode, $A0 the video chip (A0: data or
  * control), $E0 the PSG (write) and the controllers (read, A1: which).
+ *
+ * The Super Game Module (Opcode Games) adds, on exact ports: an AY-3-8910
+ * at $50 (register), $51 (write) and $52 (read); 24 KB of RAM over
+ * $2000-$7FFF while bit 0 of port $53 is set; 8 KB of RAM instead of the
+ * BIOS while bit 1 of port $7F is clear (games write $0D; $0F brings the
+ * BIOS back). The RAM is coleco_sgm_ram, indexed by the address.
  */
 const uint8 *coleco_bios;
 uint8 coleco_key[2];
-static uint8 coleco_keypad_mode;
+uint8 *coleco_sgm_ram;                  /* 32 KB, from system_init */
+ay8910_t coleco_ay;
+uint8 coleco_ay_on;                     /* the AY was written to: mix it in */
+static uint8 coleco_keypad_mode, sgm_upper, sgm_lower;
 
 void coleco_memory_map(void) {
     int page;
@@ -267,9 +296,27 @@ void coleco_memory_map(void) {
     }
     for (page = 0; page < 8; page++)
         cpu_writemap[page] = sms.dummy;
+    if (!coleco_sgm_ram)
+        return;
+    if (sgm_lower)
+        cpu_readmap[0] = coleco_sgm_ram;
+    if (sgm_upper)
+        for (page = 1; page < 4; page++)
+            cpu_readmap[page] = coleco_sgm_ram + (page << 13);
+}
+
+void coleco_sgm_reset(void) {
+    sgm_upper = sgm_lower = 0;
+    coleco_ay_on = 0;
+    ay_reset(&coleco_ay);
 }
 
 static void coleco_writemem(int address, int data) {
+    int page = address >> 13;
+    if ((page == 0 && sgm_lower) || (page >= 1 && page < 4 && sgm_upper)) {
+        coleco_sgm_ram[address] = data;
+        return;
+    }
     if ((address & 0xE000) == 0x6000) {
         int o = address & 0x3FF, m;
         for (m = 0; m < 0x2000; m += 0x400)
@@ -299,6 +346,20 @@ static uint8 coleco_pad(int p) {
 }
 
 static void coleco_writeport(int port, int data) {
+    switch (port) {
+        case 0x50: ay_write_addr(&coleco_ay, data); return;
+        case 0x51:
+            ay_write_data(&coleco_ay, data);
+            coleco_ay_on = 1;
+            return;
+        case 0x53:
+        case 0x7F:
+            if (!coleco_sgm_ram) return;
+            if (port == 0x53) sgm_upper = data & 1;
+            else sgm_lower = !(data & 2);
+            coleco_memory_map();
+            return;
+    }
     switch (port & 0xE0) {
         case 0x80: coleco_keypad_mode = 1; break;
         case 0xC0: coleco_keypad_mode = 0; break;
@@ -313,6 +374,7 @@ static void coleco_writeport(int port, int data) {
 }
 
 static int coleco_readport(int port) {
+    if (port == 0x52) return ay_read_data(&coleco_ay, NULL);
     switch (port & 0xE0) {
         case 0xA0: return (port & 1) ? vdp_ctrl_r() : vdp_data_r();
         case 0xE0: return coleco_pad((port >> 1) & 1);
@@ -536,7 +598,7 @@ void in_ram(sms_mapper_w)(int address, int data) {
     switch (address) {
         case 0:
             if (data & 8) {
-                sms.save = 1;
+                sms.save |= (data & 4) ? 3 : 1;     /* bit 1: the upper 16 KB (PBC) */
                 /* Page in ROM */
                 cpu_readmap[4] = &sms.sram[(data & 4) ? 0x4000 : 0x0000];
                 cpu_readmap[5] = &sms.sram[(data & 4) ? 0x6000 : 0x2000];
@@ -563,7 +625,7 @@ void in_ram(sms_mapper_w)(int address, int data) {
                (Ernie Els Golf) */
             if (cart.mapper == MAPPER_CODIES) {
                 if (data & 0x80) {
-                    sms.save = 1;
+                    sms.save |= 1;
                     cpu_readmap[5] = sms.sram;
                     cpu_writemap[5] = sms.sram;
                 } else {

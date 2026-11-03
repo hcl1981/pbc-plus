@@ -31,5 +31,9 @@ extern const pbc_picture_t pic_cpc, icon_cpc;
 extern const pbc_picture_t pic_cv, icon_cv;
 extern const pbc_picture_t pic_a78, icon_a78;
 extern const pbc_picture_t pic_usb, icon_usb;
+extern const pbc_picture_t pic_fav, icon_fav;
+extern const pbc_picture_t logo_pbc, logo_emu, logo_glint;
+/* the floor shadow of pic_*, half size (draw it doubled), or 0 */
+const pbc_picture_t *pbc_shadow_of(const pbc_picture_t *pic);
 
 #endif

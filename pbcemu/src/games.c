@@ -8,6 +8,7 @@
 #include "games.h"
 #include "devices.h"
 #include "pbc_launch.h"
+#include "favs.h"
 
 #define GAMES_MAX 400
 
@@ -106,6 +107,30 @@ int games_list(int device, char (**out)[GAME_NAME_MAX])
     }
     f_closedir(&dir);
     qsort(names, (size_t)n, sizeof *names, by_name);
+    return n;
+}
+
+int games_favorites(char (**out)[GAME_NAME_MAX], int **devs)
+{
+    static int dev[FAVS_MAX];
+    static FILINFO fi;
+    int n = 0;
+    if (!names)
+        names = malloc(GAMES_MAX * sizeof *names);
+    *out = names;
+    *devs = dev;
+    if (!names)
+        return 0;
+    for (int i = 0; i < favs_count(); i++) {
+        int d = favs_device(i), kind = K_UNKNOWN;
+        char path[GAME_NAME_MAX + 2];
+        snprintf(path, sizeof path, "/%s", favs_name(i));
+        /* still on the drive and still that system's game */
+        if (d < 0 || f_stat(path, &fi) != FR_OK || !belongs(&devices[d], favs_name(i), &kind))
+            continue;
+        dev[n] = d;
+        strcpy(names[n++], favs_name(i));
+    }
     return n;
 }
 

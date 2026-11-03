@@ -47,6 +47,7 @@
 #include "pbc_link.h"
 #include "rom_store.h"
 #include "ssf2.h"
+#include "sram.h"
 #include "video.h"
 #include "audio_pwm.h"
 #include "ym_core1.h"
@@ -345,9 +346,41 @@ static inline void vdp_pipeline_post(int line)
     __atomic_store_n(&vdp_job_claim, 1, __ATOMIC_RELEASE);
 }
 
+/* While a .sav is written (sram.c), the flash cannot be read: core 1
+ * waits in RAM with its interrupts off. The SDK's multicore lockout does
+ * the same with more code. */
+static volatile bool park_req, parked, core1_running;
+
+static void __no_inline_not_in_flash_func(core1_park)(void)
+{
+    uint32_t irq = save_and_disable_interrupts();
+    parked = true;
+    while (park_req)
+        tight_loop_contents();
+    parked = false;
+    restore_interrupts(irq);
+}
+
+bool flash_fs_park(bool on)
+{
+    if (!core1_running)
+        return true;
+    park_req = on;
+    uint64_t until = time_us_64() + 50000;
+    while (parked != on)
+        if (on && time_us_64() > until) {
+            park_req = false;           /* busy for too long: try later */
+            return false;
+        }
+    return true;
+}
+
 static void core1_main(void)
 {
+    core1_running = true;
     for (;;) {
+        if (park_req)
+            core1_park();
         if (vdp_job_take()) {
             render_line(vdp_job_line);
             __dmb();
@@ -575,6 +608,7 @@ static void __attribute__((noreturn)) emulation_loop(void)
 
         frame_counter++;
         m68k.cycles -= system_clock;
+        sram_poll();                        /* battery RAM -> .sav, now and then */
 
         /* ---- pacing: never faster than the real console ---- */
         next_frame += period;
@@ -717,7 +751,6 @@ int main(void)
             reboot_to_menu();
         }
     }
-    fs_unmount();
 
     int volume;
 #if PBC_MULTI
@@ -759,6 +792,8 @@ int main(void)
     /* the ROM decides everything else (region from its header); sound and
      * picture settings do not change the emulation */
     pbc_link_start(pbc_link_hash(PBC_LINK_HASH_START ^ 16, rom_store_data(), rom_store_size()));
+    if (!sram_init(rom))                /* the volume stays mounted for the .sav */
+        fs_unmount();
     pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
     multicore_launch_core1(core1_main);
 

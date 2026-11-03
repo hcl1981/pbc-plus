@@ -410,7 +410,7 @@ NES_RAM void Nes_Ppu_Rendering::draw_scanlines( int start, int count,
 		if ( any_tiles_modified && chr_is_writable )
 		{
 			any_tiles_modified = false;
-			update_tiles( 0 );
+			update_tiles( chr_rom_bytes / bytes_per_tile ); // the RAM's tiles
 		}
 		
 		if ( draw_mode & bg_mask )

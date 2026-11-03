@@ -127,7 +127,7 @@ ausprobieren, dann mit Batterien.
 |---|---|---|
 | `0x000000` | 1 MB | Firmware (ca. 650 KB) |
 | `0x100000` | 5 MB | ROM des laufenden Spiels, byte-getauscht (`src/rom_store.c`) |
-| `0x600000` | ~9,9 MB | FatFs-Partition = USB-Stick (`src/flash_fs.h`) |
+| `0x600000` | ~9,9 MB | FatFs-Partition = USB-Stick (`src/flash_fs.h`), auch die `.sav`-Dateien |
 | `0xFF0000` | 4 KB | Info, welches Spiel im ROM-Bereich liegt |
 
 Ein neues Firmware-UF2 lässt ROM-Bereich und USB-Laufwerk unangetastet.
@@ -141,6 +141,7 @@ src/display.c     ST7789-Treiber (DMA-Strom + Text), wie in ../spout und ../noiz
 src/input.c       Tastenbelegung mit Mitte als C/Modifier
 src/menu.c        Spieleliste, Meldungen, Fortschrittsbalken
 src/rom_store.c   ROM aus FatFs in den Flash schreiben (inkl. .smd), prüfen
+src/sram.c        Batterie-SRAM: Kopf lesen, .sav laden und während des Spiels schreiben
 src/ym_core1.c    Ton auf Core 1: Schreibprotokoll abspielen, mischen, auf 22 kHz
 src/ym2612_synth.c  zweite Übersetzung von core/sound/ym2612.c für Core 1
 src/audio_pwm.c   PWM-Lautsprecher per DMA, wie in ../sms
@@ -283,6 +284,37 @@ Ist die Emulation mehr als ein Bild im Rückstand, wird das Zeichnen
 übersprungen (höchstens drei Bilder am Stück). Die Emulation selbst läuft
 immer vollständig.
 
+## Spielstände
+
+Spiele mit Batterie-SRAM (Phantasy Star II–IV, Shining Force, Sonic 3 …)
+speichern in **`<Spielname>.sav`** neben der ROM auf dem USB-Laufwerk, wie
+beim Game Boy Color (`src/sram.c`). Ob es SRAM gibt, steht im Kopf der
+Cartridge (`RA` bei `$1B0`, Art bei `$1B2`, Anfang und Ende bei `$1B4`/`$1B8`,
+meist `$200001`–`$203FFF`, also 8 KB in den ungeraden Bytes). Die Datei
+enthält nur die benutzten Bytes, höchstens 8 KB. Liegt das ROM unterhalb
+des SRAM, ist es immer sichtbar, sonst erst, wenn das Spiel 1 nach `$A130F1`
+schreibt (Phantasy Star IV, 3 MB).
+
+Ein Spiel wird mit RESET verlassen, deshalb wird während des Spiels
+geschrieben: sobald sich das SRAM eine Sekunde lang nicht mehr geändert hat
+(oder seit 20 Sekunden ständig ändert). Kern 1 wartet dabei im RAM, das
+Spiel steht etwa 50 ms pro geändertem 4-KB-Sektor still; unveränderte
+Sektoren werden übersprungen. **Nach dem Speichern im Spiel kurz warten**,
+bevor man RESET drückt. Ist das Laufwerk voll, wird nicht gespeichert, das
+Spiel läuft weiter. Im **Link-Spiel** startet das SRAM auf beiden Geräten
+leer und wird nicht gespeichert, damit beide Emulationen gleich bleiben.
+
+Damit das wenig Flash kostet (der Verbund hat kaum Platz): Die Datei wird
+einmal auf ihre Länge gebracht, danach schreibt `sram.c` ihre Sektoren
+direkt, ohne FatFs' Schreibcode; den FIL teilt es sich mit `rom_store.c`;
+statt der Multicore-Sperre des SDK hält eine eigene kleine Schleife Kern 1
+an. Der 68000 liest ROM unter 2 MB weiter direkt, darüber entscheidet eine
+kleine Funktion im RAM zwischen ROM und Bus (`m68kcpu.h`), damit jeder
+der vielen eingebauten Lesezugriffe so kurz bleibt wie vorher. Auf dem PC
+geprüft mit eigenen Testmodulen (lesen/schreiben als Byte, Wort, Langwort,
+`$A130F1`, Laden und Speichern über FatFs, volles Laufwerk); **auf dem
+Gerät und mit echten Spielen noch nicht getestet.**
+
 ## Super Street Fighter II (5 MB)
 
 SSF2 ist das einzige Mega-Drive-Spiel über 4 MB. Die Konsole sieht nur 4 MB,
@@ -306,9 +338,9 @@ schaltet ein Spiel dort um, wird das ignoriert. SSF2 tut das nicht.
 ## Offene Punkte
 
 * **Kein Ton.** Ein Versuch (PWM per DMA, 53 kHz) lief langsamer und instabil.
-* **Keine Spielstände.** Der Kern emuliert kein batteriegepuffertes
-  Cartridge-SRAM. Spiele mit Speicherfunktion verlieren ihren Stand beim
-  Ausschalten.
+* **Kein EEPROM.** Spiele, die mit einem seriellen EEPROM speichern (z. B.
+  NBA Jam, Wonder Boy in Monster World, Evander Holyfield's Boxing),
+  verlieren ihren Stand; nur Batterie-SRAM wird gespeichert (siehe oben).
 * Kein 6-Button-Pad, kein zweiter Spieler.
 
 ## Lizenzen

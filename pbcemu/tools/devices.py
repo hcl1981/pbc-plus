@@ -652,6 +652,28 @@ def atari7800():
     return p.done()
 
 
+def favorites():
+    """Favourites: a golden star standing on the floor, its arms bevelled
+    into a lit and a shaded half each."""
+    p = Pic()
+    p.shadow(100, 112, 40, 6)
+    cx, cy, ro, ri = 100, 70, 40, 17
+    def pt(k, r):                       # k: 0 = top point, half steps between
+        a = math.radians(-90 + 36 * k)
+        return (cx + r * math.cos(a), cy + r * math.sin(a))
+    outline = [pt(k, ro if k % 2 == 0 else ri) for k in range(10)]
+    gold = '#e2b13c'
+    p.poly([(x, y + 5) for x, y in outline], shade(gold, -0.55))     # thickness
+    lx, ly = -0.6, -0.8                                             # light: upper left
+    for k in range(10):
+        a, b = pt(k, ro if k % 2 == 0 else ri), pt(k + 1, ro if (k + 1) % 2 == 0 else ri)
+        mx, my = (a[0] + b[0]) / 2 - cx, (a[1] + b[1]) / 2 - cy
+        n = math.hypot(mx, my)
+        f = (mx * lx + my * ly) / n
+        p.poly([(cx, cy), a, b], shade(gold, 0.45 * f if f > 0 else 0.4 * f))
+    return p.done()
+
+
 DEVICES = {
     'nes': nes,
     'sms': master_system,
@@ -668,6 +690,7 @@ DEVICES = {
     'cv': colecovision,
     'a78': atari7800,
     'usb': usb_drive,
+    'fav': favorites,
 }
 
 if __name__ == '__main__':

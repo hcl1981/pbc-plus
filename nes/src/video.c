@@ -2,6 +2,7 @@
 #include <string.h>
 #include "pico/stdlib.h"
 #include "hardware/sync.h"
+#include "pico/multicore.h"
 #include "board.h"
 #include "color565.h"
 #include "display.h"
@@ -134,6 +135,9 @@ static void __not_in_flash_func(make_row)(const uint8_t *px, long pitch, const u
 
 void __not_in_flash_func(video_core1_main)(void)
 {
+    /* Save files are written while a game runs: park this core per sector
+     * (flash_fs.c). */
+    multicore_lockout_victim_init();
     for (;;) {
         const uint8_t *px = (const uint8_t *)frame_pixels;
         if (!px) {

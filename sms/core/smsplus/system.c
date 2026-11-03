@@ -63,6 +63,11 @@ void system_init(int rate) {
     }
     sms.ram  = (uint8 *)frens_f_malloc(RAMSIZEBYTES);
     sms.sram = (uint8 *)frens_f_malloc(SRAM_BYTES);
+    /* ColecoVision: the Super Game Module's RAM, used once a game asks */
+    if (IS_COLECO) {
+        coleco_sgm_ram = (uint8 *)frens_f_malloc(0x8000);
+        if (coleco_sgm_ram) __builtin_memset(coleco_sgm_ram, 0, 0x8000);
+    }
     /* Initialize the VDP emulation */
     vdp_init();
 
@@ -105,6 +110,8 @@ void system_audio_init(int rate) {
 
     /* Set up SN76489 emulation */
     SN76496_init(0, MASTER_CLOCK, 255, rate);
+    /* ColecoVision Super Game Module: AY-3-8910 at half the CPU clock */
+    if (IS_COLECO) ay_init(&coleco_ay, MASTER_CLOCK / 2, rate);
 
 #if PICO_RP2350
     /* Set up YM2413 emulation (RP2350 only). Pass FM_NATIVE_RATE so upstream
@@ -136,6 +143,8 @@ void system_shutdown(void)
     frens_f_free(cachePtr);
     frens_f_free(sms.sram);
     frens_f_free(sms.ram);
+    frens_f_free(coleco_sgm_ram);
+    coleco_sgm_ram = NULL;
     snd.buffer[0] = NULL;
     snd.buffer[1] = NULL;
     cacheStoreUsed = NULL;

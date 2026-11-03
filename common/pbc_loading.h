@@ -15,7 +15,7 @@
  * starts dark and fades in once there is something on the panel: the
  * first screen below, or the game (call before its loop; returns at once
  * and fades in the background). Only the first call does anything. */
-#define PBC_BACKLIGHT 200
+#define PBC_BACKLIGHT 200               /* default; the launcher's choice wins */
 void pbc_fade_in(bool wait);
 
 /* "Loading game": the game being copied into the flash, with a bar. */

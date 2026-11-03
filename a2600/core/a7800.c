@@ -31,6 +31,8 @@ static uint32_t rom_size;
 static const uint8_t *page[12];         /* 4000h-FFFFh, 4 KB pages; NULL: nothing there */
 static uint8_t *wpage[12];              /* writable ones (cartridge RAM) */
 static bool supergame, sg_ram, sg_rom4000, sg_bank6, pal;
+static bool absolute;                   /* F-18 Hornet */
+static bool activision;                 /* Double Dragon, Rampage */
 static int sg_banks, sg_base;
 static bool pokey4000;                  /* POKEY at 4000h-7FFFh */
 static uint16_t pokey_lo;               /* or at 450h / 440h (0: none) */
@@ -79,15 +81,38 @@ static void sg_select(int v)
     map_16k(1, bank_ptr(sg_base + (v & (sg_banks - 1))), NULL);
 }
 
+/* 8 KB of the image at offset `off` to address a (a multiple of 4 KB) */
+static void map_8k(uint16_t a, uint32_t off)
+{
+    for (int i = 0; i < 2; i++) {
+        uint32_t o = off + (uint32_t)i * 0x1000;
+        page[(a >> 12) - 4 + i] = o + 0x1000 <= rom_size ? rom + o : open_bus;
+        wpage[(a >> 12) - 4 + i] = NULL;
+    }
+}
+
+/* Activision (128 KB): 16 KB bank n at A000h-DFFFh, chosen by a write to
+ * FF80h-FF8Fh (n: the low three address bits); around it fixed 8 KB parts
+ * of banks 6 and 7 (map_cart). */
+static void activision_select(int n)
+{
+    map_8k(0xa000, (uint32_t)n * 0x4000);
+    map_8k(0xc000, (uint32_t)n * 0x4000 + 0x2000);
+}
+
 bool a7800_insert(const uint8_t *r, uint32_t n)
 {
     uint16_t type = 0;
     pal = false;
     pokey4000 = false;
     pokey_lo = 0;
+    absolute = activision = false;
     if (n >= 128 && memcmp(r + 1, "ATARI7800", 9) == 0) {
         type = (uint16_t)(r[53] << 8 | r[54]);
         pal = r[57] & 1;
+        /* type bits 8, 9: Absolute and Activision bank switching */
+        absolute = type & 0x0100;
+        activision = type & 0x0200;
         /* cartridge type bits 0, 6, 10: a POKEY at 4000h, 450h, 440h */
         pokey4000 = type & 0x0001;
         pokey_lo = (type & 0x0040) ? 0x450 : (type & 0x0400) ? 0x440 : 0;
@@ -98,7 +123,7 @@ bool a7800_insert(const uint8_t *r, uint32_t n)
         return false;
     rom = r;
     rom_size = n;
-    supergame = (type & 0x02) || n > 0xc000;
+    supergame = !absolute && !activision && ((type & 0x02) || n > 0xc000);
     sg_ram = type & 0x04;
     sg_rom4000 = type & 0x08;
     sg_bank6 = type & 0x10;
@@ -114,6 +139,21 @@ uint8_t *a7800_ram(void) { return ram; }
 
 static void map_cart(void)
 {
+    if (absolute) {
+        /* 64 KB: bank 0 or 1 at 4000h (a write of 1 or 2 to 8000h), 2 and 3 fixed */
+        map_16k(0, bank_ptr(0), NULL);
+        map_16k(1, bank_ptr(2), NULL);
+        map_16k(2, bank_ptr(3), NULL);
+        return;
+    }
+    if (activision) {
+        map_8k(0x4000, 0x1a000);
+        map_8k(0x6000, 0x18000);
+        map_8k(0x8000, 0x1e000);
+        activision_select(0);
+        map_8k(0xe000, 0x1c000);
+        return;
+    }
     if (!supergame) {
         /* flat: the image ends at FFFFh */
         for (int i = 0; i < 12; i++) {
@@ -281,6 +321,11 @@ static A78_RAM void a78_write(uint16_t a, uint8_t v)
         int pg = (a >> 12) - 4;
         if (pokey4000 && a < 0x8000)
             pokey_write((uint8_t)a, v);
+        else if (absolute && a >= 0x8000 && a < 0xc000) {
+            if (v & 3)
+                map_16k(0, bank_ptr((v & 1) ? 0 : 1), NULL);
+        } else if (activision && (a & 0xfff0) == 0xff80)
+            activision_select(a & 7);
         else if (wpage[pg])
             wpage[pg][a & 0xfff] = v;
         else if (supergame && a >= 0x8000 && a < 0xc000)

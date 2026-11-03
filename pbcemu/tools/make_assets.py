@@ -21,14 +21,15 @@ import devices                                     # noqa: E402
 
 LATO_DIRS = ['/usr/share/fonts/truetype/lato', os.path.expanduser('~/.local/share/fonts')]
 
-FONTS = [                 # C name, file, pixel size
-    ('font_title', 'Lato-Black.ttf', 24),
-    ('font_head', 'Lato-Bold.ttf', 17),
-    ('font_body', 'Lato-Semibold.ttf', 15),
-    ('font_small', 'Lato-Bold.ttf', 11),
+FONTS = [                 # C name, file, pixel size, last character
+    ('font_title', 'Lato-Black.ttf', 24, 126),     # only the system names: ASCII
+    ('font_head', 'Lato-Bold.ttf', 17, 255),
+    ('font_body', 'Lato-Semibold.ttf', 15, 255),
+    ('font_small', 'Lato-Bold.ttf', 11, 255),
 ]
 
 PICTURES = list(devices.DEVICES)   # big: W x H
+LOGO_SIZE = 50                     # the start animation's "PBCemu"
 ICON_W, ICON_H = 70, 45            # small: header of the game list
 
 
@@ -51,7 +52,7 @@ def c_bytes(data, per_line=24):
     return '\n'.join(out)
 
 
-def font_c(cname, path, size):
+def font_c(cname, path, size, last=255):
     font = ImageFont.truetype(path, size)
     ascent, descent = font.getmetrics()
     glyphs, bitmap = [], bytearray()
@@ -59,6 +60,9 @@ def font_c(cname, path, size):
         ch = bytes([code]).decode('cp437')
         bbox = font.getbbox(ch)
         adv = round(font.getlength(ch))
+        if code > last:                            # left out: draws nothing
+            glyphs.append((0, 0, 0, 0, 0, 0))
+            continue
         if bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
             glyphs.append((len(bitmap), 0, 0, 0, 0, adv))
             continue
@@ -134,26 +138,103 @@ def picture_c(cname, img):
     return '\n'.join(lines), len(rle) + 3 * n
 
 
+def logo_pictures():
+    """The start animation's logo: "PBC" in white, "emu" in gold (each lit
+    from above), and the whole word in white for the glint running over
+    it. Same height and baseline, "emu" right behind "PBC"."""
+    font = ImageFont.truetype(find_font('Lato-Black.ttf'), LOGO_SIZE)
+    ascent, descent = font.getmetrics()
+    h = ascent + descent
+    w_pbc = round(font.getlength('PBC'))
+    w_emu = round(font.getlength('emu')) + 2
+
+    def word(text, w, top, bottom):
+        mask = Image.new('L', (w, h), 0)
+        ImageDraw.Draw(mask).text((0, 0), text, font=font, fill=255)
+        grad = Image.new('RGBA', (w, h))
+        for y in range(h):
+            t = y / (h - 1)
+            c = tuple(round(top[i] + (bottom[i] - top[i]) * t) for i in range(3))
+            ImageDraw.Draw(grad).line([(0, y), (w, y)], fill=c + (255,))
+        grad.putalpha(mask)
+        return grad
+
+    pbc = word('PBC', w_pbc, (255, 255, 255), (200, 206, 220))
+    emu = word('emu', w_emu, (255, 222, 130), (214, 150, 40))
+    glint = Image.new('RGBA', (w_pbc + w_emu, h), (0, 0, 0, 0))
+    glint.alpha_composite(word('PBC', w_pbc, (255, 255, 255), (255, 255, 255)), (0, 0))
+    glint.alpha_composite(word('emu', w_emu, (255, 255, 255), (255, 255, 255)), (w_pbc, 0))
+    return [('logo_pbc', pbc), ('logo_emu', emu), ('logo_glint', glint)]
+
+
+SHADOW_LEVELS = 12
+
+
+def split_shadow(img):
+    """The picture without its floor shadow, and the shadow alone at half
+    size (the launcher draws it doubled: it is soft anyway, and so the
+    console can float above it). Shadow: black pixels at most half opaque."""
+    px = img.load()
+    w, h = img.size
+    obj = img.copy()
+    op = obj.load()
+    shade = [[0] * w for _ in range(h)]
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            if 0 < a <= 135 and max(r, g, b) <= 8:
+                shade[y][x] = a
+                op[x, y] = (0, 0, 0, 0)
+    if not any(any(row) for row in shade):
+        return obj, None
+    sh = Image.new('RGBA', (w // 2, h // 2), (0, 0, 0, 0))
+    sp = sh.load()
+    for y in range(h // 2):
+        for x in range(w // 2):
+            a = (shade[2 * y][2 * x] + shade[2 * y][2 * x + 1] +
+                 shade[2 * y + 1][2 * x] + shade[2 * y + 1][2 * x + 1]) / 4
+            sp[x, y] = (0, 0, 0, round(round(a / 136 * SHADOW_LEVELS) * 136 / SHADOW_LEVELS))
+    return obj, sh
+
+
 def main():
     root = sys.argv[1]
     parts, sizes = [], {}
-    for cname, fname, size in FONTS:
-        c, n = font_c(cname, find_font(fname), size)
+    for cname, fname, size, last in FONTS:
+        c, n = font_c(cname, find_font(fname), size, last)
         parts.append(c)
         sizes[cname] = n
-    names = []
+    names, shadows = [], []
     for name in PICTURES:
         # a picture in art/ (tools/import_icons.py) wins over the drawn one
         art = os.path.join(root, 'art', name + '.png')
         big = Image.open(art).convert('RGBA') if os.path.exists(art) else devices.DEVICES[name]()
-        c, n = picture_c(f'pic_{name}', big)
+        obj, shadow = split_shadow(big)
+        c, n = picture_c(f'pic_{name}', obj)
         parts.append(c)
         sizes[f'pic_{name}'] = n
+        if shadow:
+            c, n = picture_c(f'shadow_{name}', shadow)
+            parts.append(c)
+            sizes[f'shadow_{name}'] = n
+            shadows.append(name)
         small = big.resize((ICON_W, ICON_H), Image.LANCZOS)
         c, n = picture_c(f'icon_{name}', small)
         parts.append(c)
         sizes[f'icon_{name}'] = n
         names.append(name)
+    table = ['/* the floor shadow of a big picture (half size), or NULL */',
+             'const pbc_picture_t *pbc_shadow_of(const pbc_picture_t *pic)', '{']
+    for n in shadows:
+        table.append(f'    if (pic == &pic_{n}) return &shadow_{n};')
+    table += ['    return 0;', '}', '']
+    parts.append('\n'.join(table))
+    logos = []
+    for cname, img in logo_pictures():
+        c, n = picture_c(cname, img)
+        parts.append(c)
+        sizes[cname] = n
+        logos.append(cname)
 
     hdr = ['/* assets.h -- generated by tools/make_assets.py, do not edit */',
            '#ifndef PBC_ASSETS_H', '#define PBC_ASSETS_H', '', '#include <stdint.h>', '',
@@ -164,11 +245,14 @@ def main():
            '/* palette of RGB565 colours with 4 bit alpha; pixels as PackBits runs */',
            'typedef struct { uint16_t w, h; const uint16_t *pal; const uint8_t *alpha; const uint8_t *rle; } pbc_picture_t;',
            '']
-    for cname, _, _ in FONTS:
+    for cname, *_ in FONTS:
         hdr.append(f'extern const pbc_font_t {cname};')
     hdr.append('')
     for n in names:
         hdr.append(f'extern const pbc_picture_t pic_{n}, icon_{n};')
+    hdr.append(f'extern const pbc_picture_t {", ".join(logos)};')
+    hdr += ['/* the floor shadow of pic_*, half size (draw it doubled), or 0 */',
+            'const pbc_picture_t *pbc_shadow_of(const pbc_picture_t *pic);']
     hdr += ['', '#endif', '']
     with open(os.path.join(root, 'src/assets.h'), 'w') as f:
         f.write('\n'.join(hdr))

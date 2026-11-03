@@ -11,12 +11,19 @@
 
 typedef struct {
     uint32_t magic;
-    uint8_t  sound, volume, stats, unused;
+    uint8_t  sound, volume, stats, brightness;     /* brightness 0: older record */
     uint8_t  video[PREFS_DEVICES];
     uint32_t check;
 } stored_t;
 
-prefs_t g_prefs = { true, VOLUME_DEFAULT, false, { 0 } };
+prefs_t g_prefs = { true, VOLUME_DEFAULT, false, BRIGHT_DEFAULT, { 0 } };
+
+uint8_t prefs_backlight(void)
+{
+    /* even steps for the eye: the display squares the level */
+    static const uint8_t level[BRIGHT_MAX] = { 70, 95, 120, 145, 170, 200, 228, 255 };
+    return level[g_prefs.brightness - BRIGHT_MIN];
+}
 
 static uint32_t checksum(const stored_t *s)
 {
@@ -36,6 +43,8 @@ void prefs_load(void)
     if (s->volume >= VOLUME_MIN && s->volume <= VOLUME_MAX)
         g_prefs.volume = s->volume;
     g_prefs.stats = s->stats != 0;
+    if (s->brightness >= BRIGHT_MIN && s->brightness <= BRIGHT_MAX)
+        g_prefs.brightness = s->brightness;
     memcpy(g_prefs.video, s->video, sizeof g_prefs.video);
 }
 
@@ -64,6 +73,7 @@ void prefs_save(void)
     s.sound = g_prefs.sound;
     s.volume = (uint8_t)g_prefs.volume;
     s.stats = g_prefs.stats;
+    s.brightness = (uint8_t)g_prefs.brightness;
     memcpy(s.video, g_prefs.video, sizeof s.video);
     s.check = checksum(&s);
     if (memcmp((const void *)(XIP_BASE + PREFS_OFFSET), &s, sizeof s) == 0)

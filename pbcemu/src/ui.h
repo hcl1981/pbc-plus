@@ -12,9 +12,10 @@ typedef enum { UI_PLAY, UI_USB } ui_result_t;
 extern int  ui_link_player;
 extern bool ui_link_master;
 
-/* Device carousel and game list until a game is chosen (device and file
- * name returned) or "Add Games" is picked. The volume must be mounted.
- * Starts at the given device/game (from the last launch), if any. */
+/* Carousel (the favourites, then the devices) and game list until a game
+ * is chosen (device and file name returned) or "Add Games" is picked. The
+ * volume must be mounted. Always starts at the favourites; the given
+ * device/game (from the last launch) is where a list's cursor starts. */
 ui_result_t ui_run(int *device, char game[GAME_NAME_MAX]);
 
 /* A card with a title and up to three lines; waits for a button. */
@@ -27,5 +28,8 @@ void ui_starting(int device, const char *game);
 void ui_usb(int state);
 
 void ui_wait_release(void);
+
+/* Set at power-on and RES: ui_run() starts with the start animation. */
+extern bool ui_intro_pending;
 
 #endif /* PBC_UI_H */

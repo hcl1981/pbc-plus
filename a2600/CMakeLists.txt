@@ -41,6 +41,7 @@ add_executable(pbc_a2600
     src/menu.c
     src/rom_store.c
     src/settings.c
+    src/tilt.c
     src/flash_fs.c
     fatfs/ff.c
     fatfs/ffunicode.c
@@ -89,7 +90,7 @@ target_compile_options(pbc_a2600 PRIVATE
 # Size where speed does not matter: the firmware shares 2 MB with six other
 # emulators. The Z80, the memory and I/O paths and the line drawing stay -O2.
 set_source_files_properties(
-    src/menu.c src/rom_store.c src/settings.c src/flash_fs.c src/main.c
+    src/menu.c src/rom_store.c src/settings.c src/flash_fs.c src/main.c src/tilt.c
     fatfs/ff.c fatfs/ffunicode.c fatfs/diskio.c
     PROPERTIES COMPILE_OPTIONS "-Os")
 
@@ -104,6 +105,7 @@ target_link_libraries(pbc_a2600
     hardware_clocks
     hardware_vreg
     hardware_watchdog
+    hardware_i2c
 )
 
 # UART0's default pins are joystick CENTER/RIGHT -- no stdio at all.

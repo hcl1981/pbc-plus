@@ -65,6 +65,16 @@ static struct {
     uint8_t audc[2], audf[2], audv[2];
 } t;
 
+/* Paddles: the pots charge a capacitor each, which VBLANK bit 7 dumps; a
+ * paddle's INPT bit 7 goes high a set time after the dump ends. Times in
+ * colour clocks, counted from the start of the emulation. */
+static uint32_t now_line;               /* lines so far */
+static uint32_t pad_rel;                /* the dump ended here */
+static uint32_t pad_target[4] = { ~0u, ~0u, ~0u, ~0u };    /* ~0: no paddle */
+static uint32_t pad_window;             /* last time from dump end to dump */
+static uint16_t pad_reads;              /* INPT0-3 read, not dumped, this frame */
+static uint8_t  pad_released;           /* the dump ended this frame */
+
 static uint8_t pix[TIA_WIDTH];
 static int x_drawn;                     /* pixels of this line drawn so far */
 static uint8_t hmove_blank;             /* the first 8 pixels of this line */
@@ -366,6 +376,10 @@ void tia_reset(void)
 {
     memset(&t, 0, sizeof t);
     memset(pix, 0, sizeof pix);
+    now_line = pad_rel = pad_window = 0;
+    pad_reads = pad_released = 0;
+    for (int i = 0; i < 4; i++)
+        pad_target[i] = ~0u;
     memset(objs, 0, sizeof objs);
     memset(span_n, 0, sizeof span_n);
     x_drawn = 0;
@@ -393,7 +407,17 @@ TIA_RAM void tia_write(uint8_t reg, uint8_t v, int clock)
             t.vsync_started = 1;
         t.vsync = v;
         break;
-    case 0x01: t.vblank = v; break;             /* VBLANK */
+    case 0x01: {                                /* VBLANK */
+        uint32_t now = now_line * 228u + (uint32_t)clock;
+        if ((v & 0x80) && !(t.vblank & 0x80))
+            pad_window = now - pad_rel;         /* dump begins */
+        else if (!(v & 0x80) && (t.vblank & 0x80)) {
+            pad_rel = now;                      /* dump ends: charging */
+            pad_released = 1;
+        }
+        t.vblank = v;
+        break;
+    }
     case 0x02: tia_wsync_req = 1; break;        /* WSYNC */
     case 0x04: case 0x05:                       /* NUSIZ0/1 */
         t.nusiz[reg - 4] = v;
@@ -498,7 +522,15 @@ TIA_RAM uint8_t tia_read(uint8_t reg, int clock)
     case 0x7: v = (uint8_t)(((c & C_P0P1) ? 0x80 : 0) | ((c & C_M0M1) ? 0x40 : 0)); break;
     case 0xc: v = t.fire[0] ? 0x00 : 0x80; break;
     case 0xd: v = t.fire[1] ? 0x00 : 0x80; break;
-    default:  v = 0; break;                     /* paddles: none */
+    case 0x8: case 0x9: case 0xa: case 0xb:     /* INPT0-3: paddles */
+        v = 0;
+        if (!(t.vblank & 0x80)) {
+            pad_reads++;
+            if (now_line * 228u + (uint32_t)clock - pad_rel >= pad_target[reg - 8])
+                v = 0x80;
+        }
+        break;
+    default:  v = 0; break;
     }
     return v;                                   /* undriven bits: 0 */
 }
@@ -508,6 +540,7 @@ TIA_RAM void tia_end_line(tia_line_fn out)
     draw_to(TIA_WIDTH);
     if (out)
         out(pix, (t.vblank & 2) != 0);
+    now_line++;
     x_drawn = 0;
     hmove_blank = 0;
 }
@@ -529,6 +562,24 @@ TIA_RAM bool tia_wsync(void)
     bool w = tia_wsync_req;
     tia_wsync_req = 0;
     return w;
+}
+
+void tia_set_paddle(int i, uint32_t clocks)
+{
+    pad_target[i & 3] = clocks;
+}
+
+uint32_t tia_paddle_window(void)
+{
+    return pad_window;
+}
+
+int tia_paddle_reads(void)
+{
+    int n = pad_released ? pad_reads : 0;
+    pad_reads = 0;
+    pad_released = 0;
+    return n;
 }
 
 void tia_set_fire(int player, bool pressed)

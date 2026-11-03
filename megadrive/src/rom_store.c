@@ -87,22 +87,26 @@ bool rom_store_is_rom_name(const char *name)
            ends_with_ci(name, ".gen") || ends_with_ci(name, ".smd");
 }
 
+/* One file at a time, here and for the .sav during the game (sram.c);
+ * static: a FIL carries a 4 KB sector buffer, the stack is only 4 KB. */
+static FIL file;
+
+FIL *rom_store_file(void) { return &file; }
+
 static bool file_fingerprint(const char *name, uint32_t *size, uint32_t *hash, uint8_t *buf)
 {
     char path[ROM_NAME_MAX + 2];
-    /* static: a FIL carries a 4 KB sector buffer, the stack is only 4 KB */
-    static FIL f;
     UINT got = 0;
 
     snprintf(path, sizeof path, "/%s", name);
-    if (f_open(&f, path, FA_READ) != FR_OK)
+    if (f_open(&file, path, FA_READ) != FR_OK)
         return false;
-    *size = (uint32_t)f_size(&f);
-    if (f_read(&f, buf, 4096, &got) != FR_OK) {
-        f_close(&f);
+    *size = (uint32_t)f_size(&file);
+    if (f_read(&file, buf, 4096, &got) != FR_OK) {
+        f_close(&file);
         return false;
     }
-    f_close(&f);
+    f_close(&file);
     *hash = fnv1a(2166136261u, buf, got);
     return true;
 }
@@ -140,8 +144,6 @@ static void flash_program(uint32_t off, const uint8_t *src, uint32_t len)
 const char *rom_store_program(const char *name, uint8_t *scratch, rom_progress_fn progress)
 {
     char path[ROM_NAME_MAX + 2];
-    /* static: a FIL carries a 4 KB sector buffer, the stack is only 4 KB */
-    static FIL f;
     UINT got;
     bool smd = ends_with_ci(name, ".smd");
     uint8_t *in  = scratch;            /* 16 KB */
@@ -152,25 +154,25 @@ const char *rom_store_program(const char *name, uint8_t *scratch, rom_progress_f
         return "File name too long";
 
     snprintf(path, sizeof path, "/%s", name);
-    if (f_open(&f, path, FA_READ) != FR_OK)
+    if (f_open(&file, path, FA_READ) != FR_OK)
         return "Cannot read file";
-    file_size = (uint32_t)f_size(&f);
+    file_size = (uint32_t)f_size(&file);
 
     /* SMD dumps carry a 512-byte header, then 16 KB blocks with the odd
      * bytes in the first half and the even bytes in the second. */
     data_size = smd ? file_size - 512 : file_size;
     if (file_size < 0x200 || (smd && (file_size < 512 + 16384 || data_size % 16384)))
-        { f_close(&f); return "Not a valid ROM"; }
+        { f_close(&file); return "Not a valid ROM"; }
     if (data_size > ROM_FLASH_SIZE)
-        { f_close(&f); return "ROM larger than 5 MB"; }
+        { f_close(&file); return "ROM larger than 5 MB"; }
 
     /* Invalidate the info record first: a half-written region must never
      * look like a valid game after a power cut. */
     flash_erase(ROM_INFO_OFFSET, FLASH_SECTOR_SIZE);
 
     if (smd) {
-        if (f_read(&f, in, 512, &got) != FR_OK || got != 512)
-            { f_close(&f); return "Read error"; }
+        if (f_read(&file, in, 512, &got) != FR_OK || got != 512)
+            { f_close(&file); return "Read error"; }
         file_hash = fnv1a(file_hash, in, 512);
     }
 
@@ -179,8 +181,8 @@ const char *rom_store_program(const char *name, uint8_t *scratch, rom_progress_f
         uint32_t chunk = data_size - done;
         if (chunk > 16384) chunk = 16384;
 
-        if (f_read(&f, in, chunk, &got) != FR_OK || got != chunk)
-            { f_close(&f); return "Read error"; }
+        if (f_read(&file, in, chunk, &got) != FR_OK || got != chunk)
+            { f_close(&file); return "Read error"; }
         if (done + (smd ? 512 : 0) < 4096) {
             uint32_t head = (smd ? 512 : 0) + done;
             uint32_t take = 4096 - head < chunk ? 4096 - head : chunk;
@@ -215,17 +217,17 @@ const char *rom_store_program(const char *name, uint8_t *scratch, rom_progress_f
         if (progress)
             progress(done, data_size);
     }
-    f_close(&f);
+    f_close(&file);
 
     /* Verify: the region must read back exactly what was written. */
-    if (f_open(&f, path, FA_READ) == FR_OK) {
+    if (f_open(&file, path, FA_READ) == FR_OK) {
         const uint8_t *rom = rom_store_data();
         bool ok = true;
         if (smd)
-            f_lseek(&f, 512);
+            f_lseek(&file, 512);
         for (uint32_t pos = 0; ok && pos < data_size; pos += 16384) {
             uint32_t chunk = data_size - pos < 16384 ? data_size - pos : 16384;
-            if (f_read(&f, in, chunk, &got) != FR_OK || got != chunk) { ok = false; break; }
+            if (f_read(&file, in, chunk, &got) != FR_OK || got != chunk) { ok = false; break; }
             if (smd) {
                 for (uint32_t i = 0; i < 8192 && ok; i++)
                     ok = rom[pos + 2 * i] == in[i] && rom[pos + 2 * i + 1] == in[8192 + i];
@@ -234,7 +236,7 @@ const char *rom_store_program(const char *name, uint8_t *scratch, rom_progress_f
                     ok = rom[pos + i] == in[i + 1] && rom[pos + i + 1] == in[i];
             }
         }
-        f_close(&f);
+        f_close(&file);
         if (!ok)
             return "Flash verify failed";
     }

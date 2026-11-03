@@ -18,6 +18,7 @@
  *   0xFF6000               launch record (this file)
  *   0xFF7000               launcher settings
  *   0xFF8000               ROM info of the combined firmware
+ *   0xFF9000               launcher favourites (pbcemu/src/favs.h)
  */
 #ifndef PBC_LAUNCH_H
 #define PBC_LAUNCH_H
@@ -67,7 +68,8 @@ typedef struct {
     uint8_t  volume;                        /* VOLUME_MIN..VOLUME_MAX */
     uint8_t  flags;                         /* PBC_LAUNCH_* below */
     uint8_t  video;                         /* display mode, per emulator (0 = its default) */
-    uint8_t  reserved[3];
+    uint8_t  brightness;                    /* backlight 1..255, 0 = PBC_BACKLIGHT */
+    uint8_t  reserved[2];
     char     game[PBC_LAUNCH_NAME_MAX];     /* file in the FatFs root */
     uint32_t check;                         /* FNV-1a over everything above */
 } pbc_launch_t;

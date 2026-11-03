@@ -6,8 +6,10 @@
  * shared. New here: MARIA (display list list, display lists, direct and
  * character graphics, modes 160A/B and 320A-D, eight palettes, DMA time,
  * display list interrupts on the NMI), the 6532 RIOT, 4 KB of RAM and the
- * cartridge: flat up to 48 KB or SuperGame bank switching (with RAM or an
- * extra bank at 4000h), from a .a78 (with its header) or a bare image.
+ * cartridge: flat up to 48 KB, SuperGame bank switching (with RAM or an
+ * extra bank at 4000h), or, as the header says, Absolute (F-18 Hornet) or
+ * Activision (Double Dragon, Rampage); from a .a78 (with its header) or a
+ * bare image.
  * No BIOS: the game starts at its reset vector, as on the 7800 after the
  * BIOS has checked the cartridge. A POKEY on the cartridge (at 4000h,
  * 450h or 440h, as the header says) adds its sound (pokey.c).

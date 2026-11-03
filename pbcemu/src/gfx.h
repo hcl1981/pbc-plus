@@ -13,9 +13,11 @@
 
 #define GFX_W 240
 #define GFX_H 280
+extern uint8_t gfx_backlight;       /* the level the first frame fades in to */
 
 void gfx_init(void);
-/* Sends the finished frame and switches to the other buffer. */
+/* Sends the finished frame and switches to the other buffer. The first
+ * one after power-on also fades the backlight in, once it is on the panel. */
 void gfx_present(void);
 /* Waits until the last frame has left, e.g. before handing over the panel. */
 void gfx_finish(void);
@@ -35,6 +37,8 @@ void gfx_chevron(int cx, int cy, int size, int dir, uint32_t rgb, int alpha);
 
 /* Picture with its own alpha, scaled by `alpha`. */
 void gfx_picture(const pbc_picture_t *p, int x, int y, int alpha);
+/* The same, every pixel doubled (the half-size floor shadows). */
+void gfx_picture2x(const pbc_picture_t *p, int x, int y, int alpha);
 
 /* Text: y is the top of the line (font->height high). Returns the width. */
 int  gfx_text(const pbc_font_t *f, int x, int y, const char *s, uint32_t rgb, int alpha);

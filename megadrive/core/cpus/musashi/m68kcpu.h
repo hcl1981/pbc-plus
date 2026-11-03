@@ -987,28 +987,36 @@ static inline uint m68ki_read_imm_32(void)
 	return m68k_read_immediate_32(pc);
 }
 
+/* PBC: battery RAM (src/sram.c) appears at 0x200000 and up. ROM below
+ * 2 MB is read directly; above it a small function decides, so that each
+ * of the many inlined reads stays as short as before. */
+extern unsigned int m68k_rom_end;
+uint m68ki_read_high_8(uint address);
+uint m68ki_read_high_16(uint address);
+uint m68ki_read_high_32(uint address);
+
 static inline uint m68ki_read_8(uint address)
 {
 	address = ADDRESS_68K(address);
-	if (address < 0x800000) return ROM_DATA[address ^ 1];
+	if (address < 0x200000) return ROM_DATA[address ^ 1];
 	if (address >= 0xff0000) return M68K_RAM[(address ^ 1) & 0xffff];
-	return m68k_read_memory_8(address);
+	return m68ki_read_high_8(address);
 }
 
 static inline uint m68ki_read_16(uint address)
 {
 	address = ADDRESS_68K(address);
-	if (address < 0x800000) return m68ki_rom_16(address);
+	if (address < 0x200000) return m68ki_rom_16(address);
 	if (address >= 0xff0000) return m68ki_ram_16(address);
-	return m68k_read_memory_16(address);
+	return m68ki_read_high_16(address);
 }
 
 static inline uint m68ki_read_32(uint address)
 {
 	address = ADDRESS_68K(address);
-	if (address < 0x800000) return m68ki_rom_32(address);
+	if (address < 0x200000) return m68ki_rom_32(address);
 	if (address >= 0xff0000) return m68ki_ram_32(address);
-	return m68k_read_memory_32(address);
+	return m68ki_read_high_32(address);
 }
 
 static inline void m68ki_write_8(uint address, uint value)

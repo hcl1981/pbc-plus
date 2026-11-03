@@ -283,6 +283,14 @@ const uint8_t *qnes_get_ram(void)
     return emu ? emu->low_mem() : NULL;
 }
 
+uint8_t *qnes_get_battery_ram(long *size)
+{
+    if (!emu || !rom_loaded || !emu->has_battery_ram())
+        return NULL;
+    *size = Nes_Emu::high_mem_size;
+    return emu->high_mem();
+}
+
 const uint8_t *qnes_get_pixels(void)
 {
     if (!rom_loaded)

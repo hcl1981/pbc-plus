@@ -14,6 +14,12 @@
 #include "devices.h"
 #include "games.h"
 #include "prefs.h"
+#include "favs.h"
+#include "battery.h"
+#include "display.h"
+#include "pbc_rgb.h"
+#include "sound.h"
+#include "hardware/clocks.h"
 #include "pbc_lobby.h"
 #include "ui.h"
 #include "c64/settings.h"
@@ -30,6 +36,9 @@
 #define FAINT      0x485168
 
 #define LINK_GREEN 0x3ccf7a
+#define FAV_GOLD   0xe2b13c
+#define LOW_YELLOW 0xf0c040
+#define LOW_RED    0xe5484d
 
 _Static_assert(LOBBY_NAME_MAX == GAME_NAME_MAX, "offers carry a file name");
 
@@ -77,6 +86,56 @@ static int ease(int t)
     return 256 - (u * u * u >> 16);
 }
 
+/* A small picture from rows of '#', drawn as horizontal runs. */
+static void tiny(const char *const *rows, int n, int x, int y, uint32_t rgb, int alpha)
+{
+    for (int r = 0; r < n; r++)
+        for (int i = 0; rows[r][i];) {
+            if (rows[r][i] != '#') {
+                i++;
+                continue;
+            }
+            int j = i;
+            while (rows[r][j] == '#')
+                j++;
+            gfx_rect(x + i, y + r, j - i, 1, rgb, alpha);
+            i = j;
+        }
+}
+
+static const char *const star_rows[] = {
+    "....#....", "...###...", "#########", ".#######.", "..#####..", ".###.###.", "##.....##",
+};
+
+static void star(int x, int y, uint32_t rgb, int alpha)
+{
+    tiny(star_rows, 7, x, y, rgb, alpha);
+}
+
+/* Top right: the batteries' charge in four bars, or a bolt and "USB" when
+ * the PicoBoy runs from the cable. xr is the right edge. */
+static void battery_icon(int xr, int y)
+{
+    static const char *const bolt[] = {
+        "....##.", "...##..", "..##...", ".######", "....##.", "...##..", "..##...", ".##....", "#......",
+    };
+    battery_poll();
+    if (battery_on_usb()) {
+        int w = gfx_text_w(&font_small, "USB");
+        gfx_text(&font_small, xr - w, y, "USB", DIM, 255);
+        tiny(bolt, 9, xr - w - 10, y + 2, LOW_YELLOW, 255);
+        return;
+    }
+    int bars = battery_bars();
+    uint32_t c = bars >= 3 ? LINK_GREEN : bars == 2 ? LOW_YELLOW : LOW_RED;
+    int x = xr - 24;
+    gfx_rrect(x, y + 1, 22, 12, 3, bars ? DIM : LOW_RED, 255);
+    gfx_rrect(x + 1, y + 2, 20, 10, 2, BG_TOP, 255);
+    gfx_rect(xr - 2, y + 4, 2, 6, bars ? DIM : LOW_RED, 255);
+    for (int i = 0; i < bars; i++)
+        gfx_rect(x + 3 + i * 4, y + 4, 3, 6, c, 255);
+}
+
 void ui_wait_release(void)
 {
     while (input_raw())
@@ -85,9 +144,151 @@ void ui_wait_release(void)
     input_menu_edges();             /* forget what was pressed */
 }
 
+/* ---- RGB LED ---------------------------------------------------------------------- */
+
+/* Opening a system with B lets the LED flash up in its colour, dimmed,
+ * and fade out in half a second; otherwise it stays dark. */
+#define LED_PEAK    8                       /* of 255 */
+#define LED_FADE_US 500000u
+
+static uint32_t led_rgb;
+static uint64_t led_since;
+static bool led_on;
+
+static void led_flash(uint32_t rgb)
+{
+    led_rgb = rgb;
+    led_since = time_us_64();
+    led_on = true;
+}
+
+static void led_tick(void)
+{
+    if (!led_on)
+        return;
+    uint64_t t = time_us_64() - led_since;
+    int k = t >= LED_FADE_US ? 0 : (int)(256 - t * 256 / LED_FADE_US);
+    k = k * k >> 8;                         /* fades out softly */
+    int s = LED_PEAK * k;                   /* 0..255 * 256 */
+    pbc_rgb_set((uint8_t)(((led_rgb >> 16) & 255) * s >> 16), (uint8_t)(((led_rgb >> 8) & 255) * s >> 16),
+                (uint8_t)((led_rgb & 255) * s >> 16));
+    led_on = k > 0;
+}
+
+/* ---- power saving ---------------------------------------------------------------- */
+
+/* 30 s without a button: the display dims, after 2 more minutes it goes
+ * dark, each in a second. A button brings the light back in 150 ms; it
+ * does nothing else. */
+#define DIM_AFTER_US  30000000u
+#define OFF_AFTER_US 150000000u
+#define FADE_DOWN_US   1000000u         /* for the whole range */
+#define FADE_UP_US      150000u
+#define BREATH_US      4000000u         /* the LED while the display is dark */
+#define BREATH_PEAK          3          /* of 255 */
+
+static uint64_t last_press, bl_time;
+static int idle;                    /* 0 awake, 1 dimmed, 2 dark */
+static bool fading;
+static int bl;                      /* the backlight during a fade, 1/256 steps */
+
+static void backlight_tick(uint64_t now)
+{
+    int target = (idle == 2 ? 0 : idle == 1 ? prefs_backlight() / 3 : prefs_backlight()) << 8;
+    uint64_t dt = now - bl_time;
+    bl_time = now;
+    if (!fading) {                  /* follows the brightness setting */
+        bl = target;
+        return;
+    }
+    int step = (int)(dt * (255u << 8) / (target > bl ? FADE_UP_US : FADE_DOWN_US));
+    if (step < 1)
+        step = 1;
+    if (bl < target)
+        bl = bl + step > target ? target : bl + step;
+    else
+        bl = bl - step < target ? target : bl - step;
+    pbc_display_backlight((uint8_t)(bl >> 8));
+    fading = bl != target;
+}
+
+/* Dark: nothing to draw. The clock goes down to 60 MHz (USB keeps its own
+ * 48 MHz) and the LED breathes, until a button or a link partner's game.
+ * The waking button does nothing else. */
+static void dark_wait(void)
+{
+    gfx_finish();                       /* the SPI clock changes with it */
+    sound_off();
+    set_sys_clock_khz(60000, true);
+    pbc_rgb_clock_changed();
+    uint64_t t0 = time_us_64();
+    while (!input_raw() && !lobby_incoming(NULL)) {
+        int t = (int)((time_us_64() - t0) % BREATH_US * 512 / BREATH_US);
+        int tri = t < 256 ? t : 511 - t;
+        uint8_t v = (uint8_t)(((tri * tri >> 8) * BREATH_PEAK + 127) / 255);
+        pbc_rgb_set(v, v, v);
+        sleep_ms(20);
+    }
+    pbc_rgb_set(0, 0, 0);
+    set_sys_clock_khz(150000, true);
+    pbc_rgb_clock_changed();
+    sound_on();
+    while (input_raw())
+        sleep_ms(10);
+    input_menu_edges();                 /* forget the press */
+    last_press = time_us_64();
+    idle = 0;
+    fading = true;
+}
+
+/* input_menu_edges() for the menus, with the power saving */
+static uint32_t edges(void)
+{
+    uint32_t e = input_menu_edges();
+    uint64_t now = time_us_64();
+    led_tick();
+    if (!last_press)
+        last_press = now;
+    bool woken = false;
+    if (e || input_raw()) {
+        last_press = now;
+        woken = idle != 0;
+        if (woken) {
+            idle = 0;
+            fading = true;
+        }
+    } else {
+        int want = now - last_press > OFF_AFTER_US ? 2 : now - last_press > DIM_AFTER_US ? 1 : 0;
+        if (want != idle) {
+            idle = want;
+            fading = true;
+        }
+    }
+    backlight_tick(now);
+    if (idle == 2 && !fading) {
+        dark_wait();
+        return 0;
+    }
+    return woken ? 0 : e;
+}
+
 /* ---- device carousel ------------------------------------------------------------ */
 
 static int counts[16];
+static int fav_count;               /* favourites still on the drive */
+
+/* The carousel: page 0 the favourites, then the devices. */
+#define PAGES (device_count + 1)
+
+static uint32_t page_accent(int p)
+{
+    return p == 0 ? FAV_GOLD : devices[p - 1].accent;
+}
+
+static void games_text(int n, char *out, size_t size)
+{
+    snprintf(out, size, n == 1 ? "1 game" : "%d games", n);
+}
 
 static void count_text(int d, char *out, size_t n)
 {
@@ -96,18 +297,62 @@ static void count_text(int d, char *out, size_t n)
     else if (counts[d] == 0)
         snprintf(out, n, "No games yet");
     else
-        snprintf(out, n, counts[d] == 1 ? "1 game" : "%d games", counts[d]);
+        games_text(counts[d], out, n);
 }
 
-static void device_card(int d, int xoff, int alpha)
+static void fav_text(int count, char *out, size_t n)
 {
-    const device_t *dev = &devices[d];
+    if (count == 0)
+        snprintf(out, n, "No favorites yet");
+    else
+        games_text(count, out, n);
+}
+
+/* A device picture over its floor shadow (assets.c keeps them apart). With
+ * `floats` the device rises and sinks by 3 pixels every 3.2 s, in steps of
+ * a quarter pixel (the next row drawn in part), and its shadow pales. */
+#define FLOAT_MS 3200u
+#define FLOAT_PX 3
+
+/* returns how many whole pixels the device is up */
+static int device_picture(const pbc_picture_t *pic, int x, int y, int alpha, bool floats)
+{
+    int e = 0;                              /* 0..256: how far up */
+    if (floats) {
+        int ms = (int)((uint32_t)(time_us_64() / 1000) % FLOAT_MS);
+        int tri = (ms < (int)FLOAT_MS / 2 ? ms : (int)FLOAT_MS - ms) * 512 / (int)FLOAT_MS;
+        e = tri * tri * (768 - 2 * tri) >> 16;       /* smoothstep */
+    }
+    const pbc_picture_t *sh = pbc_shadow_of(pic);
+    if (sh)
+        gfx_picture2x(sh, x, y, alpha * (256 - e / 3) / 256);
+    int pos = y * 256 - FLOAT_PX * e, yi = pos >> 8, f = (pos & 255) & ~63;
+    gfx_picture(pic, x, yi, alpha);
+    if (f)
+        gfx_picture(pic, x, yi + 1, alpha * f / 256);
+    return y - yi;
+}
+
+static void device_card(int p, int xoff, int alpha)
+{
     int cx = GFX_W / 2 + xoff;
-    gfx_picture(dev->pic, cx - dev->pic->w / 2, 38, alpha);
+    char c[24];
+    if (p == 0) {
+        device_picture(&pic_fav, cx - pic_fav.w / 2, 38, alpha, true);
+        gfx_text_centered(&font_title, cx, 170, "Favorites", TEXT, alpha);
+        fav_text(fav_count, c, sizeof c);
+        int w = gfx_text_w(&font_small, c) + 26;
+        gfx_rrect(cx - w / 2, 218, w, 20, 10, FAV_GOLD, alpha * 90 / 255);
+        gfx_text_centered(&font_small, cx, 222, c, TEXT, alpha);
+        return;
+    }
+    int d = p - 1;
+    const device_t *dev = &devices[d];
+    int up = device_picture(dev->pic, cx - dev->pic->w / 2, 38, alpha, true);
     if (device_link(dev)) {
         /* playable by two over the link cable: a round golden badge on
          * the picture, like a seal */
-        int bx = cx + dev->pic->w / 2 - 22, by = 38 + 19;
+        int bx = cx + dev->pic->w / 2 - 22, by = 38 + 19 - up;
         gfx_circle(bx, by + 1, 18, 0x000000, alpha * 70 / 255);         /* shadow */
         gfx_circle(bx, by, 18, 0x9c6f16, alpha);                          /* rim */
         gfx_circle(bx, by, 16, 0xe2b13c, alpha);                          /* gold */
@@ -117,7 +362,6 @@ static void device_card(int d, int xoff, int alpha)
     gfx_text_centered(&font_title, cx, 170, dev->name, TEXT, alpha);
     gfx_text_centered(&font_small, cx, 200, dev->maker, DIM, alpha);
 
-    char c[24];
     count_text(d, c, sizeof c);
     int w = gfx_text_w(&font_small, c) + 26;
     gfx_rrect(cx - w / 2, 218, w, 20, 10, dev->accent, alpha * 90 / 255);
@@ -127,15 +371,16 @@ static void device_card(int d, int xoff, int alpha)
 static void device_screen(int sel, int next, int t, int dir)
 {
     background();
-    uint32_t accent = gfx_mix(devices[sel].accent, devices[next].accent, t * 255 / 256);
+    uint32_t accent = gfx_mix(page_accent(sel), page_accent(next), t * 255 / 256);
     gfx_glow(GFX_W / 2, 104, 130, 78, accent, 80);
 
     /* title: PBC in white, emu in the accent */
     int x = 14 + gfx_text(&font_head, 14, 9, "PBC", TEXT, 255);
     gfx_text(&font_head, x, 9, "emu", accent, 255);
-    char page[16];
-    snprintf(page, sizeof page, "%d / %d", (t < 128 ? sel : next) + 1, device_count);
-    gfx_text(&font_small, GFX_W - 14 - gfx_text_w(&font_small, page), 14, page, DIM, 255);
+    char page[28];
+    snprintf(page, sizeof page, "%d / %d", (t < 128 ? sel : next) + 1, PAGES);
+    gfx_text_centered(&font_small, GFX_W / 2, 14, page, DIM, 255);
+    battery_icon(GFX_W - 14, 12);
     if (lobby_partner()) {
         const char *s = "Link connected";
         gfx_text(&font_small, GFX_W - 14 - gfx_text_w(&font_small, s), 28, s, LINK_GREEN, 255);
@@ -151,9 +396,9 @@ static void device_screen(int sel, int next, int t, int dir)
 
     /* page dots, the current one stretched */
     int cur = t < 128 ? sel : next;
-    int dots_w = (device_count - 1) * 12 + 18;
+    int dots_w = (PAGES - 1) * 12 + 18;
     x = (GFX_W - dots_w) / 2;
-    for (int i = 0; i < device_count; i++) {
+    for (int i = 0; i < PAGES; i++) {
         if (i == cur) {
             gfx_rrect(x, 248, 18, 6, 3, accent, 255);
             x += 24;
@@ -170,7 +415,7 @@ static void device_screen(int sel, int next, int t, int dir)
 /* ---- options ----------------------------------------------------------------------- */
 
 /* Rows of the options card; which ones appear depends on where it opens. */
-enum { ROW_SOUND, ROW_VOLUME, ROW_DISPLAY, ROW_STATS, ROW_PORT, ROW_PROGRAM, ROW_KEY, ROW_DRIVE };
+enum { ROW_SOUND, ROW_VOLUME, ROW_DISPLAY, ROW_STATS, ROW_PORT, ROW_PROGRAM, ROW_KEY, ROW_DRIVE, ROW_FAV, ROW_BRIGHT };
 
 typedef struct {
     int device;                     /* -1: no device (no display row) */
@@ -181,7 +426,8 @@ typedef struct {
     int  key;                       /* on Center + B, C64_KEYS index */
     bool drive;                     /* processor-level 1541 */
     bool drive_rom;                 /* ... possible: 1541.rom is on the drive */
-    int  rows[9], nrows;
+    bool fav;                       /* the game is a favourite */
+    int  rows[11], nrows;
 } opt_t;
 
 #define C64_FILES_MAX 64
@@ -204,11 +450,11 @@ static void switch_toggle(int x, int y, bool on, uint32_t accent)
     gfx_circle(on ? x + 28 : x + 10, y + 10, 8, 0xffffff, 255);
 }
 
-static void volume_bars(int x, int y, int vol, bool on, uint32_t accent)
+static void level_bars(int x, int y, int n, int val, bool on, uint32_t accent)
 {
-    for (int i = 0; i < VOLUME_MAX; i++) {
-        int h = 5 + i;
-        gfx_rrect(x + i * 7, y + 17 - h, 5, h, 2, (i < vol && on) ? accent : 0x3a4258, 255);
+    for (int i = 0; i < n; i++) {
+        int h = 5 + i * 12 / n;
+        gfx_rrect(x + i * 7, y + 17 - h, 5, h, 2, (i < val && on) ? accent : 0x3a4258, 255);
     }
 }
 
@@ -247,7 +493,7 @@ static void options_screen(void (*under)(void *), void *arg, const char *title,
     gfx_text(&font_head, 30, y0 + 14, t, TEXT, 255);
 
     static const char *const names[] = { "Sound", "Volume", "Display", "Show FPS", "Joystick", "Program",
-                                         "", "True drive" };
+                                         "", "True drive", "Favorite", "Brightness" };
     static const char *const key_names[] = { C64_KEYS(C64_KEY_NAME) };
     for (int i = 0; i < o->nrows; i++) {
         int y = y0 + 48 + i * rh, kind = o->rows[i];
@@ -260,11 +506,13 @@ static void options_screen(void (*under)(void *), void *arg, const char *title,
         char v[32];
         switch (kind) {
         case ROW_SOUND: switch_toggle(xr - 38, y + 4, g_prefs.sound, accent); break;
-        case ROW_VOLUME: volume_bars(xr - VOLUME_MAX * 7 + 2, y + 5, g_prefs.volume, g_prefs.sound, accent); break;
+        case ROW_VOLUME: level_bars(xr - VOLUME_MAX * 7 + 2, y + 5, VOLUME_MAX, g_prefs.volume, g_prefs.sound, accent); break;
+        case ROW_BRIGHT: level_bars(xr - BRIGHT_MAX * 7 + 2, y + 5, BRIGHT_MAX, g_prefs.brightness, true, accent); break;
         case ROW_DISPLAY:
             value_arrows(xr - 8, y + 4, devices[o->device].modes[prefs_video(o->device)]);
             break;
         case ROW_STATS: switch_toggle(xr - 38, y + 4, g_prefs.stats, accent); break;
+        case ROW_FAV: switch_toggle(xr - 38, y + 4, o->fav, FAV_GOLD); break;
         case ROW_PORT:
             snprintf(v, sizeof v, "Port %d", o->port);
             value_arrows(xr - 8, y + 4, v);
@@ -303,13 +551,19 @@ static void options_screen(void (*under)(void *), void *arg, const char *title,
 static void options(void (*under)(void *), void *arg, int device, const char *game, uint32_t accent)
 {
     opt_t o = { .device = device };
+    bool game_opts = game && device >= 0 && devices[device].app != APP_NONE;
+    if (game_opts) {
+        o.rows[o.nrows++] = ROW_FAV;
+        o.fav = favs_has(device, game);
+    }
     o.rows[o.nrows++] = ROW_SOUND;
     o.rows[o.nrows++] = ROW_VOLUME;
+    o.rows[o.nrows++] = ROW_BRIGHT;
     if (device >= 0 && mode_count(device) > 1)
         o.rows[o.nrows++] = ROW_DISPLAY;
     if (device >= 0 && devices[device].app != APP_NONE)
         o.rows[o.nrows++] = ROW_STATS;
-    bool c64 = game && devices[device].app == APP_C64;
+    bool c64 = game_opts && device >= 0 && devices[device].app == APP_C64;
     if (c64) {
         o.rows[o.nrows++] = ROW_PORT;
         o.rows[o.nrows++] = ROW_PROGRAM;
@@ -349,18 +603,24 @@ static void options(void (*under)(void *), void *arg, int device, const char *ga
     ui_wait_release();
     for (;;) {
         options_screen(under, arg, title, &o, row, accent);
-        uint32_t e = input_menu_edges();
+        uint32_t e = edges();
         int d = (e & IN_RIGHT) ? 1 : (e & IN_LEFT) ? -1 : 0;
         if (e & IN_UP)   row = (row + o.nrows - 1) % o.nrows;
         if (e & IN_DOWN) row = (row + 1) % o.nrows;
         if (d) {
             switch (o.rows[row]) {
-            case ROW_SOUND: g_prefs.sound = !g_prefs.sound; break;
+            case ROW_SOUND:
+                g_prefs.sound = !g_prefs.sound;
+                sound_update();
+                sound_click();
+                break;
             case ROW_VOLUME:
                 g_prefs.volume += d;
                 if (g_prefs.volume < VOLUME_MIN) g_prefs.volume = VOLUME_MIN;
                 if (g_prefs.volume > VOLUME_MAX) g_prefs.volume = VOLUME_MAX;
                 g_prefs.sound = true;
+                sound_update();
+                sound_click();                  /* hear the new volume */
                 break;
             case ROW_DISPLAY: {
                 int n = mode_count(device);
@@ -368,6 +628,13 @@ static void options(void (*under)(void *), void *arg, int device, const char *ga
                 break;
             }
             case ROW_STATS: g_prefs.stats = !g_prefs.stats; break;
+            case ROW_FAV: o.fav = !o.fav; break;
+            case ROW_BRIGHT:
+                g_prefs.brightness += d;
+                if (g_prefs.brightness < BRIGHT_MIN) g_prefs.brightness = BRIGHT_MIN;
+                if (g_prefs.brightness > BRIGHT_MAX) g_prefs.brightness = BRIGHT_MAX;
+                pbc_display_backlight(prefs_backlight());     /* see it at once */
+                break;
             case ROW_PORT: o.port = o.port == 1 ? 2 : 1; break;
             case ROW_PROGRAM: o.file = (o.file + o.nfiles + d) % o.nfiles; break;
             case ROW_KEY: o.key = (o.key + C64_KEY_COUNT + d) % C64_KEY_COUNT; break;
@@ -380,6 +647,12 @@ static void options(void (*under)(void *), void *arg, int device, const char *ga
             break;
     }
     prefs_save();
+    if (game_opts && o.fav != favs_has(device, game)) {
+        if (favs_set(device, game, o.fav))
+            favs_save();
+        else
+            ui_message("Favorites", "The list is full:", "at most 40 games.", NULL);
+    }
     if (c64) {
         settings_set_port(game, o.port);
         settings_set_file(game, o.file ? o.files[o.file] : "");
@@ -433,7 +706,7 @@ static bool link_offer(void (*under)(void *), void *arg, int device, const char 
     ui_wait_release();
     for (;;) {
         link_card(under, arg, title, "Choose your controller", rows, 2, sel, "B  start      A  back", accent);
-        uint32_t e = input_menu_edges();
+        uint32_t e = edges();
         if (e & (IN_UP | IN_DOWN | IN_LEFT | IN_RIGHT))
             sel = !sel;
         if (e & IN_B)
@@ -463,7 +736,7 @@ static bool link_offer(void (*under)(void *), void *arg, int device, const char 
         case LOBBY_LOST:                /* both at once: the partner's game it is */
             return false;
         }
-        if (input_menu_edges() & IN_A) {
+        if (edges() & IN_A) {
             lobby_offer_cancel();
             return false;
         }
@@ -513,7 +786,8 @@ static bool link_join(int *device, char game[GAME_NAME_MAX])
 /* ---- game list ------------------------------------------------------------------------ */
 
 typedef struct {
-    int device;
+    int device;                     /* -1: the favourites */
+    int *devs;                      /* favourites: the device of each game */
     char (*names)[GAME_NAME_MAX];
     int n, cur;
     int scroll;                     /* in 1/16 pixel, follows the cursor smoothly */
@@ -524,24 +798,34 @@ typedef struct {
 static void list_screen(void *arg)
 {
     list_t *l = arg;
-    const device_t *dev = &devices[l->device];
+    bool fav = l->device < 0;
+    const device_t *dev = fav ? NULL : &devices[l->device];
+    uint32_t accent = fav ? FAV_GOLD : dev->accent;
     background();
 
     /* header: the accent fading into the background */
     for (int y = 0; y < 66; y++)
-        gfx_rect(0, y, GFX_W, 1, dev->accent, 70 - y);
-    gfx_picture(dev->icon, 10, 10, l->fade);
-    gfx_text(&font_head, 90, 13, dev->name, TEXT, 255);
+        gfx_rect(0, y, GFX_W, 1, accent, 70 - y);
+    gfx_picture(fav ? &icon_fav : dev->icon, 10, 10, l->fade);
+    gfx_text(&font_head, 90, 13, fav ? "Favorites" : dev->name, TEXT, 255);
     char c[24];
-    count_text(l->device, c, sizeof c);
+    if (fav)
+        fav_text(l->n, c, sizeof c);
+    else
+        count_text(l->device, c, sizeof c);
     gfx_text(&font_small, 90, 37, c, DIM, 255);
-    if (lobby_partner() && device_link(dev)) {
+    const device_t *link_dev = fav ? (l->n ? &devices[l->devs[l->cur]] : NULL) : dev;
+    if (lobby_partner() && link_dev && device_link(link_dev)) {
         const char *s = "Link connected";
         gfx_text(&font_small, GFX_W - 12 - gfx_text_w(&font_small, s), 37, s, LINK_GREEN, 255);
     }
     gfx_rect(0, 64, GFX_W, 1, 0xffffff, 22);
 
-    if (l->n == 0) {
+    if (l->n == 0 && fav) {
+        gfx_text_centered(&font_body, GFX_W / 2, 128, "No favorites yet", TEXT, 255);
+        gfx_text_centered(&font_small, GFX_W / 2, 152, "In a game list, press Center", DIM, 255);
+        gfx_text_centered(&font_small, GFX_W / 2, 166, "and switch on \"Favorite\".", DIM, 255);
+    } else if (l->n == 0) {
         gfx_text_centered(&font_body, GFX_W / 2, 128, "No games for this system", TEXT, 255);
         gfx_text_centered(&font_small, GFX_W / 2, 152, "Copy them onto the drive with", DIM, 255);
         gfx_text_centered(&font_small, GFX_W / 2, 166, "\"Add Games\" (last page).", DIM, 255);
@@ -552,13 +836,24 @@ static void list_screen(void *arg)
         for (int i = first; i < l->n && i <= first + LIST_ROWS; i++) {
             int y = LIST_Y + i * ROW_H - top;
             bool sel = i == l->cur;
+            uint32_t row_accent = fav ? devices[l->devs[i]].accent : accent;
             if (sel) {
-                gfx_rrect(8, y + 1, GFX_W - 20, ROW_H - 2, 9, dev->accent, 70);
-                gfx_rrect(8, y + 6, 4, ROW_H - 12, 2, dev->accent, 255);
+                gfx_rrect(8, y + 1, GFX_W - 20, ROW_H - 2, 9, row_accent, 70);
+                gfx_rrect(8, y + 6, 4, ROW_H - 12, 2, row_accent, 255);
             }
             char title[GAME_NAME_MAX], tags[GAME_NAME_MAX], fit[GAME_NAME_MAX + 4];
             games_title(l->names[i], title, tags, sizeof title);
             int max_w = GFX_W - 44;
+            /* on the right: a favourite's star, or in the favourites its system */
+            if (fav) {
+                const char *sys = devices[l->devs[i]].name;
+                int w = gfx_text_w(&font_small, sys);
+                gfx_text(&font_small, GFX_W - 18 - w, y + 9, sys, sel ? DIM : FAINT, 255);
+                max_w -= w + 8;
+            } else if (favs_has(l->device, l->names[i])) {
+                star(GFX_W - 27, y + 11, FAV_GOLD, 255);
+                max_w -= 16;
+            }
             int full = gfx_text_w(&font_body, title) + (tags[0] ? 6 + gfx_text_w(&font_small, tags) : 0);
             if (sel && full > max_w) {
                 /* too long: the whole name runs through the row */
@@ -584,7 +879,7 @@ static void list_screen(void *arg)
             if (th < 16) th = 16;
             int ty = LIST_Y + 4 + (track - th) * top / ((l->n - LIST_ROWS) * ROW_H);
             gfx_rrect(GFX_W - 7, LIST_Y + 4, 3, track, 1, 0xffffff, 18);
-            gfx_rrect(GFX_W - 7, ty, 3, th, 1, dev->accent, 255);
+            gfx_rrect(GFX_W - 7, ty, 3, th, 1, accent, 255);
         }
     }
 
@@ -596,13 +891,13 @@ static void list_screen(void *arg)
 
 /* Returns true with the chosen game in `game`, false for "back". A game the
  * link partner started may be on another device: `device` follows it. */
-static bool game_list(int *device_io, char game[GAME_NAME_MAX])
+static bool game_list(int *device_io, char game[GAME_NAME_MAX], bool fav)
 {
-    int device = *device_io;
+    int device = fav ? -1 : *device_io;
     list_t l = { .device = device };
-    l.n = games_list(device, &l.names);
+    l.n = fav ? games_favorites(&l.names, &l.devs) : games_list(device, &l.names);
     for (int i = 0; game[0] && i < l.n; i++)
-        if (strcmp(l.names[i], game) == 0)
+        if (strcmp(l.names[i], game) == 0 && (!fav || l.devs[i] == *device_io))
             l.cur = i;
     int target_top = 0;
     if (l.cur >= LIST_ROWS)
@@ -625,7 +920,7 @@ static bool game_list(int *device_io, char game[GAME_NAME_MAX])
         if (link_join(device_io, game))
             return true;
 
-        uint32_t e = input_menu_edges();
+        uint32_t e = edges();
         if (e & IN_A)
             return false;
         if (l.n == 0)
@@ -636,15 +931,74 @@ static bool game_list(int *device_io, char game[GAME_NAME_MAX])
         if (e & IN_RIGHT) l.cur = l.cur + LIST_ROWS < l.n ? l.cur + LIST_ROWS : l.n - 1;
         if (e & (IN_UP | IN_DOWN | IN_LEFT | IN_RIGHT))
             l.cur_since = time_us_64();
-        if (e & IN_CENTER)
-            options(list_screen, &l, device, l.names[l.cur], devices[device].accent);
+        int dv = fav ? l.devs[l.cur] : device;
+        if (e & IN_CENTER) {
+            options(list_screen, &l, dv, l.names[l.cur], devices[dv].accent);
+            if (fav) {                  /* it may have left the favourites */
+                l.n = games_favorites(&l.names, &l.devs);
+                if (l.cur >= l.n)
+                    l.cur = l.n ? l.n - 1 : 0;
+            }
+            continue;
+        }
         if (e & IN_B) {
             strcpy(game, l.names[l.cur]);
-            if (!lobby_partner() || !device_link(&devices[device]) ||
-                link_offer(list_screen, &l, device, game, devices[device].accent))
+            *device_io = dv;
+            if (!lobby_partner() || !device_link(&devices[dv]) ||
+                link_offer(list_screen, &l, dv, game, devices[dv].accent))
                 return true;
             ui_wait_release();
         }
+    }
+}
+
+/* ---- start animation ------------------------------------------------------------------------ */
+
+bool ui_intro_pending;
+
+#define INTRO_BG 0x080b14
+
+/* "PBC" from the left, "emu" from the right, a glint over the word; then
+ * the carousel shows through. 1.5 s, any button skips it. */
+static void intro(void)
+{
+    const int lw = logo_pbc.w + logo_emu.w, x0 = (GFX_W - lw) / 2, y0 = 96;      /* a little above the middle */
+    uint64_t t0 = 0;
+    for (;;) {
+        int ms = t0 ? (int)((time_us_64() - t0) / 1000) : 0;
+        if (ms >= 1500 || input_raw())
+            break;
+        /* the word rises and fades from 1.0 s, the carousel shows from 1.15 s */
+        int fade = ms < 1000 ? 255 : ms < 1250 ? 255 - (ms - 1000) * 255 / 250 : 0;
+        int cover = ms < 1150 ? 255 : 255 - (ms - 1150) * 255 / 350;
+        int y = y0 - (ms < 1000 ? 0 : (ms - 1000) / 12);
+        if (cover < 255)
+            device_screen(0, 0, 0, 1);
+        gfx_rect(0, 0, GFX_W, GFX_H, INTRO_BG, cover);
+        int glow = ms < 200 ? 0 : ms < 700 ? (ms - 200) * 70 / 500 : 70;
+        gfx_glow(GFX_W / 2, y + 32, 120, 54, FAV_GOLD, glow * fade / 255);
+
+        int e = ease(ms >= 500 ? 256 : ms * 256 / 500);
+        int a = e * fade / 256, slide = (256 - e) * 70 / 256;
+        gfx_picture(&logo_pbc, x0 - slide, y, a);
+        gfx_picture(&logo_emu, x0 + logo_pbc.w + slide, y, a);
+        static bool rung;
+        if (ms > 450 && !rung) {
+            rung = true;
+            sound_bell();
+        }
+        if (ms > 450 && ms < 1000) {        /* the glint, soft at its edges */
+            int bx = x0 - 30 + (lw + 60) * (ms - 450) / 550;
+            static const int half[] = { 22, 13, 6 }, alpha[] = { 50, 70, 110 };
+            for (int i = 0; i < 3; i++) {
+                gfx_clip(bx - half[i], 0, bx + half[i], GFX_H);
+                gfx_picture(&logo_glint, x0, y, alpha[i] * fade / 255);
+            }
+            gfx_noclip();
+        }
+        gfx_present();                      /* the first one fades the light in */
+        if (!t0)
+            t0 = time_us_64();
     }
 }
 
@@ -658,11 +1012,22 @@ static void device_still(void *arg)
     device_screen(sel, sel, 0, 1);
 }
 
+static void count_favs(void)
+{
+    char (*names)[GAME_NAME_MAX];
+    int *devs;
+    fav_count = games_favorites(&names, &devs);
+}
+
 ui_result_t ui_run(int *device, char game[GAME_NAME_MAX])
 {
     games_count(counts);
-    int sel = (*device >= 0 && *device < device_count) ? *device : 1;
-    int next = sel, dir = 1, t = 0;
+    count_favs();
+    int sel = 0, next = 0, dir = 1, t = 0;   /* always the favourites first */
+    if (ui_intro_pending) {
+        ui_intro_pending = false;
+        intro();
+    }
 
     ui_link_player = 0;
     ui_wait_release();
@@ -678,27 +1043,31 @@ ui_result_t ui_run(int *device, char game[GAME_NAME_MAX])
                 t = 0;
             }
         }
-        uint32_t e = input_menu_edges();
+        uint32_t e = edges();
         if (e & (IN_LEFT | IN_RIGHT)) {
             if (next != sel)                /* still sliding: finish it at once */
                 sel = next;
             dir = (e & IN_RIGHT) ? 1 : -1;
-            next = (sel + dir + device_count) % device_count;
+            next = (sel + dir + PAGES) % PAGES;
             t = 0;
         }
         if (next != sel)
             continue;
+        int d = sel - 1;                    /* -1: the favourites */
         if (e & IN_CENTER) {
-            carousel_t d = { sel };
-            options(device_still, &d, devices[sel].app == APP_NONE ? -1 : sel, NULL, devices[sel].accent);
+            carousel_t c = { sel };
+            options(device_still, &c, d < 0 || devices[d].app == APP_NONE ? -1 : d, NULL, page_accent(sel));
         }
         if (e & IN_B) {
-            *device = sel;
-            if (devices[sel].app == APP_NONE)
-                return UI_USB;
-            if (game_list(device, game))
+            if (d >= 0 && devices[d].app == APP_NONE)
+                return UI_USB;              /* the USB mode does not fade it: no flash */
+            led_flash(page_accent(sel));
+            if (d >= 0)
+                *device = d;
+            if (game_list(device, game, d < 0))
                 return UI_PLAY;
             game[0] = 0;
+            count_favs();
             ui_wait_release();
         }
     }
@@ -836,7 +1205,7 @@ void ui_starting(int device, const char *game)
     for (int t = 0; t <= 255; t += 4) {
         starting_screen(device, fit, b, k, n, note[0] ? note : NULL, t);
         gfx_present();
-        if (input_menu_edges() & IN_B)
+        if (edges() & IN_B)
             break;
     }
     gfx_finish();
@@ -848,7 +1217,7 @@ void ui_usb(int state)
     const device_t *dev = &devices[device_count - 1];
     background();
     gfx_glow(GFX_W / 2, 100, 130, 78, dev->accent, 80);
-    gfx_picture(dev->pic, (GFX_W - dev->pic->w) / 2, 36, 255);
+    device_picture(dev->pic, (GFX_W - dev->pic->w) / 2, 36, 255, false);
     gfx_text_centered(&font_title, GFX_W / 2, 170, "USB Drive", TEXT, 255);
     gfx_text_centered(&font_small, GFX_W / 2, 202, "Copy games onto PBC-ROMS,", DIM, 255);
     gfx_text_centered(&font_small, GFX_W / 2, 217, "then eject the drive.", DIM, 255);

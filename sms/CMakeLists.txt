@@ -59,6 +59,7 @@ add_executable(pbc_sms
     ${SMSP}/render.c
     ${SMSP}/sms.c
     ${SMSP}/sn76496.c
+    ${SMSP}/ay8910.c           # Super Game Module (ColecoVision), from ../msx
     ${SMSP}/system.c
     ${SMSP}/tms.c
     ${SMSP}/vdp.c

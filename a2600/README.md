@@ -28,7 +28,22 @@ erscheinen deshalb als Streifen.
 `.a26`: Module bis 512 KB. Die Bankumschaltung errät der Kern aus Größe und
 Inhalt: 2 KB, 4 KB, F8 (8 KB), F6 (16 KB), F4 (32 KB), jeweils auch mit
 Superchip-RAM, E0 (Parker Brothers), FE (Activision) und 3F (Tigervision).
-Paddles, Keypads und andere Controller gibt es nicht, nur Joysticks.
+Joysticks und Paddles; Keypads und andere Controller gibt es nicht.
+
+**Paddles** steuert man durch Drehen des PicoBoy in der Bildebene, wie ein
+Lenkrad (Beschleunigungssensor STK8BA58, `src/tilt.c`): ±35° vom Halten beim
+Umschalten aus ist der ganze Weg, rechts herum dreht das Paddle im
+Uhrzeigersinn. B oder A ist sein Knopf. Ob ein Spiel Paddles will, erkennt
+der Emulator selbst: Liest es nach dem Entladen der Kondensatoren (VBLANK
+Bit 7) 20 Bilder lang immer wieder INPT0–3, schaltet er um und zeigt
+„PADDLE: TURN THE PICOBOY“ (ohne Sensor „PADDLE: JOYSTICK“, dann dreht der
+Joystick links/rechts). Eine Liste bekannter Spiele (Prüfsummen) braucht es
+so nicht, und Joystick-Spiele lesen INPT0–3 nicht. Die Ladezeit bis INPT
+Bit 7 kommt aus der Stellung; der ganze Weg reicht vom Ende des Entladens
+bis zum nächsten (meist das sichtbare Bild), so dass jedes Spiel seinen
+ganzen Bereich bekommt. Im Link-Spiel ist Spieler 2 Paddle 1, seine
+Stellung läuft in den oberen Bits des Link-Worts mit; allein ist Paddle 1
+nicht angeschlossen. Paddle 2 und 3 (Warlords zu viert) gibt es nicht.
 
 **PAL und NTSC** erkennt der Emulator an der Zeilenzahl, die das Spiel
 erzeugt (312 statt 262 pro Bild, 30 Bilder lang): PAL läuft dann mit 50 Hz,
@@ -47,9 +62,13 @@ und 320A–D, acht Paletten, Kangaroo- und Holey-DMA, die DMA-Zeit, die der
 CPU pro Zeile fehlt, und die Display-List-Interrupts als NMI (wenn MARIA den
 markierten Eintrag holt). Dazu RIOT (mit dem Sofort-Schritt des Timers nach
 dem Schreiben, auf den sich 7800basic verlässt), 4 KB RAM, Module flach bis
-48 KB und SuperGame-Bankumschaltung (mit RAM oder zusätzlicher Bank bei
-4000h). Ein BIOS braucht es nicht: das Spiel startet an seinem Reset-Vektor.
-PAL-Module (laut Kopf) laufen mit 313 Zeilen und 50 Hz.
+48 KB, SuperGame-Bankumschaltung (mit RAM oder zusätzlicher Bank bei
+4000h) und, wenn der Kopf es sagt, die von Absolute (F-18 Hornet: Bank 0
+oder 1 bei 4000h) und Activision (Double Dragon, Rampage: eine von acht
+16-KB-Bänken bei A000h, gewählt durch Schreiben nach FF80h–FF8Fh; geprüft
+mit eigenen Testmodulen, noch nicht mit den Spielen). Ein BIOS braucht es
+nicht: das Spiel startet an seinem Reset-Vektor. PAL-Module (laut Kopf)
+laufen mit 313 Zeilen und 50 Hz.
 
 **POKEY** (`core/pokey.c`): hat das Modul laut Kopf einen (bei 4000h, 450h
 oder 440h), kommt sein Ton zum TIA dazu. Vier Kanäle mit 64-kHz-, 15-kHz-
@@ -68,8 +87,7 @@ Gezeigt werden 240 der 243 Zeilen, 320 Pixel (die 160er-Modi doppelt) auf
 **Stand:** am PC mit zwei freien Homebrews getestet: Side Bounce (7800basic,
 Ton) und die Demo von Black Forest (272 KB SuperGame); auf dem Gerät Side
 Bounce mit vollen 60 Bildern/s, Kern 0 zu 69 % ausgelastet. **Was fehlt:**
-XM und YM2151 (z. B. 1942), Activision-
-und Absolute-Bankumschaltung, die Zeitabläufe von MARIA innerhalb der Zeile.
+XM und YM2151 (z. B. 1942), die Zeitabläufe von MARIA innerhalb der Zeile.
 
 | PicoBoy | Atari 7800 |
 |---|---|
@@ -85,6 +103,7 @@ und Absolute-Bankumschaltung, die Zeitabläufe von MARIA innerhalb der Zeile.
 |---|---|
 | Joystick | Joystick |
 | B oder A | Feuerknopf |
+| PicoBoy drehen | Paddle (bei Paddle-Spielen, siehe oben), B oder A sein Knopf |
 | Center + B | RESET-Schalter |
 | Center + A | SELECT-Schalter |
 | RESET | zurück zum Starter |
@@ -104,6 +123,7 @@ Konsolenschalter können beide drücken.
 | `src/main.c` | Start, Spielschleife, Link |
 | `src/a26_video.c` | jede fertige Zeile geht als Farbindizes über einen Ring (halbes Bild) an Kern 1; der rechnet 160 → 240 Pixel (a, Mittelwert, b) und schickt sie ans Display. Gezeigt werden die Zeilen 26 bis 265 |
 | `src/rom_store.c` | Modul in den Flash |
+| `src/tilt.c` | Beschleunigungssensor über I2C0 (GP20/21), Drehung in der Bildebene für die Paddles |
 
 Das Display bekommt wie bei Mega Drive, PC Engine und MSX 75 MHz SPI aus der
 USB-PLL. Der Speicher startet fest mit Nullen, nichts hängt von der Zeit ab:

@@ -8,6 +8,8 @@
  *     (from PicoBoyGB), the chosen game is copied into a flash region and
  *     QuickNES reads it from there in place
  *   - 240x240 1:1 on the ST7789, sent by core 1 (video.c)
+ *   - battery-backed cartridge RAM is kept as a .sav file next to the ROM,
+ *     written while the game runs (as in gbc/)
  *   - sound on the PWM speaker (audio_pwm.c); on/off and volume only in
  *     the options of the ROM list (saved), never in a game, so nothing can
  *     be changed by accident
@@ -102,6 +104,9 @@ static void fs_write_readme(void)
            "\r\n"
            "Back to this mode: \"Add games via USB\" at the top of the game list,\r\n"
            "or hold A or B while switching on.\r\n"
+           "\r\n"
+           "Saved games of cartridges with a battery are stored as <game>.sav\r\n"
+           "next to the ROM. Wait a moment after saving before you press RESET.\r\n"
            "\r\n"
            "Controls in game:\r\n"
            "  Joystick       D-pad\r\n"
@@ -219,6 +224,86 @@ static void overclock(void)
     spi_set_baudrate(PBC_SPI, PBC_SPI_HZ);
 }
 
+/* ---- battery saves --------------------------------------------------------
+ *
+ * The RAM at $6000 of a cartridge with a battery goes to "<rom>.sav" on the
+ * FatFs drive. A game is left with RESET, so it is written while the game
+ * runs: a checksum of the RAM four times a second; once it has not changed
+ * for a second (or has been changing for 20 s), the file is written.
+ * Unchanged flash sectors are skipped and core 1 is parked for each written
+ * one (flash_fs.c) -- the game stalls for about 50 ms per changed 4 KB. */
+static uint8_t *save_ram;
+static long save_size;
+static char save_path[ROM_NAME_MAX + 8];
+static uint32_t save_sum;
+static bool save_dirty;
+static uint64_t save_first_change, save_last_change;
+
+static uint32_t save_checksum(void)
+{
+    uint32_t h = 2166136261u;
+    for (long i = 0; i < save_size; i++)
+        h = (h ^ save_ram[i]) * 16777619u;
+    return h;
+}
+
+static void save_load(const char *game)
+{
+    static FIL f;
+    UINT got;
+    /* link play: both devices must run the same RAM, so no saves at all */
+    save_ram = pbc_link_active() ? NULL : qnes_get_battery_ram(&save_size);
+    if (!save_ram)
+        return;
+    snprintf(save_path, sizeof save_path, "/%s", game);
+    char *dot = strrchr(save_path, '.');
+    if (dot) *dot = 0;
+    strcat(save_path, ".sav");
+    if (f_open(&f, save_path, FA_READ) == FR_OK) {
+        if (f_size(&f) >= (FSIZE_t)save_size)
+            f_read(&f, save_ram, (UINT)save_size, &got);
+        f_close(&f);
+    }
+    save_sum = save_checksum();
+}
+
+static void save_write(void)
+{
+    static FIL f;
+    UINT put = 0;
+    save_dirty = false;
+    if (f_open(&f, save_path, FA_WRITE | FA_OPEN_ALWAYS) == FR_OK) {
+        f_write(&f, save_ram, (UINT)save_size, &put);
+        f_truncate(&f);
+        f_close(&f);
+    }
+    if (put != (UINT)save_size) {
+        /* drive full (or broken): say so once, keep playing */
+        f_unlink(save_path);
+        save_ram = NULL;
+        video_set_status("NO ROOM FOR THE SAVE FILE");
+    }
+}
+
+static void save_poll(void)
+{
+    static unsigned frames;
+    if (!save_ram || ++frames % 15)
+        return;
+    uint64_t now = time_us_64();
+    uint32_t sum = save_checksum();
+    if (sum != save_sum) {
+        save_sum = sum;
+        save_last_change = now;
+        if (!save_dirty) {
+            save_dirty = true;
+            save_first_change = now;
+        }
+    }
+    if (save_dirty && (now - save_last_change >= 1000000 || now - save_first_change >= 20000000))
+        save_write();
+}
+
 /* ---- emulator ------------------------------------------------------------ */
 
 /* fps, speed and CPU load: from the launcher in the combined firmware,
@@ -261,6 +346,7 @@ static void __attribute__((noreturn)) emulation_loop(void)
         if (px && pal && video_present(px, 256 + 16, pal, pal_size))
             stat_drawn++;
         stat_emulated++;
+        save_poll();
 
         next_frame += period;
         uint64_t now = time_us_64();
@@ -355,7 +441,7 @@ int main(void)
         if (err)
             fatal(err, rom);
     }
-    fs_unmount();
+    /* The volume stays mounted: the .sav file is written while the game runs. */
 
     static const menu_control_t controls[] = {
         { "D-pad",   "Joystick" },
@@ -390,6 +476,7 @@ int main(void)
     video_set_mode(VIDEO_MODE_CROP);
 #endif
     pbc_link_start(pbc_link_hash(PBC_LINK_HASH_START ^ 1, rom_store_data(), rom_store_size()));
+    save_load(rom);                 /* after the link start: not in link play */
     pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
     multicore_launch_core1(video_core1_main);
 #if PBC_MULTI

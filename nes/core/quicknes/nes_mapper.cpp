@@ -42,6 +42,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA */
 #include "mappers/mapper010.hpp"
 #include "mappers/mapper011.hpp"
 #include "mappers/mapper015.hpp"
+#include "mappers/mapper016.hpp"
 #include "mappers/mapper019.hpp"
 #include "mappers/mapper021.hpp"
 #include "mappers/mapper022.hpp"
@@ -49,12 +50,16 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA */
 #include "mappers/mapper024.hpp"
 #include "mappers/mapper025.hpp"
 #include "mappers/mapper026.hpp"
+#include "mappers/mapper028.hpp"
 #include "mappers/mapper030.hpp"
 #include "mappers/mapper032.hpp"
 #include "mappers/mapper033.hpp"
 #include "mappers/mapper034.hpp"
+#include "mappers/mapper048.hpp"
 #include "mappers/mapper060.hpp"
+#include "mappers/mapper064.hpp"
 #include "mappers/mapper066.hpp"
+#include "mappers/mapper067.hpp"
 #include "mappers/mapper069.hpp"
 #include "mappers/mapper070.hpp"
 #include "mappers/mapper071.hpp"
@@ -71,16 +76,20 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA */
 #include "mappers/mapper094.hpp"
 #include "mappers/mapper097.hpp"
 #include "mappers/mapper113.hpp"
+#include "mappers/mapper118.hpp"
+#include "mappers/mapper119.hpp"
 #include "mappers/mapper140.hpp"
 #include "mappers/mapper152.hpp"
 #include "mappers/mapper154.hpp"
 #include "mappers/mapper156.hpp"
 #include "mappers/mapper180.hpp"
 #include "mappers/mapper184.hpp"
+#include "mappers/mapper185.hpp"
 #include "mappers/mapper190.hpp"
 #include "mappers/mapper193.hpp"
 #include "mappers/mapper206.hpp"
 #include "mappers/mapper207.hpp"
+#include "mappers/mapper228.hpp"
 #include "mappers/mapper232.hpp"
 #include "mappers/mapper240.hpp"
 #include "mappers/mapper241.hpp"
@@ -202,7 +211,7 @@ NES_RAM void Nes_Mapper::set_prg_bank( nes_addr_t addr, bank_size_t bs, int bank
 		emu().enable_prg_6000();
 }
 
-void Nes_Mapper::set_chr_bank( nes_addr_t addr, bank_size_t bs, int bank )
+NES_RAM void Nes_Mapper::set_chr_bank( nes_addr_t addr, bank_size_t bs, int bank )
 {
 	emu().ppu.render_until( emu().clock() ); 
 	emu().ppu.set_chr_bank( addr, 1 << bs, bank << bs );
@@ -259,6 +268,7 @@ Nes_Mapper* Nes_Mapper::create( Nes_Cart const* cart, Nes_Core* emu )
   if (mapperCode ==  10) mapper = new Mapper010();
   if (mapperCode ==  11) mapper = new Mapper011();
   if (mapperCode ==  15) mapper = new Mapper015();
+  if (mapperCode ==  16) mapper = new Mapper016();
   if (mapperCode ==  19) mapper = new Mapper019();
   if (mapperCode ==  21) mapper = new Mapper021();
   if (mapperCode ==  22) mapper = new Mapper022();
@@ -266,12 +276,16 @@ Nes_Mapper* Nes_Mapper::create( Nes_Cart const* cart, Nes_Core* emu )
   if (mapperCode ==  24) mapper = new Mapper024();
   if (mapperCode ==  25) mapper = new Mapper025();
   if (mapperCode ==  26) mapper = new Mapper026();
+  if (mapperCode ==  28) mapper = new Mapper028();
   if (mapperCode ==  30) mapper = new Mapper030();
   if (mapperCode ==  32) mapper = new Mapper032();
   if (mapperCode ==  33) mapper = new Mapper033();
   if (mapperCode ==  34) mapper = new Mapper034();
+  if (mapperCode ==  48) mapper = new Mapper048();
   if (mapperCode ==  60) mapper = new Mapper060();
+  if (mapperCode ==  64) mapper = new Mapper064();
   if (mapperCode ==  66) mapper = new Mapper066();
+  if (mapperCode ==  67) mapper = new Mapper067();
   if (mapperCode ==  69) mapper = new Mapper069();
   if (mapperCode ==  70) mapper = new Mapper070();
   if (mapperCode ==  71) mapper = new Mapper071();
@@ -288,16 +302,21 @@ Nes_Mapper* Nes_Mapper::create( Nes_Cart const* cart, Nes_Core* emu )
   if (mapperCode ==  94) mapper = new Mapper094();
   if (mapperCode ==  97) mapper = new Mapper097();
   if (mapperCode == 113) mapper = new Mapper113();
+  if (mapperCode == 118) mapper = new Mapper118();
+  if (mapperCode == 119) mapper = new Mapper119();
   if (mapperCode == 140) mapper = new Mapper140();
   if (mapperCode == 152) mapper = new Mapper152();
   if (mapperCode == 154) mapper = new Mapper154();
   if (mapperCode == 156) mapper = new Mapper156();
+  if (mapperCode == 159) mapper = new Mapper159();
   if (mapperCode == 180) mapper = new Mapper180();
   if (mapperCode == 184) mapper = new Mapper184();
+  if (mapperCode == 185) mapper = new Mapper185();
   if (mapperCode == 190) mapper = new Mapper190();
   if (mapperCode == 193) mapper = new Mapper193();
   if (mapperCode == 206) mapper = new Mapper206();
   if (mapperCode == 207) mapper = new Mapper207();
+  if (mapperCode == 228) mapper = new Mapper228();
   if (mapperCode == 232) mapper = new Mapper232();
   if (mapperCode == 240) mapper = new Mapper240();
   if (mapperCode == 241) mapper = new Mapper241();

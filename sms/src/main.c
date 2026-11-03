@@ -12,6 +12,8 @@
  *     display modes from the launcher), sent by core 1 (sms_video.c)
  *   - sound on the PWM speaker (audio_pwm.c), its sample timer on core 1;
  *     on/off and volume only in the options of the ROM list
+ *   - battery-backed cartridge RAM (Master System, Game Gear) is kept as a
+ *     .sav file next to the ROM, as in ../gbc
  *
  * Boot:
  *   A or B held  -> USB stick mode, eject restarts
@@ -222,12 +224,108 @@ static void overclock(void)
 void *frens_f_malloc(size_t size) { return malloc(size); }
 void frens_f_free(void *ptr)      { free(ptr); }
 
-/* Called on every reset to restore battery-backed cartridge RAM. Not kept
- * on this device (see README): start with it cleared. */
+/* Called on every reset; the .sav file is read after it (save_load). */
 void system_load_sram(void)
 {
     if (sms.sram)
         memset(sms.sram, 0, SRAM_BYTES);
+}
+
+/* ---- battery saves ---------------------------------------------------------
+ *
+ * Master System and Game Gear cartridges with a battery map up to 32 KB of
+ * RAM (sms.sram) over $8000-$BFFF; SMS Plus sets sms.save once a game does.
+ * It goes to "<rom>.sav" on the drive: 16 KB, or 32 KB once the game used
+ * the upper half. The game is left with RESET, so it is written while the
+ * game runs, as in ../gbc: a checksum twice a second notices a change; the
+ * file is written once the RAM has stayed the same for a second (or has
+ * been changing for 20 s). Unchanged flash sectors are skipped
+ * (flash_fs.c); core 1 is parked for each changed one, the game stalls for
+ * about 50 ms per 4 KB. Not in link play: the stall would lose the partner. */
+static char save_path[ROM_NAME_MAX + 8];
+static bool save_on;                    /* Master System / Game Gear */
+static uint32_t save_len;               /* bytes in the file, 0: none yet */
+static uint32_t save_sum, written_sum;
+static bool save_dirty;
+static uint64_t save_first_change, save_last_change, save_next_check, status_until;
+
+/* checksum of the first len bytes of the RAM, or of as many zeros */
+static uint32_t sram_sum(uint32_t len, bool zeros)
+{
+    const uint32_t *w = (const uint32_t *)sms.sram;
+    uint32_t h = 2166136261u;
+    for (uint32_t i = 0; i < len / 4; i++)
+        h = (h ^ (zeros ? 0 : w[i])) * 16777619u;
+    return h;
+}
+
+static void save_load(const char *game)
+{
+    static FIL f;
+    snprintf(save_path, sizeof save_path, "/%s", game);
+    char *dot = strrchr(save_path, '.');
+    if (dot) *dot = 0;
+    strcat(save_path, ".sav");
+    save_on = true;
+    if (f_open(&f, save_path, FA_READ) != FR_OK)
+        return;
+    UINT got = 0;
+    uint32_t n = f_size(&f) < SRAMSIZEBYTES ? f_size(&f) : SRAMSIZEBYTES;
+    f_read(&f, sms.sram, n, &got);
+    f_close(&f);
+    save_len = got > 0x4000 ? SRAMSIZEBYTES : 0x4000;
+    written_sum = save_sum = sram_sum(save_len, false);
+}
+
+static void save_write(void)
+{
+    static FIL f;
+    UINT put = 0;
+    save_dirty = false;
+    written_sum = save_sum;
+    if (f_open(&f, save_path, FA_WRITE | FA_OPEN_ALWAYS) == FR_OK) {
+        f_write(&f, sms.sram, save_len, &put);
+        f_truncate(&f);
+        f_close(&f);
+    }
+    if (put != save_len) {
+        sms_video_set_status("SAVE FAILED: DRIVE FULL?");
+        status_until = time_us_64() + 4000000;
+    }
+}
+
+static void save_poll(void)
+{
+    if (!save_on || !sms.save || pbc_link_active())
+        return;
+    uint64_t now = time_us_64();
+    if (now < save_next_check)
+        return;
+    save_next_check = now + 500000;
+    if (status_until && now > status_until) {
+        status_until = 0;
+        sms_video_set_status("");
+    }
+    /* sms.save bit 1: the game used the upper 16 KB (sms.c) */
+    uint32_t len = (sms.save & 2) || save_len > 0x4000 ? SRAMSIZEBYTES : 0x4000;
+    bool grown = save_len && len != save_len;
+    if (len != save_len) {
+        /* no file yet counts as zeros; a bigger file is written at once */
+        written_sum = grown ? ~sram_sum(len, false) : sram_sum(len, true);
+        save_len = len;
+    }
+    uint32_t sum = sram_sum(save_len, false);
+    if (sum != save_sum) {
+        save_sum = sum;
+        save_last_change = now;
+        if (!save_dirty)
+            save_first_change = now;
+    }
+    save_dirty = sum != written_sum;
+    if (grown)
+        save_first_change = 0;
+    if (save_dirty && (now - save_last_change >= 1000000 || now - save_first_change >= 20000000))
+        save_write();
 }
 
 /* One-pole DC blocker, from pico-smsplus: the PSG alone outputs 0..0x7FFF,
@@ -361,6 +459,7 @@ static void __attribute__((noreturn)) emulation_loop(bool gg, bool show_stats)
         if (sms_video_present())
             stat_drawn++;
         stat_emulated++;
+        save_poll();
 
         next_frame += period;
         uint64_t now = time_us_64();
@@ -492,7 +591,9 @@ int main(void)
                      strcasecmp(ext, ".bin") == 0);
     bool own_bios = coleco && coleco_bios_load();
     (void)own_bios;
-    fs_unmount();
+    bool saves = !coleco && !sg;          /* the drive stays mounted for them */
+    if (!saves)
+        fs_unmount();
 
     const menu_control_t controls[] = {
         { "D-pad",   "Joystick" },
@@ -530,6 +631,8 @@ int main(void)
     system_reset();
 
     pbc_link_start(pbc_link_hash(PBC_LINK_HASH_START ^ 2, rom_store_data(), rom_store_size()));
+    if (saves && !pbc_link_active())    /* link play: same RAM on both, no saves */
+        save_load(rom);
     pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
     multicore_launch_core1(sms_video_core1_main);
     sms_video_wait_ready();         /* the sample timer belongs to core 1 */

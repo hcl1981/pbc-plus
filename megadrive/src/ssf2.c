@@ -5,6 +5,7 @@
 #include "hardware/regs/addressmap.h"
 #include "rom_store.h"
 #include "ssf2.h"
+#include "sram.h"
 
 extern unsigned char *ROM_DATA;
 
@@ -57,8 +58,10 @@ bool ssf2_init(void)
 
 void gwenesis_mapper_write(unsigned int addr, unsigned int value)
 {
-    /* $A130F3, F5 ... FF: slots 1..7; $A130F1 (SRAM control) is ignored */
+    /* $A130F1: battery RAM on/off (sram.c); $A130F3, F5 ... FF: slots 1..7 */
     addr &= 0xFF;
+    if (addr == 0xF1)
+        sram_control(value);
     if (!active || addr < 0xF3 || !(addr & 1))
         return;
     int slot = (int)(addr - 0xF1) / 2;

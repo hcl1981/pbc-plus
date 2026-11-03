@@ -350,6 +350,7 @@ static inline unsigned int gwenesis_bus_map_z80_address(unsigned int address) {
  *
  ******************************************************************************/
 void gwenesis_mapper_write(unsigned int addr, unsigned int value);   /* src/ssf2.c */
+#include "sram.h"                         /* PicoBoy: battery RAM (src/sram.c) */
 
 static inline unsigned int gwenesis_bus_map_io_address(unsigned int address)
 {
@@ -412,8 +413,14 @@ static inline __attribute__((always_inline)) unsigned int gwenesis_bus_read_memo
   /* Fast path: use upper byte to quickly identify memory region */
   unsigned int range = address >> 16;
   
-  /* ROM reads (0x000000 - 0x7FFFFF) - most common during gameplay */
+  /* ROM reads (0x000000 - 0x7FFFFF) - most common during gameplay;
+   * the CPU itself only comes here above m68k_rom_end */
   if (range < 0x80) {
+    if (address >= m68k_rom_end) {
+      int v = sram_read8(address);
+      if (v >= 0)
+        return (unsigned int)v;
+    }
     return rom_cache_read_8(address);
   }
   
@@ -470,6 +477,12 @@ static inline __attribute__((always_inline)) unsigned int gwenesis_bus_read_memo
   
   /* ROM reads (0x000000 - 0x7FFFFF) - most common during gameplay */
   if (range < 0x80) {
+    if (address >= m68k_rom_end) {
+      int hi = sram_read8(address), lo = sram_read8(address + 1);
+      if (hi >= 0 || lo >= 0)
+        return (unsigned int)(hi >= 0 ? hi : rom_cache_read_8(address)) << 8 |
+               (unsigned int)(lo >= 0 ? lo : rom_cache_read_8(address + 1));
+    }
     return rom_cache_read_16(address);
   }
   
@@ -585,6 +598,10 @@ static inline __attribute__((always_inline)) void gwenesis_bus_write_memory_8(un
 
   case MAPPER_CTRL:
     gwenesis_mapper_write(address, value);
+    return;
+
+  case ROM_ADDR:
+    sram_write8(address, value);
     return;
 
   case TMSS_CTRL:

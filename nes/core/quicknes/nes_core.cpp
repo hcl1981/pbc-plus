@@ -85,7 +85,9 @@ const char * Nes_Core::open( Nes_Cart const* new_cart )
 		return unsupported_mapper;
 	printf("  mapper created, opening CHR...\n");
 
-	RETURN_ERR( ppu.open_chr( new_cart->chr(), new_cart->chr_size() ) );
+	// TQROM (mapper 119): 8 KB of CHR RAM next to the CHR ROM
+	RETURN_ERR( ppu.open_chr( new_cart->chr(), new_cart->chr_size(),
+			new_cart->mapper_code() == 119 ? 0x2000 : 0 ) );
 	printf("  CHR opened OK\n");
 	
 	cart = new_cart;

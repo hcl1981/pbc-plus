@@ -48,6 +48,10 @@ uint32_t       rom_store_size(void);
  * mapper's address translation (ssf2.c). */
 uint32_t       rom_store_phys(uint32_t rom_offset);
 
+/* The FIL this file uses while loading; free during the game (sram.c). */
+#include "ff.h"
+FIL *rom_store_file(void);
+
 /* True for .md .bin .gen .smd (case-insensitive). */
 bool rom_store_is_rom_name(const char *name);
 

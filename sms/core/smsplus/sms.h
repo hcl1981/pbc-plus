@@ -2,6 +2,8 @@
 #ifndef _SMS_H_
 #define _SMS_H_
 
+#include "ay8910.h"
+
 #define TYPE_OVERSEAS   (0)
 #define TYPE_DOMESTIC   (1)
 
@@ -37,7 +39,7 @@ typedef struct {
     uint8 *sram;
     uint8 fcr[4];
     uint8 paused;
-    uint8 save;
+    uint8 save;         /* cartridge RAM used; PBC: bit 1 its upper 16 KB */
     uint8 country;
     uint8 port_3F;      /* SG-1000 (no port $3F): bit n set = RAM adaptor on page n */
     uint8 port_F2;
@@ -68,7 +70,11 @@ void sg_memory_map(void);
    held on each controller: 0 none, 1-9, 10 '0', 11 '*', 12 '#' */
 extern const uint8 *coleco_bios;
 extern uint8 coleco_key[2];
+extern uint8 *coleco_sgm_ram;           /* Super Game Module RAM (32 KB) */
+extern ay8910_t coleco_ay;              /* ... and its sound chip */
+extern uint8 coleco_ay_on;
 void coleco_memory_map(void);
+void coleco_sgm_reset(void);
 
 void cpu_reset(void);
 

@@ -26,19 +26,37 @@ getestet, auch nicht der Sprung vom Starter in die Emulatoren.
 2. **Geräte:** Joystick links/rechts blättert durch die Systeme, **B** öffnet
    die Spieleliste. Unter jedem Gerät steht, wie viele Spiele es gibt.
    **Mitte** öffnet die Einstellungen des Geräts (siehe unten). Die letzte
-   Seite, **Add Games**, schaltet den USB-Laufwerk-Modus ein.
-3. **Spiele:** hoch/runter wählt, links/rechts blättert seitenweise, **B**
+   Seite, **Add Games**, schaltet den USB-Laufwerk-Modus ein. Oben in der
+   Mitte steht die Seite (`1 / 16`), oben rechts der Ladestand der
+   Batterien in vier Balken (grün, ab zwei Balken gelb, dann rot), bei
+   Betrieb über das Kabel (Schalter auf USB) ein Blitz mit „USB“.
+3. **Favoriten:** die erste Seite, mit dem goldenen Stern; dort beginnt der
+   Starter immer. **B** öffnet die Favoriten aller Systeme in einer Liste,
+   alphabetisch, rechts in jeder Zeile das System. Ein Spiel wird Favorit
+   über **Mitte** in seiner Spieleliste und den Schalter **Favorite**; in
+   den Listen trägt es dann einen kleinen Stern. Bis zu 40 Favoriten;
+   gelöschte oder umbenannte Dateien fallen aus der Liste.
+4. **Spiele:** hoch/runter wählt, links/rechts blättert seitenweise, **B**
    startet, **A** geht zurück, **Mitte** öffnet die Optionen. Beim C64 sind
    das zusätzlich Joystick-Port, Programm auf der Diskette und die Taste auf
    Mitte + B, je Spiel.
-4. Vor dem Start zeigt der Starter die Tastenbelegung (zwei Sekunden, B
+5. **Energiesparen:** 30 Sekunden ohne Tastendruck dunkelt der Starter das
+   Display ab, nach weiteren zwei Minuten geht die Beleuchtung aus, beides
+   weich in einer Sekunde. Solange es dunkel ist, zeichnet der Starter
+   nichts, läuft mit 60 statt 150 MHz und schaltet den Ton ab; die RGB-LED
+   „atmet“ dabei ganz schwach in Weiß (höchstens 3 von 255, vier Sekunden
+   je Atemzug). Ein Link-Partner, der ein Spiel startet, weckt ihn auch. Eine Taste macht
+   es in 150 ms wieder hell und bewirkt sonst nichts. In den Spielen nicht.
+6. Vor dem Start zeigt der Starter die Tastenbelegung (zwei Sekunden, B
    überspringt). Zurück zur Liste: **RESET**.
 
 ### Einstellungen (Mitte)
 
 | Zeile | Wirkung |
 |---|---|
+| Favorite | nur bei Spielen: in die Favoriten aufnehmen oder entfernen |
 | Sound / Volume | Ton und Lautstärke, für alle Systeme |
+| Brightness | Helligkeit in acht Stufen, für Starter und alle Systeme (Vorgabe Stufe 6 = die bisherige); wirkt sofort. Die Emulatoren bekommen sie im Übergabe-Datensatz |
 | Display | Anzeigemodus des Systems (gemerkt je System) |
 | Show FPS | blendet im Spiel Bilder/s, Tempo in % des Originals und Auslastung von Kern 0 ein, z. B. `60fps 100% CPU71%` |
 | Joystick / Program | nur bei C64-Spielen: Port und Programm auf der Diskette |
@@ -118,15 +136,16 @@ eigenständige Firmwares (`dist/nes.uf2` usw.).
 
 | Adresse | Inhalt |
 |---|---|
-| `0x000000` | Starter (272 KB vorgesehen, ca. 265 KB belegt: Schriften und Gerätebilder) |
+| `0x000000` | Starter (272 KB vorgesehen, ca. 257 KB belegt: Schriften und Gerätebilder) |
 | `0x044000` … | Mega Drive, Master System/Game Gear/SG-1000, NES, PC Engine, Game Boy Color, C64, MSX, Atari 2600, ZX Spectrum, Amstrad CPC — dicht gepackt, auf 4 KB gerundet (zusammen ca. 1,7 MB, bis `0x200000`) |
 | `0x200000` | ROM des laufenden Spiels (5 MB) |
 | `0x700000` | FatFs = USB-Laufwerk `PBC-ROMS`, ca. 9 MB (Einzel-Firmwares: ab `0x600000`) |
 | `0xFF0000` | gehört den Einzel-Firmwares (welches Spiel in *ihrem* ROM-Bereich liegt); der Starter löscht es, weil dort jetzt Emulatoren liegen |
 | `0xFF1000`–`0xFF5000` | Einstellungen der Emulatoren (C64: Port und Programm je Spiel) |
 | `0xFF6000` | Übergabe-Datensatz |
-| `0xFF7000` | Einstellungen des Starters (Ton, Lautstärke, Anzeigemodus je System, FPS-Anzeige) |
+| `0xFF7000` | Einstellungen des Starters (Ton, Lautstärke, Helligkeit, Anzeigemodus je System, FPS-Anzeige) |
 | `0xFF8000` | welches Spiel im ROM-Bereich des Verbunds liegt |
+| `0xFF9000` | Favoriten (bis 40: Dateiname und System, das System als Prüfsumme seines Namens, damit neue Systeme nichts verschieben) |
 
 ## Oberfläche
 
@@ -134,7 +153,30 @@ Der Starter zeichnet in einen Bildpuffer im RAM (zweimal 240×280 Pixel) und
 schickt ihn per DMA ans Display, während schon das nächste Bild entsteht. So
 gibt es weiche Kanten, Überblendungen, gleitendes Blättern und weiches
 Scrollen. Ein Bild braucht etwa 30 ms zum Display; danach richten sich alle
-Animationen.
+Animationen. Beim Einschalten bleibt die Beleuchtung aus, bis das erste Bild
+ganz auf dem Display ist, und blendet dann in 150 ms auf (`gfx_present`).
+Nach dem Einschalten und nach RES (nicht nach dem USB-Laufwerk-Modus) läuft
+eine Startanimation von 1,5 s: „PBC“ und „emu“ gleiten von beiden Seiten herein,
+ein Lichtschimmer läuft darüber, dann steigt der Schriftzug auf und das
+Karussell erscheint. Jede Taste überspringt sie.
+Die RGB-LED im „+“ blitzt auf, wenn ein System mit B geöffnet wird, in
+dessen Farbe (gedämpft, höchstens 8 von 255), und blendet in einer halben
+Sekunde aus; sonst bleibt sie dunkel.
+
+Das gewählte Gerät schwebt: Es hebt und senkt sich alle 3,2 s um 3 Pixel (in
+Viertelpixeln, die nächste Zeile teilweise gezeichnet), sein Schatten bleibt
+am Boden und wird blasser. Dafür trennt `make_assets.py` den Bodenschatten
+vom Bild (schwarze, höchstens halb deckende Pixel) und speichert ihn in
+halber Auflösung; `gfx_picture2x` zeichnet ihn doppelt groß.
+
+**Ton** (`src/sound.c`, nur mit Sound an, in der eingestellten Lautstärke):
+ein Klicken beim Ändern von Sound und Volume (so hört man die Lautstärke), ein glockenartiges „Pling“ (E6, H6, E7, jeweils abklingend), wenn
+der Schimmer der Startanimation losläuft. Jeder Klang wird in einen Puffer
+gerechnet und per DMA einmal abgespielt. Zwischen den Klängen liegt der
+Ausgang auf 0 (in der Mitte gehalten, pfiff das Rauschen der Versorgung im
+Lautsprecher); jeder Klang gleitet in 10 ms zur Mitte und danach zurück,
+damit nichts knackt. Der Schriftzug sind drei
+Bilder aus `make_assets.py` (Lato Black, 50 px).
 
 * **Gerätebilder** stammen aus einem mit Google Gemini erzeugten Sprite-Sheet
   (`art/sheet.jpeg`, Prompt siehe unten). `tools/import_icons.py` stellt die
@@ -144,9 +186,17 @@ Animationen.
   Atari 2600 aus `art/sheet_extra.jpeg`, das SG-1000 aus `art/sg1000.jpeg`,
   der ZX Spectrum aus `art/zx.jpeg`, der Amstrad CPC aus `art/cpc.jpeg`
   (Aufrufe in `tools/import_icons.py`). Fehlt ein Bild dort, nimmt `make_assets.py` die eigene
-  Zeichnung aus `tools/devices.py` (gleiche Perspektive, keine Logos).
+  Zeichnung aus `tools/devices.py` (gleiche Perspektive, keine Logos); so
+  entsteht auch der Stern der Favoriten.
 * **Schrift:** Lato (SIL Open Font License, `LICENSE.lato`) in vier Größen,
   geglättet mit 16 Stufen, Codepage 437 wie die Dateinamen aus FatFs (Umlaute).
+  Die große Titelschrift zeigt nur Systemnamen und hat deshalb nur ASCII
+  (10 statt 26 KB).
+* **Batterie:** GP29 (ADC 3) hinter einem Teiler 1:3 misst die Spannung der
+  zwei AAA-Zellen, auf USB rund 5 V (`src/battery.c`, viermal pro Sekunde,
+  geglättet). Über 3,8 V gilt als USB; die Balken stehen bei 2,85 / 2,65 /
+  2,45 / 2,25 V, mit 40 mV Hysterese. Akkus (NiMH, 1,2 V je Zelle) zeigen
+  deshalb auch voll nur zwei bis drei Balken.
 * `tools/make_assets.py` macht aus beidem `src/assets.c` (Bilder auf ≤ 255
   Farben mit Alpha, lauflängenkodiert; zusammen ca. 90 KB). Die erzeugten
   Dateien liegen im Repo; zum Bauen der Firmware braucht man Pillow und Lato
@@ -189,11 +239,14 @@ Platz bis 2 MB nicht, bricht es mit einer Meldung ab.
 
 ```
 src/main.c        Start, Sprung in den Emulator, Übergabe, USB-Modus
-src/ui.c          Gerätekarussell, Spieleliste, Optionen, Tastenkarte, Meldungen
+src/ui.c          Karussell, Spieleliste, Favoriten, Optionen, Tastenkarte, Meldungen
 src/gfx.c         Bildpuffer, Formen mit Kantenglättung, Schrift, Bilder
 src/devices.c     die Systeme: Name, Endungen, Emulator, Farbe, Bild, Tasten
 src/games.c       Spiele auf dem Laufwerk zählen und auflisten
 src/prefs.c       Ton und Lautstärke (0xFF7000)
+src/favs.c        Favoriten (0xFF9000)
+src/battery.c     Batteriespannung, USB-Betrieb
+src/sound.c       Klicken und „Pling“ des Starters
 src/c64/          Port/Programm je C64-Spiel, Disk-Verzeichnis (aus ../c64)
 src/display.c, input.c, flash_fs.*, usb_*.c, fatfs/   wie in den Emulatoren
 art/              Gerätebilder (sheet.jpeg -> *.png)

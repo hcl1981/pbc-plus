@@ -32,6 +32,9 @@ add_executable(pbcemu
     src/devices.c
     src/games.c
     src/prefs.c
+    src/favs.c
+    src/battery.c
+    src/sound.c
     src/display.c
     src/input.c
     src/c64/c64_settings.c
@@ -77,6 +80,7 @@ target_link_libraries(pbcemu
     hardware_dma
     hardware_pwm
     hardware_flash
+    hardware_adc
     hardware_sync
     hardware_watchdog
     hardware_pio

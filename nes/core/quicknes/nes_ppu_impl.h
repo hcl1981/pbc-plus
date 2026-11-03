@@ -22,7 +22,8 @@ public:
 	void reset( bool full_reset );
 	
 	// Setup
-	const char * open_chr( const uint8_t*, long size );
+	// extra_ram: CHR RAM behind CHR ROM, both banked (TQROM, mapper 119)
+	const char * open_chr( const uint8_t*, long size, long extra_ram = 0 );
 	void rebuild_chr( unsigned long begin, unsigned long end );
 	void close_chr();
 	void save_state( Nes_State_* out ) const;
@@ -50,6 +51,7 @@ public:
 	void set_chr_bank_ex( int addr, int size, long data );
 	void set_chr_bank_bg( int addr, int size, long data );
 	bool mmc5_chr_split;
+	bool chr_off; // CHR disabled (copy protection of mapper 185): reads give $FF
 	
 	// Nametable and CHR RAM
 	enum { nt_ram_size = 0x1000 };
@@ -93,6 +95,10 @@ protected: //friend class Nes_Ppu_Rendering; private:
 	
 	bool any_tiles_modified;
 	bool chr_is_writable;
+	bool chr_mixed; // CHR ROM and banked CHR RAM (see open_chr)
+	// CHR space: chr_rom_bytes of chr_data, then CHR RAM (0: CHR RAM only)
+	long chr_rom_bytes;
+	void write_chr_mixed( int addr, int data );
 	void update_tiles( int first_tile );
 	
 	typedef uint32_t cache_t;
@@ -145,7 +151,14 @@ private:
 	uint8_t const* chr_data; // points to chr ram when there is no read-only data
 	uint8_t* chr_ram; // always points to impl->chr_ram; makes write_2007() faster
 	long chr_size;
-	uint8_t const* map_chr( int addr ) { return &chr_data [map_chr_addr( addr )]; }
+	uint8_t chr_off_byte;
+	uint8_t const* map_chr( int addr )
+	{
+		if ( chr_off )
+			return &chr_off_byte;
+		long o = map_chr_addr( addr );
+		return o < chr_rom_bytes ? &chr_data [o] : &chr_ram [o - chr_rom_bytes];
+	}
 	
 	// CHR cache
 	cached_tile_t* tile_cache;
@@ -200,6 +213,11 @@ inline int Nes_Ppu_Impl::write_2007( int data )
 	{
 		// Avoid overhead of checking for read-only CHR; if that is the case,
 		// this modification will be ignored.
+		if ( chr_mixed )
+		{
+			write_chr_mixed( addr, data );
+			return changed;
+		}
 		int mod = modified_tiles [mod_index];
 		chr_ram [addr] = data;
 		any_tiles_modified = true;

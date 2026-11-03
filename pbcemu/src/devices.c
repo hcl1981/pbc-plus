@@ -47,7 +47,7 @@ static const control_t c_msx[] = {
     { "F1", "Center + B" }, { "Menu", "Center + A" }, { NULL } };
 static const control_t c_a26[] = {
     { "Joystick", "Joystick" }, { "Button", "B or A" }, { "RESET", "Center + B" },
-    { "SELECT", "Center + A" }, { NULL } };
+    { "SELECT", "Center + A" }, { "Paddle", "Turn the PicoBoy" }, { NULL } };
 static const control_t c_zx[] = {
     { "Joystick", "Joystick" }, { "Fire", "B" }, { "SPACE", "A" }, { "ENTER", "Center + B" },
     { "Menu", "Center + A" }, { NULL } };

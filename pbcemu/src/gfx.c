@@ -3,6 +3,7 @@
 #include "gfx.h"
 #include "color565.h"
 #ifndef PBC_HOST
+#include "pico/stdlib.h"
 #include "display.h"
 #endif
 
@@ -42,8 +43,11 @@ void gfx_finish(void)
     }
 }
 
+uint8_t gfx_backlight = 200;
+
 void gfx_present(void)
 {
+    static bool lit;                /* the backlight is on */
     gfx_finish();
     pbc_display_window(0, 0, GFX_W, GFX_H);
     pbc_display_begin();
@@ -51,6 +55,16 @@ void gfx_present(void)
     sending = true;
     back ^= 1;
     gfx_fb = fbs[back];
+    if (!lit) {
+        /* switched on: dark until the first picture is on the panel, then
+         * the light fades in quickly */
+        lit = true;
+        gfx_finish();
+        for (int i = 1; i <= 15; i++) {
+            pbc_display_backlight((uint8_t)(gfx_backlight * i / 15));
+            sleep_ms(10);
+        }
+    }
 }
 #endif
 
@@ -249,6 +263,31 @@ void gfx_picture(const pbc_picture_t *p, int x, int y, int alpha)
             if (a) {
                 a = (a * 17 + (a == 15)) * am >> 8;     /* 4 bit -> 0..256 */
                 put(x + i % p->w, y + i / p->w, p->pal[idx], a);
+            }
+        }
+        s += run ? 1 : count;
+    }
+}
+
+/* Every pixel as 2 x 2: the half-size floor shadows. Small rather than
+ * fast (the file is -O3): a shadow is a few hundred pixels. */
+__attribute__((optimize("Os"))) void gfx_picture2x(const pbc_picture_t *p, int x, int y, int alpha)
+{
+    const uint8_t *s = p->rle;
+    int n = p->w * p->h, i = 0;
+    unsigned am = alpha >= 255 ? 256 : (unsigned)alpha;
+    while (i < n) {
+        int c = *s++, count;
+        bool run = c >= 128;
+        count = run ? c - 126 : c + 1;
+        for (int k = 0; k < count; k++, i++) {
+            int idx = run ? *s : s[k];
+            unsigned a = p->alpha[idx];
+            if (a) {
+                a = (a * 17 + (a == 15)) * am >> 8;
+                int px = x + 2 * (i % p->w), py = y + 2 * (i / p->w);
+                for (int d = 0; d < 4; d++)
+                    put(px + (d & 1), py + (d >> 1), p->pal[idx], a);
             }
         }
         s += run ? 1 : count;

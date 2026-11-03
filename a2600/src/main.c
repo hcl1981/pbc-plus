@@ -14,6 +14,8 @@
  *
  * Buttons: joystick and B (or A) the joystick and its button, Center + B
  * the RESET switch, Center + A SELECT. RESET goes back to the launcher.
+ * Paddle games (found by themselves, see "paddles" below): the PicoBoy
+ * turned like a steering wheel, B or A the paddle's button.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -44,6 +46,8 @@
 #include "a26_video.h"
 #include "a2600.h"
 #include "a7800.h"
+#include "tia.h"
+#include "tilt.h"
 
 #if !PBC_MULTI
 #error "PBC 2600 exists only as part of the combined firmware (pbcemu/build.sh)"
@@ -136,6 +140,57 @@ static uint8_t joy_of(uint16_t w)
     return j;
 }
 
+/* ---- paddles --------------------------------------------------------------
+ *
+ * A 2600 game that polls the paddles (INPT0-3 read again and again after
+ * each dump of their capacitors) for 20 frames in a row gets them: from
+ * then on the device is paddle 0, turned like a steering wheel (+-35
+ * degrees from where it was held at that moment), B or A its button. In
+ * link play player 2 is paddle 1. The decision comes from the emulation
+ * alone, so both devices take it in the same frame; the position travels
+ * in bits 8..15 of the link word. Without the sensor the joystick turns
+ * the paddle. */
+static bool paddles, tilt_ok;
+static int paddle_votes;
+static float tilt_zero, tilt_pos;       /* -1 .. 1, positive: turned right */
+
+static void paddles_on(void)
+{
+    paddles = true;
+    tilt_ok = tilt_init();
+    if (tilt_ok) {
+        float z = tilt_read();
+        tilt_zero = z > 0.36f ? 0.36f : z < -0.36f ? -0.36f : z;    /* at most 20 degrees */
+    }
+    tilt_pos = 0.0f;
+}
+
+/* bits 8..15 of this device's link word: its paddle, 0 left .. 255 right */
+static uint16_t paddle_word(uint32_t raw)
+{
+    if (!paddles)
+        return 0;
+    if (tilt_ok) {
+        float r = (tilt_read() - tilt_zero) / 0.70f;    /* tan 35 degrees */
+        tilt_pos += (r - tilt_pos) * 0.5f;              /* the sensor's jitter */
+    } else {
+        tilt_pos += (raw & IN_RIGHT) ? 0.05f : (raw & IN_LEFT) ? -0.05f : 0.0f;
+    }
+    if (tilt_pos > 1.0f) tilt_pos = 1.0f;
+    if (tilt_pos < -1.0f) tilt_pos = -1.0f;
+    return (uint16_t)((int)((tilt_pos + 1.0f) * 127.5f) << 8);
+}
+
+/* Turned right is clockwise, less resistance, charged sooner. The whole
+ * turn spans the time from the end of a dump to the next one. */
+static uint32_t paddle_time(uint16_t w)
+{
+    uint32_t win = tia_paddle_window();
+    if (win < 228u * 60 || win > 228u * 400)
+        win = 228u * 200;
+    return 228u + (255u - (w >> 8)) * (win - 456u) / 255u;
+}
+
 static uint8_t switches_of(uint16_t w)
 {
     uint8_t s = 0;
@@ -169,11 +224,21 @@ static void __attribute__((noreturn)) emulation_loop(bool show_stats, const char
 
     for (;;) {
         uint16_t p1, p2;
-        pbc_link_frame((uint16_t)(input_raw() & 0x7F), is7800 ? a7800_ram() : a2600_ram(),
+        uint32_t raw = input_raw();
+        pbc_link_frame((uint16_t)((raw & 0x7F) | paddle_word(raw)), is7800 ? a7800_ram() : a2600_ram(),
                        is7800 ? 0x1000 : 128, &p1, &p2);
         a26_joy[0] = joy_of(p1);
         a26_joy[1] = joy_of(p2);
         a26_switches = switches_of(p1 | p2);
+        if (paddles) {
+            /* the paddles' buttons are SWCHA bits 7 and 6 (left port) */
+            bool f1 = !(p1 & IN_CENTER) && (p1 & (IN_A | IN_B));
+            bool f2 = !(p2 & IN_CENTER) && (p2 & (IN_A | IN_B));
+            a26_joy[0] = (uint8_t)((f1 ? A26_RIGHT : 0) | (f2 ? A26_LEFT : 0));
+            a26_joy[1] = 0;
+            tia_set_paddle(0, paddle_time(p1));
+            tia_set_paddle(1, pbc_link_active() ? paddle_time(p2) : ~0u);
+        }
 
         uint64_t frame_start = time_us_64();
         const unsigned fps = pal ? 50 : 60;
@@ -186,6 +251,14 @@ static void __attribute__((noreturn)) emulation_loop(bool show_stats, const char
             lines = pal ? 313 : 263;
         } else {
             lines = a2600_frame(a26_video_line, samples, (int)n);
+            if (!paddles) {
+                paddle_votes = tia_paddle_reads() >= 8 ? paddle_votes + 1 : 0;
+                if (paddle_votes >= 20) {
+                    paddles_on();
+                    a26_video_set_status(tilt_ok ? "PADDLE: TURN THE PICOBOY" : "PADDLE: JOYSTICK");
+                    status_until = time_us_64() + 3000000;
+                }
+            }
         }
         audio_pwm_push(samples, (int)n);
         if (!is7800 && (lines >= 290) != pal) {

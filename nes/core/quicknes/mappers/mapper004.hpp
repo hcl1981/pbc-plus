@@ -38,7 +38,7 @@ nes_time_t const last_scanline = first_scanline + 240 * Nes_Ppu::scanline_len;
 
 // MMC3
 
-class Mapper004 : public Nes_Mapper, mmc3_state_t {
+class Mapper004 : public Nes_Mapper, protected mmc3_state_t {
 public:
 	Mapper004()
 	{
@@ -144,7 +144,8 @@ public:
 		}
 	}
 
-	NES_RAM_INLINE(mapper004_update_chr_banks) void update_chr_banks()
+	// virtual: the MMC3 variants (mapper118.hpp ...) map banks their own way
+	NES_RAM_INLINE(mapper004_update_chr_banks) virtual void update_chr_banks()
 	{
 		int chr_xor = (mode >> 7 & 1) * 0x1000;
 		set_chr_bank( 0x0000 ^ chr_xor, bank_2k, banks [0] >> 1 );
@@ -155,7 +156,7 @@ public:
 		set_chr_bank( 0x1c00 ^ chr_xor, bank_1k, banks [5] );
 	}
 
-	void update_prg_banks()
+	NES_RAM_INLINE(mapper004_update_prg_banks) virtual void update_prg_banks()
 	{
 		set_prg_bank( 0xA000, bank_8k, banks [7] );
 		nes_addr_t addr = 0x8000 + 0x4000 * (mode >> 6 & 1);

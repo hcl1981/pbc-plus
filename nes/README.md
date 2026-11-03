@@ -13,7 +13,8 @@ wie bei [`../megadrive`](../megadrive/):
 | SD-Karten-Browser | **USB-Stick-Modus** in eine FatFs-Partition im Flash (aus [PicoBoyGB](../picoboygb/)) |
 | HDMI/VGA/TV | **ST7789**: 240×240 Pixel **1:1**, auf Kern 1 per DMA gesendet |
 | Ton über HDMI/I2S/PWM | Ton über den **PWM-Lautsprecher** (GP15), 22 222 Hz, an/aus und Lautstärke in den Optionen |
-| Einstellungen, Spielstände, Game Genie, USB-HID | entfallen |
+| Spielstände (Batterie-RAM) auf SD | **`<Spiel>.sav`** neben der ROM auf dem USB-Laufwerk, wie bei [`../gbc`](../gbc/) |
+| Einstellungen, Speicherstände, Game Genie, USB-HID | entfallen |
 
 **Stand:** läuft auf dem Gerät, Ton klingt gut.
 
@@ -57,6 +58,21 @@ bei PicoBoyGB.
 Mitte allein tut nichts, wie bei PicoBoyGB. Zurück zur Spieleliste geht es
 mit RESET.
 
+### Spielstände
+
+Module mit Batterie (Bit im iNES-Kopf: Zelda, Final Fantasy, StarTropics …)
+behalten die 8 KB RAM bei `$6000` in **`<Spielname>.sav`** neben der ROM, am PC
+sichtbar und kopierbar. Geladen wird beim Start, geschrieben während des
+Spiels, denn verlassen wird es mit RESET: Viermal pro Sekunde eine Prüfsumme
+des RAM; hat es sich eine Sekunde lang nicht mehr geändert (oder ändert es sich
+seit 20 s), wird die Datei geschrieben. **Nach dem Speichern im Spiel also kurz
+warten**, bevor man RESET drückt. Unveränderte Flash-Sektoren bleiben stehen,
+Kern 1 wird je geschriebenem Sektor in einer RAM-Schleife geparkt
+(`src/flash_fs.c`, wie bei `../gbc`); das Spiel hält dabei etwa 50 ms an. Passt
+die Datei nicht mehr auf das Laufwerk (jede Datei belegt mindestens 16 KB),
+steht unten „NO ROOM FOR THE SAVE FILE“ und das Spiel läuft ohne Speichern
+weiter.
+
 **Leistungsanzeige:** gezeichnete Bilder pro Sekunde, Emulationstempo (100 % =
 Originalgeschwindigkeit) und Auslastung von Kern 0, z. B. `60fps 100% CPU71%`,
 einmal pro Sekunde aufgefrischt, unter dem Bild. In PBCemu schaltet man sie in den Einstellungen des Starters ein;
@@ -92,6 +108,39 @@ sind, wird der Füllstand bei jedem Bild geprüft und um einen Sample korrigiert
 hinter dem letzten Sample steht Stille, so hört man bei Rückstand nichts statt
 alter Samples. Laute Spitzen werden weich begrenzt. Ist der Ton aus, steht der
 DMA, und der Lautsprecher-Pin liegt auf Low (kein Ruhestrom).
+
+## Mapper
+
+QuickNES aus frank-nes kennt die Mapper 0–5, 7, 9–11, 15, 19, 21–26, 30,
+32–34, 60, 66, 69–71, 73, 75, 78, 79, 85–89, 93, 94, 97, 113, 140, 152, 154,
+156, 180, 184, 190, 193, 206, 207, 232, 240, 241, 244 und 246. Für den PicoBoy
+neu geschrieben (nach dem NESdev-Wiki, Dateien `core/quicknes/mappers/`):
+
+| Mapper | Platine | Beispiele |
+|---|---|---|
+| 16, 159 | Bandai FCG / LZ93D50 | Dragon Ball Z, SD Gundam (ohne EEPROM: kein Speichern) |
+| 28 | Action 53 | Homebrew-Sammlungen (nur 8 KB CHR-RAM) |
+| 48 | Taito TC0690 | The Flintstones: The Rescue of Dino & Hoppy, Don Doko Don 2 |
+| 64 | Tengen RAMBO-1 | Klax, Shinobi, Rolling Thunder, Skull & Crossbones |
+| 67 | Sunsoft-3 | Fantasy Zone II (Japan) |
+| 118 | TxSROM (MMC3, Nametables aus den CHR-Bänken) | Armadillo, Pro Sport Hockey |
+| 119 | TQROM (MMC3, 64 KB CHR-ROM und 8 KB CHR-RAM gemischt) | Pin-Bot, High Speed |
+| 185 | CNROM mit CHR-Sperre (Kopierschutz) | B-Wings, Bird Week, Mighty Bomb Jack, Spy vs. Spy |
+| 228 | Active Enterprises | Cheetahmen II |
+
+48, 64, 118 und 119 sind Ableitungen der MMC3-Klasse; deren Bankfunktionen sind
+dafür virtuell. Für 119 legt die PPU das CHR-RAM hinter das CHR-ROM in einen
+gemeinsamen Adressraum samt Kachel-Cache (`open_chr`); ein Schreiben über
+`$2007` landet nur dort, wo eine RAM-Bank eingeblendet ist. Für 185 liest
+`$2007` bei gesperrtem CHR `$FF`; gesperrt ist es wie bei FCEUX, wenn die
+Bits 0–1 null sind oder der Wert `$13` ist. Geprüft mit eigenen Testmodulen
+auf dem PC (Bankumschaltung, Spiegelung, Zahl der IRQs, beim 119 auch das
+Zeichnen aus RAM- und ROM-Kacheln), noch nicht mit den Spielen.
+Nicht machbar ohne Umbau der PPU: 68 (Sunsoft-4, Nametables aus CHR-ROM)
+und 13 (CPROM, 16 KB CHR-RAM in Bänken: das Schreiben über `$2007` ginge
+durch die Bankumschaltung im heißen Pfad; dafür gibt es nur Videomation);
+37 und 47 (MMC3-Sammelmodule) und Action 52 haben mehr CHR-ROM, als der
+Kachel-Cache fasst.
 
 ## Speicher
 
@@ -148,25 +197,24 @@ Anzeige wenig CPU-Last, lohnt ein niedrigerer Takt für die Batterie.
 ## Aufbau
 
 ```
-src/main.c        Startablauf, USB-Stick-Modus, Takt, Emulationsschleife
+src/main.c        Startablauf, USB-Stick-Modus, Takt, Emulationsschleife, Spielstände
 src/video.c       Palette, Ausgabe 240x240 auf Kern 1
 src/audio_pwm.c   Ton: Ringpuffer, Timer, PWM auf GP15
 src/settings.c    Optionen, im Flash gespeichert
 src/input.c       Tastenbelegung (Mitte als Modifier)
 src/display.c, menu.c, rom_store.c   aus ../megadrive (rom_store ohne Byte-Tausch)
 src/flash_fs.*, usb_*.c, tusb_config.h, fatfs/   aus ../picoboygb
-core/quicknes/    QuickNES-Kern aus frank-nes; entfernt: das Übernehmen von Sprites aus dem Vorbild (HDMI-Notlösung, löschte das Blinken)
+core/quicknes/    QuickNES-Kern aus frank-nes; entfernt: das Übernehmen von Sprites aus dem Vorbild (HDMI-Notlösung, löschte das Blinken); neu: die Mapper oben, gemischtes CHR-ROM/-RAM und abschaltbares CHR in der PPU, qnes_get_battery_ram()
 core/emu2413/     YM2413-Emulation für den VRC7-Mapper, aus frank-nes
 ```
 
-Der Kern ist unverändert. Mit `PICO_MALLOC_PANIC=0` darf `malloc` scheitern,
+Sonst ist der Kern unverändert. Mit `PICO_MALLOC_PANIC=0` darf `malloc` scheitern,
 damit QuickNES fehlenden Speicher selbst melden kann.
 
 ## Offene Punkte
 
-* **Keine Batteriespeicher.** Spiele mit Speicherfunktion (Zelda u. a.) verlieren
-  ihren Stand beim Ausschalten. QuickNES hält das Cartridge-RAM, es müsste nur
-  beim Verlassen in den Flash geschrieben werden.
+* Spielstände noch nicht auf dem Gerät geprüft. Im Link-Spiel werden sie
+  weder geladen noch gespeichert (beide Geräte brauchen dasselbe RAM).
 * Nur NTSC-Takt, kein zweiter Spieler.
 
 ## Lizenzen

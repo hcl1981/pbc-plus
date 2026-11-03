@@ -33,6 +33,9 @@
 #include "devices.h"
 #include "games.h"
 #include "prefs.h"
+#include "favs.h"
+#include "battery.h"
+#include "sound.h"
 #include "pbc_launch.h"
 #include "pbc_lobby.h"
 #include "pbc_rgb.h"
@@ -94,6 +97,7 @@ static void write_launch(int device, const char *game)
         l.flags |= (ui_link_player == 1 ? PBC_LAUNCH_LINK1 : PBC_LAUNCH_LINK2) |
                    (ui_link_master ? PBC_LAUNCH_LINK_MASTER : 0);
     l.video = (uint8_t)prefs_video(device);
+    l.brightness = prefs_backlight();
     snprintf(l.game, sizeof l.game, "%s", game);
     l.check = pbc_launch_hash(&l);
     if (memcmp((const void *)(XIP_BASE + PBC_LAUNCH_OFFSET), &l, sizeof l) == 0)
@@ -108,10 +112,12 @@ static void write_launch(int device, const char *game)
 
 static void __attribute__((noreturn)) launch(uint32_t offset)
 {
+    pbc_rgb_set(0, 0, 0);               /* it would keep its colour in the game */
+    sound_off();
     /* fade out; the emulator fades in again (common/pbc_loading.c), which
      * hides the panel's reset and clearing in between */
     for (int i = 24; i >= 0; i--) {
-        pbc_display_backlight((uint8_t)(200 * i / 25));
+        pbc_display_backlight((uint8_t)(prefs_backlight() * i / 25));
         sleep_ms(10);
     }
     watchdog_hw->scratch[0] = PBC_JUMP_MAGIC;
@@ -183,6 +189,7 @@ static void fs_write_readme(void)
 
 static void __attribute__((noreturn)) usb_mode(void)
 {
+    sound_off();
     ui_usb(0);
     FRESULT fr = f_mount(&g_fs, "", 1);
     if (fr != FR_OK && fs_format() && fs_mount())
@@ -279,17 +286,20 @@ int main(void)
     input_init();
     pbc_rgb_set(0, 0, 0);               /* a game may have left it on (C64 drive LED) */
     prefs_load();
-    pbc_display_init();
+    gfx_backlight = prefs_backlight();
+    favs_load();
+    battery_init();
+    sound_on();                     /* ramps the speaker up while still dark */
+    pbc_display_init();             /* backlight off until the first picture */
     gfx_init();
-    gfx_background(0x161d31, 0x06080e);
-    gfx_present();
-    pbc_display_backlight(200);
 
     unexpected_reset_report(reset);
     if ((reset & POWMAN_CHIP_RESET_HAD_POR_BITS) && (input_raw() & (IN_A | IN_B)))
         usb_mode();
     if (!fs_mount())
         usb_mode();                     /* fresh device: nothing on the drive yet */
+    /* switched on or RES pressed (not the restart after the USB drive) */
+    ui_intro_pending = (reset & (POWMAN_CHIP_RESET_HAD_POR_BITS | POWMAN_CHIP_RESET_HAD_RUN_LOW_BITS)) != 0;
 
     int device = 1;
     static char game[GAME_NAME_MAX];

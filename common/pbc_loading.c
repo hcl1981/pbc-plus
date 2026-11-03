@@ -93,11 +93,18 @@ static void render(int y0, int y1, void (*draw)(void))
 static repeating_timer_t fade_timer;
 static int fade_step = -1;              /* -1: not started */
 
+/* the brightness chosen in the launcher */
+static uint8_t level(void)
+{
+    const pbc_launch_t *l = pbc_launch_get();
+    return l && l->brightness ? l->brightness : PBC_BACKLIGHT;
+}
+
 static bool fade_tick(repeating_timer_t *t)
 {
     (void)t;
     fade_step++;
-    pbc_display_backlight((uint8_t)(PBC_BACKLIGHT * fade_step / FADE_STEPS));
+    pbc_display_backlight((uint8_t)(level() * fade_step / FADE_STEPS));
     return fade_step < FADE_STEPS;
 }
 
@@ -110,7 +117,7 @@ void pbc_fade_in(bool wait)
         while (fade_tick(NULL))
             sleep_ms(10);
     } else if (!add_repeating_timer_ms(10, fade_tick, NULL, &fade_timer)) {
-        pbc_display_backlight(PBC_BACKLIGHT);
+        pbc_display_backlight(level());
     }
 }
 

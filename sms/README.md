@@ -13,7 +13,8 @@ ist dasselbe wie bei [`../nes`](../nes/) und [`../c64`](../c64/):
 | SD-Karten-Menü, USB-Laufwerk der SD-Karte | **USB-Stick-Modus** in eine FatFs-Partition im Flash (aus [PicoBoyGB](../picoboygb/)) |
 | HDMI | **ST7789**: Master System 240 Pixel breit 1:1, Game Gear 1,5× auf 240×216, auf Kern 1 per DMA |
 | Ton über HDMI/I2S | Ton über den **PWM-Lautsprecher** (GP15), 22 222 Hz, Timer auf Kern 1 |
-| Spielstände, Batteriespeicher, SG-1000-Menü | entfallen; zwei Controller nur im Link-Spiel von PBCemu ([`../docs/LINKSPIEL.md`](../docs/LINKSPIEL.md)) |
+| Batteriespeicher | als **`<Spielname>.sav`** neben der ROM auf dem Laufwerk, wie bei `../gbc` |
+| Spielstände (Savestates), SG-1000-Menü | entfallen; zwei Controller nur im Link-Spiel von PBCemu ([`../docs/LINKSPIEL.md`](../docs/LINKSPIEL.md)) |
 
 **Stand: gebaut, noch nicht auf dem Gerät getestet.**
 
@@ -53,6 +54,23 @@ bei PicoBoyGB.
 | START (Game Gear) / PAUSE (Master System) | Mitte + B |
 
 Mitte allein tut nichts. Zurück zur Spieleliste geht es mit RESET.
+
+### Batteriespeicher
+
+Master-System- und Game-Gear-Module mit Batterie (z. B. Phantasy Star,
+Golden Axe Warrior, Shining Force Gaiden) blenden bis zu 32 KB RAM über
+8000h–BFFFh ein. Es landet als **`<Spielname>.sav`** neben der ROM auf dem
+Laufwerk, am PC sichtbar und kopierbar: 16 KB, 32 KB sobald ein Spiel die
+obere Hälfte benutzt. Geladen wird beim Start. Gespeichert wird während des
+Spiels, denn verlassen wird es mit RESET: Zweimal pro Sekunde prüft eine
+Prüfsumme das RAM; die Datei wird geschrieben, sobald es sich eine Sekunde
+lang nicht mehr geändert hat (oder seit 20 s ständig ändert). Unveränderte
+Flash-Sektoren bleiben stehen, Kern 1 wird je geändertem Sektor angehalten
+(`src/flash_fs.c`, wie bei `../gbc`): das Spiel stockt dabei etwa 50 ms je
+4 KB. **Nach dem Speichern im Spiel kurz warten, bevor man RESET drückt.**
+Ist das Laufwerk voll, steht vier Sekunden lang „SAVE FAILED: DRIVE FULL?“
+im Bild. Im Link-Spiel wird weder geladen noch gespeichert: beide Geräte
+müssen dasselbe RAM haben, und das Stocken risse die Verbindung. SG-1000 und ColecoVision haben keinen Batteriespeicher.
 
 ## Bild
 
@@ -151,7 +169,7 @@ Werkzeuge und SDK wie bei allen Projekten dieses Repos, siehe
 |---|---|---|
 | `0x000000` | 1 MB | Firmware (ca. 290 KB) |
 | `0x100000` | 5 MB | ROM des laufenden Spiels (`src/rom_store.c`) |
-| `0x600000` | ~9,9 MB | FatFs-Partition = USB-Stick (`src/flash_fs.h`) |
+| `0x600000` | ~9,9 MB | FatFs-Partition = USB-Stick, auch die `.sav`-Dateien (`src/flash_fs.h`) |
 | `0xFF0000` | 4 KB | Info, welches Spiel im ROM-Bereich liegt |
 | `0xFF3000` | 4 KB | Optionen (Ton, Lautstärke) |
 
@@ -175,13 +193,14 @@ core/smsplus/       SMS Plus aus pico-smsplus
 ```
 
 Am Kern geändert: `SMS_AUD_RATE` in `sms.h` lässt sich von außen setzen
-(hier 22 222 Hz statt 44 100).
+(hier 22 222 Hz statt 44 100); `sms.save` merkt sich in Bit 1, ob ein
+Spiel die obere Hälfte des Batterie-RAMs benutzt hat (`sms.c`).
 
 ## Offene Punkte
 
 * **Nicht auf Hardware geprüft.**
-* **Kein Batteriespeicher.** Spiele mit Speicherfunktion (z. B. Phantasy Star)
-  verlieren ihren Stand beim Ausschalten; das Batterie-RAM startet leer.
+* Batteriespeicher nur am PC geprüft (Ablauf und Mapper mit eigenen
+  Testmodulen), nicht mit echten Spielen auf dem Gerät.
 * Nur NTSC-Takt (60 Hz). SG-1000 (`.sg`) bisher nur am PC getestet.
 
 ## ColecoVision (nur in PBCemu)
@@ -199,6 +218,19 @@ Coleco und liegt nicht bei. Fehlt es, nimmt der Emulator ein eigenes
 Mini-BIOS: es startet das Modul an der Adresse in seinem Kopf und leitet NMI
 und RST-Vektoren wie das echte weiter. Das reicht für Spiele, die keine
 BIOS-Routinen aufrufen; die meisten älteren brauchen das echte.
+
+**Super Game Module** (Opcode Games): viele neuere Homebrews brauchen es. Es
+schaltet sich ein, sobald ein Spiel seine Ports benutzt, ohne Einstellung:
+24 KB RAM über 2000h–7FFFh, solange Bit 0 von Port 53h gesetzt ist; 8 KB RAM
+statt des BIOS, solange Bit 1 von Port 7Fh gelöscht ist (Spiele schreiben
+0Dh, 0Fh holt das BIOS zurück); ein AY-3-8910 an den Ports 50h (Register),
+51h (schreiben) und 52h (lesen), mit halbem CPU-Takt (1,79 MHz), zum PSG
+dazugemischt. Der AY ist eine Kopie von `../msx/core/msx1/ay8910.c`
+(`core/smsplus/ay8910.c`, eigener Code, GPL-3.0-or-later). Die 32 KB RAM
+holt sich nur der ColecoVision-Modus vom Heap, der dort reichlich frei ist
+(kein Tile-Cache). Am PC mit einem eigenen Testmodul geprüft (RAM oben und
+unten, BIOS zurück, AY-Register lesen, 440-Hz-Ton); mit echten SGM-Spielen
+noch nicht.
 
 | PicoBoy | ColecoVision |
 |---|---|
@@ -235,4 +267,6 @@ Action) fehlen.
   für den PicoBoy (GPL-2.0-or-later); er ersetzt den SN76496 aus dem alten
   MAME (Nicola Salmoria) und behält Schnittstelle und Pegel. Das Rauschen
   folgt jetzt dem Sega-Chip (16-Bit-Register, Abgriffe 0 und 3).
+* `core/smsplus/ay8910.[ch]`: AY-3-8910 fürs Super Game Module, Kopie aus
+  `../msx` (eigener Code für den PicoBoy, GPL-3.0-or-later).
 * `core/smsplus/emu2413/`: emu2413, © 2020 Mitsutaka Okazaki (Vermerk im Dateikopf; upstream steht emu2413 unter MIT).

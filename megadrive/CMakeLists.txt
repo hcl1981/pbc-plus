@@ -50,6 +50,7 @@ add_executable(pbc_megadrive
     src/menu.c
     src/rom_store.c
     src/ssf2.c
+    src/sram.c
     src/audio_pwm.c
     src/ym_core1.c
     src/ym2612_synth.c

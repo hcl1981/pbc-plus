@@ -100,6 +100,10 @@ const uint8_t *qnes_get_pixels(void);
 /* The 2 KB of work RAM. */
 const uint8_t *qnes_get_ram(void);
 
+/* The 8 KB of RAM at $6000 if the cartridge keeps it with a battery (iNES
+ * header), else NULL. Load a save into it right after qnes_load_rom*. */
+uint8_t *qnes_get_battery_ram(long *size);
+
 /* Number of visible sprites (Y < 0xF0) in OAM after last frame.
  * Used to detect 30 Hz sprite blink patterns. */
 int qnes_get_visible_sprite_count(void);

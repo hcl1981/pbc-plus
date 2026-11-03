@@ -12,6 +12,10 @@ void games_count(int *counts);
  * array stays valid until the next call. */
 int  games_list(int device, char (**names)[GAME_NAME_MAX]);
 
+/* The favourites still on the drive, in the same array as games_list();
+ * (*devs)[i] is the device of game i. */
+int  games_favorites(char (**names)[GAME_NAME_MAX], int **devs);
+
 /* "Sonic (USA, Europe).md" -> title "Sonic", tags "(USA, Europe)" */
 void games_title(const char *file, char *title, char *tags, int size);
 

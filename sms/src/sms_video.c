@@ -2,6 +2,7 @@
 #include <string.h>
 #include "pico/stdlib.h"
 #include "hardware/sync.h"
+#include "pico/multicore.h"
 #include "board.h"
 #include "color565.h"
 #include "display.h"
@@ -241,6 +242,8 @@ static void __not_in_flash_func(scale_row)(const uint16_t *ra, const uint16_t *r
 
 void __not_in_flash_func(sms_video_core1_main)(void)
 {
+    /* Save files are written while a game runs: park this core per sector. */
+    multicore_lockout_victim_init();
     __dmb();
     core1_ready = true;
 
