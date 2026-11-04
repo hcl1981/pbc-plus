@@ -14,7 +14,8 @@ wie bei [`../megadrive`](../megadrive/):
 | HDMI/VGA/TV | **ST7789**: 240×240 Pixel **1:1**, auf Kern 1 per DMA gesendet |
 | Ton über HDMI/I2S/PWM | Ton über den **PWM-Lautsprecher** (GP15), 22 222 Hz, an/aus und Lautstärke in den Optionen |
 | Spielstände (Batterie-RAM) auf SD | **`<Spiel>.sav`** neben der ROM auf dem USB-Laufwerk, wie bei [`../gbc`](../gbc/) |
-| Einstellungen, Speicherstände, Game Genie, USB-HID | entfallen |
+| Game Genie (Codes eintippen) | Codes in **`<Spiel>.cht`** neben der ROM |
+| Einstellungen, Speicherstände, USB-HID | entfallen |
 
 **Stand:** läuft auf dem Gerät, Ton klingt gut.
 
@@ -72,6 +73,28 @@ Kern 1 wird je geschriebenem Sektor in einer RAM-Schleife geparkt
 die Datei nicht mehr auf das Laufwerk (jede Datei belegt mindestens 16 KB),
 steht unten „NO ROOM FOR THE SAVE FILE“ und das Spiel läuft ohne Speichern
 weiter.
+
+### Game Genie
+
+Codes stehen in **`<Spielname>.cht`** neben der ROM (für `Contra (USA).nes`
+also `Contra (USA).cht`), ein Code pro Zeile, 6 oder 8 Buchstaben, groß oder
+klein; was nach einem Leerzeichen oder `#` folgt, ist Kommentar:
+
+```
+SXIOPO   unendlich Leben
+AEKPTZGA # 8 Buchstaben: mit Vergleichsbyte
+```
+
+Bis zu 16 Codes. Beim Start steht drei Sekunden lang „3 CHEATS“ unter dem Bild
+(„NO USABLE CHEATS“, wenn keiner gültig ist). Die Codes wirken wie das echte
+Game Genie auf ihre **CPU-Adresse** und, bei 8 Buchstaben, nur solange dort
+eine Bank mit dem Vergleichsbyte eingeblendet ist. Da die ROM im Flash liegt
+und nicht verändert werden kann, zeigt der CPU-Kern die 2-KB-Seite mit einem
+Code nach jedem Einblenden auf eine RAM-Kopie der ROM-Seite mit dem Code
+darin (`Nes_Cpu::gg_remap` in `core/quicknes/nes_cpu.cpp`). Acht solche Kopien
+werden behalten (16 KB Heap, nur mit Codes), so dass ein Bankwechsel hin und
+zurück nichts kopiert; ohne Codes kostet es nichts. Im Link-Spiel werden keine
+Codes geladen. Die Hilfedatei `NES.TXT` erklärt die Datei auch.
 
 **Leistungsanzeige:** gezeichnete Bilder pro Sekunde, Emulationstempo (100 % =
 Originalgeschwindigkeit) und Auslastung von Kern 0, z. B. `60fps 100% CPU71%`,
@@ -197,14 +220,14 @@ Anzeige wenig CPU-Last, lohnt ein niedrigerer Takt für die Batterie.
 ## Aufbau
 
 ```
-src/main.c        Startablauf, USB-Stick-Modus, Takt, Emulationsschleife, Spielstände
+src/main.c        Startablauf, USB-Stick-Modus, Takt, Emulationsschleife, Spielstände, Game-Genie-Datei
 src/video.c       Palette, Ausgabe 240x240 auf Kern 1
 src/audio_pwm.c   Ton: Ringpuffer, Timer, PWM auf GP15
 src/settings.c    Optionen, im Flash gespeichert
 src/input.c       Tastenbelegung (Mitte als Modifier)
 src/display.c, menu.c, rom_store.c   aus ../megadrive (rom_store ohne Byte-Tausch)
 src/flash_fs.*, usb_*.c, tusb_config.h, fatfs/   aus ../picoboygb
-core/quicknes/    QuickNES-Kern aus frank-nes; entfernt: das Übernehmen von Sprites aus dem Vorbild (HDMI-Notlösung, löschte das Blinken); neu: die Mapper oben, gemischtes CHR-ROM/-RAM und abschaltbares CHR in der PPU, qnes_get_battery_ram()
+core/quicknes/    QuickNES-Kern aus frank-nes; entfernt: das Übernehmen von Sprites aus dem Vorbild (HDMI-Notlösung, löschte das Blinken); neu: die Mapper oben, gemischtes CHR-ROM/-RAM und abschaltbares CHR in der PPU, qnes_get_battery_ram(), Game Genie über RAM-Seiten im CPU-Kern (qnes_set_game_genie(), eigener Decoder statt des fehlerhaften in nes_util.cpp)
 core/emu2413/     YM2413-Emulation für den VRC7-Mapper, aus frank-nes
 ```
 
@@ -215,6 +238,8 @@ damit QuickNES fehlenden Speicher selbst melden kann.
 
 * Spielstände noch nicht auf dem Gerät geprüft. Im Link-Spiel werden sie
   weder geladen noch gespeichert (beide Geräte brauchen dasselbe RAM).
+* Game Genie: Codes auf mehr als acht verschiedenen 2-KB-Seiten zugleich
+  greifen nicht alle (es gibt acht Kopien). Auf dem Gerät nicht geprüft.
 * Nur NTSC-Takt, kein zweiter Spieler.
 
 ## Lizenzen

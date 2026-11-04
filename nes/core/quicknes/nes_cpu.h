@@ -29,6 +29,14 @@ public:
 	enum { page_size = 1L << page_bits };
 	void map_code( nes_addr_t start, unsigned size, void const* code );
 	
+	// Game Genie (PBC): up to gg_max codes on CPU addresses $8000-$FFFF.
+	// A 2 KB page that holds one is read from a patched RAM copy of the
+	// ROM page mapped there, made again on every bank switch (a few
+	// copies are kept). compare < 0: no compare byte. Returns the number
+	// of codes taken; 0 switches them off.
+	enum { gg_max = 16 };
+	static int gg_set( const unsigned* addr, const int* value, const int* compare, int count );
+	
 	// Access memory as the emulated CPU does.
 	int  read( nes_addr_t );
 	void write( nes_addr_t, int data );
@@ -81,6 +89,8 @@ private:
 	enum { irq_inhibit = 0x04 };
 	void set_code_page( int, uint8_t const* );
 	void update_clock_limit();
+	void gg_remap( unsigned start, unsigned size );
+	static Nes_Cpu* gg_cpu;
 	
 public:
 	registers_t r;

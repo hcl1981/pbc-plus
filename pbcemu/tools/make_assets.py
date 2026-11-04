@@ -167,34 +167,24 @@ def logo_pictures():
     return [('logo_pbc', pbc), ('logo_emu', emu), ('logo_glint', glint)]
 
 
-SHADOW_LEVELS = 12
-
-
 def split_shadow(img):
-    """The picture without its floor shadow, and the shadow alone at half
-    size (the launcher draws it doubled: it is soft anyway, and so the
-    console can float above it). Shadow: black pixels at most half opaque."""
+    """The picture without its floor shadow (black pixels at most half
+    opaque), and where the launcher puts a soft round one instead (so the
+    device can float above it): middle and bottom of the device, half its
+    width at the bottom."""
     px = img.load()
     w, h = img.size
     obj = img.copy()
     op = obj.load()
-    shade = [[0] * w for _ in range(h)]
     for y in range(h):
         for x in range(w):
             r, g, b, a = px[x, y]
             if 0 < a <= 135 and max(r, g, b) <= 8:
-                shade[y][x] = a
                 op[x, y] = (0, 0, 0, 0)
-    if not any(any(row) for row in shade):
-        return obj, None
-    sh = Image.new('RGBA', (w // 2, h // 2), (0, 0, 0, 0))
-    sp = sh.load()
-    for y in range(h // 2):
-        for x in range(w // 2):
-            a = (shade[2 * y][2 * x] + shade[2 * y][2 * x + 1] +
-                 shade[2 * y + 1][2 * x] + shade[2 * y + 1][2 * x + 1]) / 4
-            sp[x, y] = (0, 0, 0, round(round(a / 136 * SHADOW_LEVELS) * 136 / SHADOW_LEVELS))
-    return obj, sh
+    solid = [(x, y) for y in range(h) for x in range(w) if op[x, y][3] > 128]
+    bottom = max(y for x, y in solid)
+    low = [x for x, y in solid if y >= bottom - h // 5]
+    return obj, ((min(low) + max(low)) // 2, bottom, (max(low) - min(low)) // 2)
 
 
 def main():
@@ -204,30 +194,29 @@ def main():
         c, n = font_c(cname, find_font(fname), size, last)
         parts.append(c)
         sizes[cname] = n
-    names, shadows = [], []
+    names, floors = [], []
     for name in PICTURES:
         # a picture in art/ (tools/import_icons.py) wins over the drawn one
         art = os.path.join(root, 'art', name + '.png')
         big = Image.open(art).convert('RGBA') if os.path.exists(art) else devices.DEVICES[name]()
-        obj, shadow = split_shadow(big)
+        obj, floor = split_shadow(big)
         c, n = picture_c(f'pic_{name}', obj)
         parts.append(c)
         sizes[f'pic_{name}'] = n
-        if shadow:
-            c, n = picture_c(f'shadow_{name}', shadow)
-            parts.append(c)
-            sizes[f'shadow_{name}'] = n
-            shadows.append(name)
+        floors.append((name, floor))
         small = big.resize((ICON_W, ICON_H), Image.LANCZOS)
         c, n = picture_c(f'icon_{name}', small)
         parts.append(c)
         sizes[f'icon_{name}'] = n
         names.append(name)
-    table = ['/* the floor shadow of a big picture (half size), or NULL */',
-             'const pbc_picture_t *pbc_shadow_of(const pbc_picture_t *pic)', '{']
-    for n in shadows:
-        table.append(f'    if (pic == &pic_{n}) return &shadow_{n};')
-    table += ['    return 0;', '}', '']
+    table = ['static const pbc_floor_t floors[] = {']
+    for n, (cx, cy, rx) in floors:
+        table.append(f'    {{ &pic_{n}, {cx}, {cy}, {rx} }},')
+    table += ['};', '',
+              'const pbc_floor_t *pbc_floor_of(const pbc_picture_t *pic)', '{',
+              '    for (unsigned i = 0; i < sizeof floors / sizeof floors[0]; i++)',
+              '        if (floors[i].pic == pic)', '            return &floors[i];',
+              '    return 0;', '}', '']
     parts.append('\n'.join(table))
     logos = []
     for cname, img in logo_pictures():
@@ -251,8 +240,10 @@ def main():
     for n in names:
         hdr.append(f'extern const pbc_picture_t pic_{n}, icon_{n};')
     hdr.append(f'extern const pbc_picture_t {", ".join(logos)};')
-    hdr += ['/* the floor shadow of pic_*, half size (draw it doubled), or 0 */',
-            'const pbc_picture_t *pbc_shadow_of(const pbc_picture_t *pic);']
+    hdr += ['/* where the soft floor shadow of pic_* goes (picture coordinates):',
+            ' * middle and bottom of the device, half its width; or 0 */',
+            'typedef struct { const pbc_picture_t *pic; int16_t cx, cy, rx; } pbc_floor_t;',
+            'const pbc_floor_t *pbc_floor_of(const pbc_picture_t *pic);']
     hdr += ['', '#endif', '']
     with open(os.path.join(root, 'src/assets.h'), 'w') as f:
         f.write('\n'.join(hdr))

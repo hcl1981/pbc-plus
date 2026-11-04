@@ -269,31 +269,6 @@ void gfx_picture(const pbc_picture_t *p, int x, int y, int alpha)
     }
 }
 
-/* Every pixel as 2 x 2: the half-size floor shadows. Small rather than
- * fast (the file is -O3): a shadow is a few hundred pixels. */
-__attribute__((optimize("Os"))) void gfx_picture2x(const pbc_picture_t *p, int x, int y, int alpha)
-{
-    const uint8_t *s = p->rle;
-    int n = p->w * p->h, i = 0;
-    unsigned am = alpha >= 255 ? 256 : (unsigned)alpha;
-    while (i < n) {
-        int c = *s++, count;
-        bool run = c >= 128;
-        count = run ? c - 126 : c + 1;
-        for (int k = 0; k < count; k++, i++) {
-            int idx = run ? *s : s[k];
-            unsigned a = p->alpha[idx];
-            if (a) {
-                a = (a * 17 + (a == 15)) * am >> 8;
-                int px = x + 2 * (i % p->w), py = y + 2 * (i / p->w);
-                for (int d = 0; d < 4; d++)
-                    put(px + (d & 1), py + (d >> 1), p->pal[idx], a);
-            }
-        }
-        s += run ? 1 : count;
-    }
-}
-
 /* ---- text ------------------------------------------------------------------------ */
 
 static const pbc_glyph_t *glyph(const pbc_font_t *f, unsigned char ch)

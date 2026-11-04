@@ -33,7 +33,9 @@ extern const pbc_picture_t pic_a78, icon_a78;
 extern const pbc_picture_t pic_usb, icon_usb;
 extern const pbc_picture_t pic_fav, icon_fav;
 extern const pbc_picture_t logo_pbc, logo_emu, logo_glint;
-/* the floor shadow of pic_*, half size (draw it doubled), or 0 */
-const pbc_picture_t *pbc_shadow_of(const pbc_picture_t *pic);
+/* where the soft floor shadow of pic_* goes (picture coordinates):
+ * middle and bottom of the device, half its width; or 0 */
+typedef struct { const pbc_picture_t *pic; int16_t cx, cy, rx; } pbc_floor_t;
+const pbc_floor_t *pbc_floor_of(const pbc_picture_t *pic);
 
 #endif

@@ -7,6 +7,10 @@
  *   CENTER + B    -> RETURN
  *   CENTER + A    -> menu: joystick, restart, tape, any key (main.c)
  *
+ * In link play the second player is joystick 1 (keyboard row 6: the keys
+ * 6 5 R T for the directions, F fire 1 on B, G fire 2 on A); CENTER + B
+ * and a key from the menu work for both.
+ *
  * A frame's state is one 16-bit word: bits 0..6 the buttons (IN_*), 8..14
  * a key chosen in the menu (index into cpc_keys_menu + 1), 15 "Center + A
  * just pressed".
@@ -31,6 +35,7 @@ extern const int cpc_key_count;
 
 uint16_t cpc_input_word(void);
 void cpc_input_press(int index);
-void cpc_input_apply(uint16_t w);
+/* The words of both players; p2 = 0 without link play. */
+void cpc_input_apply(uint16_t p1, uint16_t p2);
 
 #endif /* PBC_CPC_INPUT_H */

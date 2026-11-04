@@ -161,7 +161,7 @@ static void fs_write_readme(void)
            "  ColecoVision     .col .rom .bin  (coleco.rom here: the BIOS)\r\n"
            "  ZX Spectrum      .tap .tzx .z80 .sna\r\n"
            "  Commodore 64     .d64 .prg\r\n"
-           "  NES              .nes\r\n"
+           "  NES              .nes   (Game Genie codes: <game>.cht, one per line)\r\n"
            "  SG-1000          .sg\r\n"
            "  MSX              .rom .mx1   (MSX1 cartridges)\r\n"
            "                   .mx2 .dsk   (MSX2 cartridges and disks)\r\n"

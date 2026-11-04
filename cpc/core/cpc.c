@@ -25,6 +25,8 @@ static Z80 cpu;
 static ay8910_t psg;
 
 static uint8_t ram[8][0x4000];
+
+const uint8_t *cpc_ram(void) { return &ram[0][0]; }
 static const uint8_t *rom_os, *rom_basic, *rom_amsdos;
 static uint8_t *wpage[4];
 

@@ -5,7 +5,7 @@ Atari 2600, ZX Spectrum, ColecoVision, Commodore 64, NES, SG-1000, MSX,
 Amstrad CPC, Master System, Atari 7800, PC Engine, Mega Drive, Game Gear und
 Game Boy (Color). Fertig als **`dist/pbcemu.uf2`**,
 eine Datei für alles. Zwei Geräte am USB-C-Kabel spielen Atari 2600, C64,
-NES, SG-1000, MSX, Master System, PC Engine und Mega Drive zu zweit
+NES, SG-1000, MSX, Amstrad CPC, Master System, PC Engine und Mega Drive zu zweit
 ([`../docs/LINKSPIEL.md`](../docs/LINKSPIEL.md)); im Karussell tragen diese
 Konsolen die goldene Plakette **LINK**.
 Der alte PicoBoyGB-Emulator ist nicht dabei; Game-Boy-Spiele laufen im
@@ -43,9 +43,9 @@ getestet, auch nicht der Sprung vom Starter in die Emulatoren.
 5. **Energiesparen:** 30 Sekunden ohne Tastendruck dunkelt der Starter das
    Display ab, nach weiteren zwei Minuten geht die Beleuchtung aus, beides
    weich in einer Sekunde. Solange es dunkel ist, zeichnet der Starter
-   nichts, läuft mit 60 statt 150 MHz und schaltet den Ton ab; die RGB-LED
-   „atmet“ dabei ganz schwach in Weiß (höchstens 3 von 255, vier Sekunden
-   je Atemzug). Ein Link-Partner, der ein Spiel startet, weckt ihn auch. Eine Taste macht
+   nichts, läuft mit 60 statt 150 MHz und schaltet den Ton ab; alle 2,5 s
+   laufen die Status-LEDs rot, gelb, grün durch, jede in 0,15 s ein- und in
+   0,35 s ausgeblendet, so dass sie ineinander übergehen. Ein Link-Partner, der ein Spiel startet, weckt ihn auch. Eine Taste macht
    es in 150 ms wieder hell und bewirkt sonst nichts. In den Spielen nicht.
 6. Vor dem Start zeigt der Starter die Tastenbelegung (zwei Sekunden, B
    überspringt). Zurück zur Liste: **RESET**.
@@ -159,15 +159,13 @@ Nach dem Einschalten und nach RES (nicht nach dem USB-Laufwerk-Modus) läuft
 eine Startanimation von 1,5 s: „PBC“ und „emu“ gleiten von beiden Seiten herein,
 ein Lichtschimmer läuft darüber, dann steigt der Schriftzug auf und das
 Karussell erscheint. Jede Taste überspringt sie.
-Die RGB-LED im „+“ blitzt auf, wenn ein System mit B geöffnet wird, in
-dessen Farbe (gedämpft, höchstens 8 von 255), und blendet in einer halben
-Sekunde aus; sonst bleibt sie dunkel.
-
 Das gewählte Gerät schwebt: Es hebt und senkt sich alle 3,2 s um 3 Pixel (in
 Viertelpixeln, die nächste Zeile teilweise gezeichnet), sein Schatten bleibt
-am Boden und wird blasser. Dafür trennt `make_assets.py` den Bodenschatten
-vom Bild (schwarze, höchstens halb deckende Pixel) und speichert ihn in
-halber Auflösung; `gfx_picture2x` zeichnet ihn doppelt groß.
+am Boden und wird blasser und schmaler. Dafür nimmt `make_assets.py` den
+Kontaktschatten aus den Bildern (schwarze, höchstens halb deckende Pixel;
+er hätte beim Anheben eine Lücke in Form des Geräts gezeigt) und merkt sich
+Mitte, Unterkante und Breite des Geräts; der Starter zeichnet dort einen
+weichen runden Schatten (`gfx_glow` in Schwarz).
 
 **Ton** (`src/sound.c`, nur mit Sound an, in der eingestellten Lautstärke):
 ein Klicken beim Ändern von Sound und Volume (so hört man die Lautstärke), ein glockenartiges „Pling“ (E6, H6, E7, jeweils abklingend), wenn

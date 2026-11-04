@@ -17,9 +17,10 @@
 #include "favs.h"
 #include "battery.h"
 #include "display.h"
-#include "pbc_rgb.h"
 #include "sound.h"
 #include "hardware/clocks.h"
+#include "hardware/pwm.h"
+#include "board.h"
 #include "pbc_lobby.h"
 #include "ui.h"
 #include "c64/settings.h"
@@ -144,37 +145,6 @@ void ui_wait_release(void)
     input_menu_edges();             /* forget what was pressed */
 }
 
-/* ---- RGB LED ---------------------------------------------------------------------- */
-
-/* Opening a system with B lets the LED flash up in its colour, dimmed,
- * and fade out in half a second; otherwise it stays dark. */
-#define LED_PEAK    8                       /* of 255 */
-#define LED_FADE_US 500000u
-
-static uint32_t led_rgb;
-static uint64_t led_since;
-static bool led_on;
-
-static void led_flash(uint32_t rgb)
-{
-    led_rgb = rgb;
-    led_since = time_us_64();
-    led_on = true;
-}
-
-static void led_tick(void)
-{
-    if (!led_on)
-        return;
-    uint64_t t = time_us_64() - led_since;
-    int k = t >= LED_FADE_US ? 0 : (int)(256 - t * 256 / LED_FADE_US);
-    k = k * k >> 8;                         /* fades out softly */
-    int s = LED_PEAK * k;                   /* 0..255 * 256 */
-    pbc_rgb_set((uint8_t)(((led_rgb >> 16) & 255) * s >> 16), (uint8_t)(((led_rgb >> 8) & 255) * s >> 16),
-                (uint8_t)((led_rgb & 255) * s >> 16));
-    led_on = k > 0;
-}
-
 /* ---- power saving ---------------------------------------------------------------- */
 
 /* 30 s without a button: the display dims, after 2 more minutes it goes
@@ -184,8 +154,11 @@ static void led_tick(void)
 #define OFF_AFTER_US 150000000u
 #define FADE_DOWN_US   1000000u         /* for the whole range */
 #define FADE_UP_US      150000u
-#define BREATH_US      4000000u         /* the LED while the display is dark */
-#define BREATH_PEAK          3          /* of 255 */
+#define CHASE_US       2500000u         /* dark: red, yellow, green every 2.5 s */
+#define CHASE_STEP_US   250000u         /* from one LED to the next: they overlap */
+#define CHASE_IN_US     150000u
+#define CHASE_OUT_US    350000u
+#define CHASE_PEAK         110          /* of 255, squared on the PWM */
 
 static uint64_t last_press, bl_time;
 static int idle;                    /* 0 awake, 1 dimmed, 2 dark */
@@ -213,25 +186,41 @@ static void backlight_tick(uint64_t now)
 }
 
 /* Dark: nothing to draw. The clock goes down to 60 MHz (USB keeps its own
- * 48 MHz) and the LED breathes, until a button or a link partner's game.
- * The waking button does nothing else. */
+ * 48 MHz), and every 2.5 s the status LEDs run red, yellow, green, each
+ * fading in and out and into the next, until a button or a link partner's game. The waking
+ * button does nothing else. */
 static void dark_wait(void)
 {
+    static const uint pins[3] = { PBC_PIN_LED_RED, PBC_PIN_LED_YELLOW, PBC_PIN_LED_GREEN };
     gfx_finish();                       /* the SPI clock changes with it */
-    sound_off();
+    sound_off();                        /* GP14's PWM slice is the speaker's */
     set_sys_clock_khz(60000, true);
-    pbc_rgb_clock_changed();
+    pwm_config c = pwm_get_default_config();
+    pwm_config_set_wrap(&c, 255 * 255);
+    for (int k = 0; k < 3; k++) {
+        pwm_init(pwm_gpio_to_slice_num(pins[k]), &c, true);
+        pwm_set_gpio_level(pins[k], 0);
+        gpio_set_function(pins[k], GPIO_FUNC_PWM);
+    }
     uint64_t t0 = time_us_64();
     while (!input_raw() && !lobby_incoming(NULL)) {
-        int t = (int)((time_us_64() - t0) % BREATH_US * 512 / BREATH_US);
-        int tri = t < 256 ? t : 511 - t;
-        uint8_t v = (uint8_t)(((tri * tri >> 8) * BREATH_PEAK + 127) / 255);
-        pbc_rgb_set(v, v, v);
-        sleep_ms(20);
+        int t = (int)((time_us_64() - t0) % CHASE_US);
+        for (int k = 0; k < 3; k++) {
+            int dt = t - k * (int)CHASE_STEP_US, v = 0;
+            if (dt >= 0 && dt < (int)CHASE_IN_US)
+                v = dt * CHASE_PEAK / (int)CHASE_IN_US;
+            else if (dt >= (int)CHASE_IN_US && dt < (int)(CHASE_IN_US + CHASE_OUT_US))
+                v = CHASE_PEAK - (dt - (int)CHASE_IN_US) * CHASE_PEAK / (int)CHASE_OUT_US;
+            pwm_set_gpio_level(pins[k], (uint16_t)(v * v));
+        }
+        sleep_ms(10);
     }
-    pbc_rgb_set(0, 0, 0);
+    for (int k = 0; k < 3; k++) {
+        gpio_init(pins[k]);
+        gpio_set_dir(pins[k], GPIO_OUT);
+        gpio_put(pins[k], 0);
+    }
     set_sys_clock_khz(150000, true);
-    pbc_rgb_clock_changed();
     sound_on();
     while (input_raw())
         sleep_ms(10);
@@ -246,7 +235,6 @@ static uint32_t edges(void)
 {
     uint32_t e = input_menu_edges();
     uint64_t now = time_us_64();
-    led_tick();
     if (!last_press)
         last_press = now;
     bool woken = false;
@@ -308,9 +296,10 @@ static void fav_text(int count, char *out, size_t n)
         games_text(count, out, n);
 }
 
-/* A device picture over its floor shadow (assets.c keeps them apart). With
- * `floats` the device rises and sinks by 3 pixels every 3.2 s, in steps of
- * a quarter pixel (the next row drawn in part), and its shadow pales. */
+/* A device picture over a soft round floor shadow (assets.c takes the
+ * pictures' own contact shadows out and says where it goes). With `floats`
+ * the device rises and sinks by 3 pixels every 3.2 s, in steps of a quarter
+ * pixel (the next row drawn in part), and the shadow pales and narrows. */
 #define FLOAT_MS 3200u
 #define FLOAT_PX 3
 
@@ -323,9 +312,10 @@ static int device_picture(const pbc_picture_t *pic, int x, int y, int alpha, boo
         int tri = (ms < (int)FLOAT_MS / 2 ? ms : (int)FLOAT_MS - ms) * 512 / (int)FLOAT_MS;
         e = tri * tri * (768 - 2 * tri) >> 16;       /* smoothstep */
     }
-    const pbc_picture_t *sh = pbc_shadow_of(pic);
-    if (sh)
-        gfx_picture2x(sh, x, y, alpha * (256 - e / 3) / 256);
+    const pbc_floor_t *fl = pbc_floor_of(pic);
+    if (fl)
+        gfx_glow(x + fl->cx, y + fl->cy, fl->rx * (2048 - e) / 2048 + 6, 8, 0x000000,
+                 alpha * 150 / 255 * (512 - e) / 512);
     int pos = y * 256 - FLOAT_PX * e, yi = pos >> 8, f = (pos & 255) & ~63;
     gfx_picture(pic, x, yi, alpha);
     if (f)
@@ -1060,8 +1050,7 @@ ui_result_t ui_run(int *device, char game[GAME_NAME_MAX])
         }
         if (e & IN_B) {
             if (d >= 0 && devices[d].app == APP_NONE)
-                return UI_USB;              /* the USB mode does not fade it: no flash */
-            led_flash(page_accent(sel));
+                return UI_USB;
             if (d >= 0)
                 *device = d;
             if (game_list(device, game, d < 0))

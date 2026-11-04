@@ -19,6 +19,7 @@
 #include "nes_cpu.h"
 
 #include <string.h>
+#include <stdlib.h>
 #include <limits.h>
 #include "blargg_endian.h"
 
@@ -69,11 +70,119 @@ void Nes_Cpu::reset( void const* unmapped_page )
 		set_code_page( i, (uint8_t*) unmapped_page );
 }
 
+// Game Genie codes (PBC), see below
+struct gg_code_t { uint16_t addr; uint8_t value; int16_t compare; };
+static gg_code_t gg_codes [Nes_Cpu::gg_max];
+static int gg_count;
+
 void Nes_Cpu::map_code( nes_addr_t start, unsigned size, const void* data )
 {
 	unsigned first_page = start / page_size;
 	for ( unsigned i = size / page_size; i--; )
 		set_code_page( first_page + i, (uint8_t*) data + i * page_size );
+	gg_cpu = this;
+	if ( gg_count && start + size > 0x8000 )
+		gg_remap( start, size );
+}
+
+// ---- Game Genie (PBC) -------------------------------------------------------
+//
+// The ROM is read in place from flash and cannot be patched. Like the real
+// Game Genie, which sits on the address bus, a code acts on its CPU address
+// and only while a bank with the compare byte is mapped there: after every
+// mapping, a page holding a code that applies is pointed at a RAM copy of
+// the ROM page with the codes in it. Copies are kept per (ROM page, CPU
+// page), so switching back and forth copies nothing. Opcodes and data reads
+// both go through code_map, so both see the patch. A page copy has two
+// bytes more, as the CPU reads an instruction's operands from the opcode's
+// page even across its end.
+
+
+enum { gg_slots = 8, gg_copy = Nes_Cpu::page_size + 2 };
+struct gg_slot_t { uint8_t const* src; int page; uint8_t* ram; };
+static gg_slot_t gg_slot [gg_slots];
+static int gg_next;
+Nes_Cpu* Nes_Cpu::gg_cpu;
+
+int Nes_Cpu::gg_set( const unsigned* addr, const int* value, const int* compare, int count )
+{
+	if ( count > gg_max )
+		count = gg_max;
+	if ( count > 0 && !gg_slot [0].ram )
+	{
+		uint8_t* mem = (uint8_t*) malloc( gg_slots * gg_copy );
+		if ( !mem )
+			return 0;
+		for ( int i = 0; i < gg_slots; i++ )
+			gg_slot [i].ram = mem + i * gg_copy;
+	}
+	gg_count = 0;
+	for ( int i = 0; i < count; i++ )
+	{
+		if ( addr [i] < 0x8000 || addr [i] > 0xFFFF )
+			continue;
+		gg_code_t& c = gg_codes [gg_count++];
+		c.addr = (uint16_t) addr [i];
+		c.value = (uint8_t) value [i];
+		c.compare = (int16_t) compare [i];
+	}
+	for ( int i = 0; i < gg_slots; i++ )
+		gg_slot [i].src = 0;
+	if ( gg_count && gg_cpu )
+		gg_cpu->gg_remap( 0x8000, 0x8000 );     // what is mapped already
+	return gg_count;
+}
+
+void Nes_Cpu::gg_remap( unsigned start, unsigned size )
+{
+	unsigned first = start < 0x8000 ? 0x8000 / page_size : start / page_size;
+	unsigned end = (start + size) / page_size;
+	for ( unsigned p = first; p < end && p < (unsigned) page_count; p++ )
+	{
+		uint8_t const* src = code_map [p] + p * page_size;
+		unsigned base = p * page_size;
+		// a code in this page or in the two bytes after it, with its byte there
+		bool any = false;
+		for ( int k = 0; k < gg_count; k++ )
+		{
+			unsigned off = gg_codes [k].addr - base;
+			if ( off < gg_copy && (gg_codes [k].compare < 0 || src [off] == gg_codes [k].compare) )
+				any = true;
+		}
+		if ( !any )
+			continue;
+		gg_slot_t* s = 0;
+		for ( int i = 0; i < gg_slots; i++ )
+			if ( gg_slot [i].src == src && gg_slot [i].page == (int) p )
+				s = &gg_slot [i];
+		if ( !s )
+		{
+			// the next slot that no page shows right now
+			for ( int tries = 0; tries < gg_slots && !s; tries++ )
+			{
+				gg_slot_t* c = &gg_slot [gg_next];
+				gg_next = (gg_next + 1) % gg_slots;
+				bool shown = false;
+				for ( unsigned q = 0x8000 / page_size; q < (unsigned) page_count; q++ )
+					if ( q != p && code_map [q] + q * page_size == c->ram )
+						shown = true;
+				if ( !shown )
+					s = c;
+			}
+			if ( !s )
+				continue;
+			memcpy( s->ram, src, gg_copy );
+			for ( int k = 0; k < gg_count; k++ )
+			{
+				unsigned off = gg_codes [k].addr - base;
+				if ( off < gg_copy && (gg_codes [k].compare < 0 || src [off] == gg_codes [k].compare) )
+					s->ram [off] = gg_codes [k].value;
+			}
+			s->src = src;
+			s->page = (int) p;
+		}
+		set_code_page( p, s->ram );
+	}
 }
 
 // Note: 'addr' is evaulated more than once in the following macros, so it

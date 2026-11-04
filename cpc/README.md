@@ -23,7 +23,9 @@ Locomotive bräuchte es nach Amstrads eigener Aussage auch deren Zustimmung
 
 **Stand:** am PC mit freien Spielen getestet: Nibbler DX und Transversion
 2024 von Diskette (Autostart, Musik), Red Sea von Kassette (in Echtzeit,
-`|TAPE` und `RUN"` von selbst). Auf dem Gerät noch nicht.
+`|TAPE` und `RUN"` von selbst). Auf dem Gerät noch nicht. Link-Spiel: am PC
+geprüft, dass zwei Läufe mit denselben Tasten Bild für Bild dasselbe RAM
+haben; mit zwei Geräten noch nicht.
 
 ## Spiele
 
@@ -55,6 +57,21 @@ auf einer Diskette kein Programm, bleibt BASIC stehen.
 Taste einmal drücken (RETURN, SPACE, ESC, COPY, DEL, SHIFT, CTRL, TAB, CAPS
 LOCK, F0–F9, 0–9, A–Z).
 
+## Link-Spiel
+
+Zwei PicoBoys am USB-C-Kabel spielen zu zweit (`../docs/LINKSPIEL.md`):
+beide rechnen im Gleichschritt und tauschen jedes Bild ihre Tasten.
+Spieler 2 ist **Joystick 1** des CPC, auf der Tastaturzeile 6 (Tasten 6 5
+R T für die Richtungen, B = Feuer 1 = F, A = Feuer 2 = G); Mitte + B
+(RETURN) und Tasten aus dem Menü wirken bei beiden. Spieler 1 behält die
+Joystick-Art aus dem Menü. Öffnet einer das Menü, hält es beide an; seine
+Wahl geht über das Kabel, so dass beide sie im selben Bild ausführen. Die
+Maschine hat weder Uhr noch Zufall, das Spiel liegt auf beiden im Flash und
+Diskettenschreiben wird verworfen: beide laufen gleich. Zum Vergleich geht
+das ganze RAM (128 KB) in die Prüfsumme, die ein Auseinanderlaufen meldet
+(„LINK OUT OF SYNC“). Nur Spiele, die einen zweiten Joystick kennen, sind
+zu zweit spielbar.
+
 ## Anzeige
 
 280 Zeilen: 40 Zeilen Rand über dem normalen Bildschirm, seine 200, 40
@@ -82,9 +99,9 @@ mittleren 240 Mode-1-Pixel). Mode 2 (80 Zeichen) ist so nur grob lesbar.
 | `core/tape.c` | `.cdt` (aus `../zx`), Signal Flanke für Flanke |
 | `core/ay8910.c` | AY-3-8912 (aus `../msx`) |
 | `core/roms.S` | bindet die ROMs aus `roms/` ein |
-| `src/main.c` | Start, Spielschleife, Menü, Schnellvorlauf beim Laden |
+| `src/main.c` | Start, Spielschleife, Menü, Schnellvorlauf beim Laden, Link-Spiel |
 | `src/cpc_video.c` | die 280 Zeilen über einen Ring an Kern 1, der sie auf 240 Pixel umrechnet |
-| `src/cpc_input.c` | Tasten → Joystick und Tastatur |
+| `src/cpc_input.c` | Tasten → Joystick und Tastatur, im Link-Spiel Spieler 2 auf Joystick 1 |
 | übrige `src/`, `fatfs/` | Plattform aus `../zx` |
 
 ## Lizenz

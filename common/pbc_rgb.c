@@ -40,12 +40,6 @@ static bool rgb_init(void)
     return true;
 }
 
-void pbc_rgb_clock_changed(void)
-{
-    if (sm >= 0)
-        pio_sm_set_clkdiv(pio, (uint)sm, (float)clock_get_hz(clk_sys) / (800000 * 10));
-}
-
 void pbc_rgb_set(uint8_t r, uint8_t g, uint8_t b)
 {
     if (sm == -1)

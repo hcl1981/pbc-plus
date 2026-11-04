@@ -58,11 +58,13 @@ void qnes_set_bg_disabled(int disabled);
 #define QNES_CHAN_DMC      (1u << 4)
 void qnes_set_channel_mute_mask(unsigned mask);
 
-/* Apply a 6- or 8-character Game Genie code to the currently loaded ROM.
- * Code is patched into the cart PRG in place, so it survives qnes_reset
- * but is lost on the next qnes_load_rom call. Returns 0 on success and
- * non-zero if the code is malformed or doesn't match any bank. */
-int qnes_apply_game_genie(const char *code);
+/* Game Genie codes (6 or 8 letters) for the loaded ROM, after
+ * qnes_load_rom*: they act on CPU addresses like the real device, also
+ * with the ROM read in place from flash (Nes_Cpu::gg_set). Replaces the
+ * codes set before; malformed ones are skipped. Returns how many are on. */
+int qnes_set_game_genie(const char *const *codes, int count);
+/* One code -> CPU address, value, compare byte (-1: none); 0 if valid. */
+int qnes_decode_game_genie(const char *code, unsigned *addr, int *value, int *compare);
 
 /* Mute/unmute the mapper expansion-audio channels (VRC6, VRC7, MMC5,
  * Namco 163, FME-7, ...). 2A03 channels are unaffected. */

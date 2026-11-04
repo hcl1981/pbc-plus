@@ -24,7 +24,7 @@ cd spout && ./build.sh      # oder ein einzelnes Projekt
 | [`micropolis`](micropolis/) | Micropolis — der quelloffene Kern von SimCity 1. | `micropolis.uf2` |
 | [`tyrian`](tyrian/) | OpenTyrian. Firmware plus 8,9 MB Spieldaten in einer Datei. | `tyrian-komplett.uf2` |
 | [`picoboygb`](picoboygb/) | Game-Boy-Emulator. ROMs kommen per USB-Stick-Modus aufs Gerät. | `picoboygb.uf2` |
-| [`pbcemu`](pbcemu/) | **PBCemu**: alle Emulatoren unten (Atari 2600, ZX Spectrum, ColecoVision, C64, NES, SG-1000, MSX, Amstrad CPC, Master System, Atari 7800, PC Engine, Mega Drive, Game Gear, Game Boy Color) in einer Firmware, mit Gerätewahl samt Gerätebildern und Spieleliste; acht Systeme auch zu zweit über USB-C ([`docs/LINKSPIEL.md`](docs/LINKSPIEL.md)). | `pbcemu.uf2` |
+| [`pbcemu`](pbcemu/) | **PBCemu**: alle Emulatoren unten (Atari 2600, ZX Spectrum, ColecoVision, C64, NES, SG-1000, MSX, Amstrad CPC, Master System, Atari 7800, PC Engine, Mega Drive, Game Gear, Game Boy Color) in einer Firmware, mit Gerätewahl samt Gerätebildern und Spieleliste; neun Systeme auch zu zweit über USB-C ([`docs/LINKSPIEL.md`](docs/LINKSPIEL.md)). | `pbcemu.uf2` |
 | [`a2600`](a2600/) | Atari 2600 und Atari 7800 (eigene Kerne), nur in PBCemu. | — |
 | [`cpc`](cpc/) | Amstrad CPC 6128 (eigener Kern, ROMs von Amstrad mit deren Erlaubnis), Disketten, Kassetten und Snapshots, nur in PBCemu. | — |
 | [`zx`](zx/) | ZX Spectrum 48K/128K (eigener Kern, ROMs von Amstrad mit deren Erlaubnis), Bänder und Snapshots, nur in PBCemu. | — |
@@ -50,8 +50,8 @@ warum.
 
 Fünf Projekte spielen zu zweit über ein **USB-C-Kabel** zwischen zwei
 PicoBoys: `doom`, `jumpnbump`, `i2collection`, die Zweispieler-Betriebsart
-von `tyrian` und `pbcemu` (Atari 2600, C64, NES, SG-1000, MSX, Master System,
-PC Engine, Mega Drive; [`docs/LINKSPIEL.md`](docs/LINKSPIEL.md)).
+von `tyrian` und `pbcemu` (Atari 2600, C64, NES, SG-1000, MSX, Amstrad CPC,
+Master System, PC Engine, Mega Drive; [`docs/LINKSPIEL.md`](docs/LINKSPIEL.md)).
 
 Verkabelung überall gleich: **D+, D− und GND verbinden, VBUS nicht** — beide
 Geräte versorgen sich selbst. Die Rolle (Host oder Gast) wird im Menü gewählt,

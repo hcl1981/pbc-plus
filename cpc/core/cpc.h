@@ -70,6 +70,10 @@ void cpc_frame(cpc_line_fn line, int16_t *audio, int n);
 
 #define CPC_FRAME_US 19968u
 
+/* the 128 KB of RAM, for link play's comparison of the two machines */
+#define CPC_RAM_SIZE 0x20000u
+const uint8_t *cpc_ram(void);
+
 /* RGB of hardware colour i (0..31) */
 uint32_t cpc_palette(int i);
 

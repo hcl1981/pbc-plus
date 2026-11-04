@@ -60,11 +60,11 @@ static const uint8_t joy_keys[CPC_JOYS][5] = {
     [CPC_JOY_QAOP]     = { K(8, 3), K(8, 5), K(4, 2), K(3, 3), CPCK_SPACE },
 };
 
-void cpc_input_apply(uint16_t w)
+/* joystick 1 on keyboard row 6: up, down, left, right, fire 1 (B), fire 2 (A) */
+static const uint8_t joy1_keys[6] = { K(6, 0), K(6, 1), K(6, 2), K(6, 3), K(6, 5), K(6, 4) };
+
+static void apply_word(uint16_t w, const uint8_t *j, uint8_t a_key)
 {
-    /* the keys typed by the core (autoload) stay; cpc_frame adds them */
-    memset(cpc_keys, 0, sizeof cpc_keys);
-    const uint8_t *j = joy_keys[cpc_joy_mode];
     if (w & IN_UP)    cpc_key_set(j[0]);
     if (w & IN_DOWN)  cpc_key_set(j[1]);
     if (w & IN_LEFT)  cpc_key_set(j[2]);
@@ -73,9 +73,18 @@ void cpc_input_apply(uint16_t w)
         if (w & IN_B) cpc_key_set(CPCK_RETURN);
     } else {
         if (w & IN_B) cpc_key_set(j[4]);
-        if (w & IN_A) cpc_key_set(CPCK_SPACE);
+        if (w & IN_A) cpc_key_set(a_key);
     }
     int k = (w >> CPC_WORD_KEY_SHIFT) & CPC_WORD_KEY_MASK;
     if (k > 0 && k <= cpc_key_count)
         cpc_key_set(cpc_keys_menu[k - 1].key);
+}
+
+void cpc_input_apply(uint16_t p1, uint16_t p2)
+{
+    /* the keys typed by the core (autoload) stay; cpc_frame adds them */
+    memset(cpc_keys, 0, sizeof cpc_keys);
+    apply_word(p1, joy_keys[cpc_joy_mode], CPCK_SPACE);
+    if (p2)
+        apply_word(p2, joy1_keys, joy1_keys[5]);
 }

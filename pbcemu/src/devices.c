@@ -131,7 +131,7 @@ bool device_is_coleco(const device_t *d)
 bool device_link(const device_t *d)
 {
     switch (d->app) {
-    case APP_NES: case APP_PCE: case APP_C64: case APP_MSX: case APP_A26: case APP_MD:
+    case APP_NES: case APP_PCE: case APP_C64: case APP_MSX: case APP_A26: case APP_MD: case APP_CPC:
         return true;
     case APP_SMS:
         return d->controls == c_sms || d->controls == c_sg || d->controls == c_cv;  /* not the Game Gear */

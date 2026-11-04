@@ -142,18 +142,39 @@ void qnes_set_expansion_muted(int muted)
         emu->set_expansion_muted(current_expansion_muted);
 }
 
-int qnes_apply_game_genie(const char *code)
+/* Game Genie code -> address, value, compare (-1: none), after the NESdev
+ * wiki; 8 letters carry a compare byte. (game_genie_patch_t::decode in
+ * nes_util.cpp loses bit 3 of the value of 6-letter codes.) */
+int qnes_decode_game_genie(const char *code, unsigned *addr, int *value, int *compare)
 {
-    if (!emu || !code) return -1;
-    const Nes_Cart *cart = emu->cart();
-    if (!cart) return -1;
-    game_genie_patch_t p;
-    if (p.decode(code) != 0) return -2;
-    /* apply() needs a mutable cart: it patches PRG bytes in place. The
-     * cart data is owned by emu, so casting away const here is safe. */
-    Nes_Cart *mut_cart = const_cast<Nes_Cart *>(cart);
-    int n = p.apply(*mut_cart);
-    return (n > 0) ? 0 : -3;
+    static const char letters[] = "APZLGITYEOXUKSVN";
+    int n[8], len = (int)strlen(code);
+    if (len != 6 && len != 8)
+        return -1;
+    for (int i = 0; i < len; i++) {
+        char c = code[i];
+        if (c >= 'a' && c <= 'z')
+            c = (char)(c - 'a' + 'A');
+        const char *p = c ? strchr(letters, c) : NULL;
+        if (!p)
+            return -1;
+        n[i] = (int)(p - letters);
+    }
+    *addr = 0x8000u + (unsigned)(((n[3] & 7) << 12) | ((n[5] & 7) << 8) | ((n[4] & 8) << 8) |
+                                 ((n[2] & 7) << 4) | ((n[1] & 8) << 4) | (n[4] & 7) | (n[3] & 8));
+    *value = ((n[1] & 7) << 4) | ((n[0] & 8) << 4) | (n[0] & 7) | ((len == 8 ? n[7] : n[5]) & 8);
+    *compare = len == 8 ? ((n[7] & 7) << 4) | ((n[6] & 8) << 4) | (n[6] & 7) | (n[5] & 8) : -1;
+    return 0;
+}
+
+int qnes_set_game_genie(const char *const *codes, int count)
+{
+    unsigned addr[Nes_Cpu::gg_max];
+    int value[Nes_Cpu::gg_max], compare[Nes_Cpu::gg_max], n = 0;
+    for (int i = 0; i < count && n < Nes_Cpu::gg_max; i++)
+        if (codes[i] && qnes_decode_game_genie(codes[i], &addr[n], &value[n], &compare[n]) == 0)
+            n++;
+    return Nes_Cpu::gg_set(addr, value, compare, n);
 }
 
 void *qnes_get_tile_cache_buf(long *out_size)

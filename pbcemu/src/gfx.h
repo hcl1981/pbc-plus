@@ -37,8 +37,6 @@ void gfx_chevron(int cx, int cy, int size, int dir, uint32_t rgb, int alpha);
 
 /* Picture with its own alpha, scaled by `alpha`. */
 void gfx_picture(const pbc_picture_t *p, int x, int y, int alpha);
-/* The same, every pixel doubled (the half-size floor shadows). */
-void gfx_picture2x(const pbc_picture_t *p, int x, int y, int alpha);
 
 /* Text: y is the top of the line (font->height high). Returns the width. */
 int  gfx_text(const pbc_font_t *f, int x, int y, const char *s, uint32_t rgb, int alpha);

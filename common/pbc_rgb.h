@@ -19,9 +19,6 @@ extern "C" {
  * system clock of that moment: call it after any change of the clock. */
 void pbc_rgb_set(uint8_t r, uint8_t g, uint8_t b);
 
-/* After a change of the system clock, once the PIO is set up. */
-void pbc_rgb_clock_changed(void);
-
 #ifdef __cplusplus
 }
 #endif

@@ -108,6 +108,9 @@ static void fs_write_readme(void)
            "Saved games of cartridges with a battery are stored as <game>.sav\r\n"
            "next to the ROM. Wait a moment after saving before you press RESET.\r\n"
            "\r\n"
+           "Game Genie codes: put them in <game>.cht next to the ROM, one code\r\n"
+           "(6 or 8 letters) per line; text after the code is a comment.\r\n"
+           "\r\n"
            "Controls in game:\r\n"
            "  Joystick       D-pad\r\n"
            "  A / B          A / B\r\n"
@@ -304,6 +307,57 @@ static void save_poll(void)
         save_write();
 }
 
+/* ---- Game Genie ----------------------------------------------------------
+ *
+ * "<rom>.cht" next to the ROM: one code per line (6 or 8 letters), the rest
+ * of a line after a space or '#' is a comment. Not in link play: both
+ * devices must run the same game. */
+
+static uint64_t cheat_note_until;   /* "n CHEATS" on screen until then */
+
+static void cheats_load(const char *game)
+{
+    static FIL f;
+    static char text[1024];
+    char path[ROM_NAME_MAX + 8];
+    UINT got = 0;
+    if (pbc_link_active())
+        return;
+    snprintf(path, sizeof path, "/%s", game);
+    char *dot = strrchr(path, '.');
+    if (dot) *dot = 0;
+    strcat(path, ".cht");
+    if (f_open(&f, path, FA_READ) != FR_OK)
+        return;
+    f_read(&f, text, sizeof text - 1, &got);
+    f_close(&f);
+    text[got] = 0;
+
+    const char *codes[16];
+    int n = 0;
+    for (char *line = text; *line && n < 16;) {
+        char *end = line + strcspn(line, "\r\n");
+        char *word = line + strspn(line, " \t");
+        size_t len = strcspn(word, " \t#\r\n");
+        bool next = *end != 0;
+        if ((len == 6 || len == 8) && word + len <= end) {
+            word[len] = 0;
+            codes[n++] = word;
+        }
+        line = next ? end + 1 : end;
+    }
+    if (n == 0)
+        return;
+    int on = qnes_set_game_genie(codes, n);
+    char s[24];
+    if (on > 0)
+        snprintf(s, sizeof s, on == 1 ? "1 CHEAT" : "%d CHEATS", on);
+    else
+        strcpy(s, "NO USABLE CHEATS");  /* malformed, or no RAM for the pages */
+    video_set_status(s);
+    cheat_note_until = time_us_64() + 3000000;
+}
+
 /* ---- emulator ------------------------------------------------------------ */
 
 /* fps, speed and CPU load: from the launcher in the combined firmware,
@@ -358,6 +412,11 @@ static void __attribute__((noreturn)) emulation_loop(void)
         else if (now > next_frame + 4 * period)
             next_frame = now;               /* hopelessly behind: stop catching up */
 
+        if (cheat_note_until && time_us_64() > cheat_note_until) {
+            cheat_note_until = 0;
+            if (!show_stats)
+                video_set_status("");
+        }
         if (pbc_link_out_of_sync_news())
             video_set_status("LINK OUT OF SYNC");
         else if (show_stats && !pbc_link_out_of_sync()) {
@@ -476,7 +535,8 @@ int main(void)
     video_set_mode(VIDEO_MODE_CROP);
 #endif
     pbc_link_start(pbc_link_hash(PBC_LINK_HASH_START ^ 1, rom_store_data(), rom_store_size()));
-    save_load(rom);                 /* after the link start: not in link play */
+    cheats_load(rom);               /* after the link start: not in link play */
+    save_load(rom);
     pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
     multicore_launch_core1(video_core1_main);
 #if PBC_MULTI
