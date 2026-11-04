@@ -63,6 +63,10 @@ bool zx_tape_busy(void);                /* real-time loading going on */
 typedef void (*zx_line_fn)(int y, const uint8_t *px);
 void zx_frame(zx_line_fn line, int16_t *audio, int n);
 
+/* all of the RAM (the 48K uses banks 5, 2, 0), for link play's check */
+#define ZX_RAM_SIZE 0x20000
+const uint8_t *zx_ram(void);
+
 /* microseconds per frame: 19968 (48K), 19992 (128K) */
 uint32_t zx_frame_us(void);
 

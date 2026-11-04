@@ -211,16 +211,25 @@ static void __attribute__((noreturn)) usb_mode(void)
      * instead of an eject) or the cable comes out, and the bus stays
      * quiet. Every write is in flash already, so nothing is lost. */
     tud_init(BOARD_TUD_RHPORT);
-    int shown = -1;
+    int shown = 0, seen = 0;            /* ui_usb(0) is on the panel */
+    uint64_t seen_since = 0;
     bool had_host = false;
     uint64_t gone_since = 0;
     for (;;) {
         tud_task();
         int state = tud_mounted() ? 2 : tud_connected() ? 1 : 0;
-        if (state != shown) {
-            ui_usb(state);
-            gfx_finish();
-            shown = state;
+        /* A new state is drawn once it has held for 0.3 s. Drawing takes
+         * some 50 ms without tud_task(); while the host enumerates (it
+         * resets the bus a few times and wants SET_ADDRESS answered within
+         * 50 ms -- Windows is strict about it) that made it give up and
+         * start again, over and over, and the text jumped. */
+        if (state != seen) {
+            seen = state;
+            seen_since = time_us_64();
+        }
+        if (seen != shown && time_us_64() - seen_since > 300000) {
+            ui_usb(seen);
+            shown = seen;
         }
         if (state == 2 && !tud_suspended())
             had_host = true;

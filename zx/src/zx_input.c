@@ -61,24 +61,26 @@ static const uint8_t joy_keys[ZX_JOYS][5] = {
     [ZX_JOY_QAOP]     = { K(2, 0), K(1, 0), K(5, 1), K(5, 0), ZXK_SPACE }, /* Q A O P SPACE */
 };
 
-void zx_input_apply(uint16_t w)
+/* player 2 in link play: Sinclair joystick 2, keys 4 3 1 2 and 5 */
+static const uint8_t joy2_keys[5] = { K(3, 3), K(3, 2), K(3, 0), K(3, 1), K(3, 4) };
+
+static void apply_word(uint16_t w, int mode, const uint8_t *keys)
 {
-    memset(zx_keys, 0, sizeof zx_keys);
     bool fire = !(w & IN_CENTER) && (w & IN_B);
     bool dir[4] = { (w & IN_UP) != 0, (w & IN_DOWN) != 0, (w & IN_LEFT) != 0, (w & IN_RIGHT) != 0 };
-    uint8_t kj = 0;
-    if (zx_joy_mode == ZX_JOY_KEMPSTON) {
+    if (mode == ZX_JOY_KEMPSTON) {
+        uint8_t kj = 0;
         if (dir[3]) kj |= 1;
         if (dir[2]) kj |= 2;
         if (dir[1]) kj |= 4;
         if (dir[0]) kj |= 8;
         if (fire)   kj |= 16;
+        zx_kempston = kj;
     } else {
         for (int i = 0; i < 4; i++)
-            if (dir[i]) zx_key_set(joy_keys[zx_joy_mode][i]);
-        if (fire) zx_key_set(joy_keys[zx_joy_mode][4]);
+            if (dir[i]) zx_key_set(keys[i]);
+        if (fire) zx_key_set(keys[4]);
     }
-    zx_kempston = kj;
     if (w & IN_CENTER) {
         if (w & IN_B) zx_key_set(ZXK_ENTER);
     } else if (w & IN_A) {
@@ -90,4 +92,13 @@ void zx_input_apply(uint16_t w)
         if (zx_keys_menu[k - 1].k2 != N)
             zx_key_set(zx_keys_menu[k - 1].k2);
     }
+}
+
+void zx_input_apply(uint16_t p1, uint16_t p2)
+{
+    memset(zx_keys, 0, sizeof zx_keys);
+    zx_kempston = 0;
+    apply_word(p1, zx_joy_mode, joy_keys[zx_joy_mode]);
+    if (p2)
+        apply_word(p2, ZX_JOY_SINCLAIR, joy2_keys);
 }

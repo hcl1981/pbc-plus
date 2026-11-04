@@ -60,6 +60,22 @@ zurückspulen (bei Snapshots: Reset) und jede Taste einmal drücken (ENTER,
 SPACE, BREAK, DELETE, CAPS SHIFT, SYMBOL SHIFT, 0–9, A–Z). Die Wahl gilt bis
 zum Verlassen des Spiels.
 
+## Link-Spiel
+
+Zwei PicoBoys am USB-C-Kabel spielen zu zweit (`../docs/LINKSPIEL.md`):
+beide rechnen im Gleichschritt und tauschen jedes Bild ihre Tasten.
+Spieler 2 ist der **zweite Sinclair-Joystick** (Interface 2, beim +2
+eingebaut): Tasten 1 links, 2 rechts, 3 runter, 4 hoch, 5 Feuer (auf B);
+A (SPACE), Mitte + B (ENTER) und Tasten aus dem Menü wirken bei beiden.
+Spieler 1 behält die Joystick-Art aus dem Menü; für Spiele, die zwei
+Sinclair-Joysticks wollen, dort „Sinclair“ wählen. Öffnet einer das Menü,
+hält es beide an; seine Wahl geht über das Kabel, so dass beide sie im
+selben Bild ausführen. Die Maschine hat weder Uhr noch Zufall, das RAM
+startet gelöscht und das Spiel liegt auf beiden im Flash: beide laufen
+gleich. Das ganze RAM (128 KB) geht in die Prüfsumme, die ein
+Auseinanderlaufen meldet („LINK OUT OF SYNC“). Nur Spiele für zwei
+Joysticks sind zu zweit spielbar.
+
 ## Anzeige
 
 Das Bild füllt die Höhe des Panels: 44 Zeilen Rand, die 192 des
@@ -74,7 +90,8 @@ Spalten links und rechts weg). Die Statuszeile liegt im unteren Rand.
   Zeile) und manche Schnelllader.
 * `.tzx`-Blöcke 18h (CSW) und 19h (Generalized Data) werden übersprungen,
   Sprünge (23h) und Aufrufe (26h) nicht ausgeführt.
-* Kein +2A/+3 (Diskette), kein Interface 1, kein Link-Spiel.
+* Kein +2A/+3 (Diskette), kein Interface 1. Link-Spiel nicht mit zwei
+  Geräten getestet.
 * Die Einstellungen im Menü (Joystick, Maschine) merkt er sich nicht.
 
 ## Aufbau

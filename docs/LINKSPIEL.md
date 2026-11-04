@@ -1,7 +1,7 @@
 # Link-Spiel: zwei PicoBoy Color Plus, ein Spiel
 
 Zwei Geräte mit USB-C-Kabel verbunden spielen **ein** Atari-2600-, NES-, SG-1000-,
-MSX-, Amstrad-CPC-, Master-System-, PC-Engine-, Mega-Drive- oder C64-Spiel zu zweit: Das eine Gerät ist
+MSX-, ZX-Spectrum-, Amstrad-CPC-, Master-System-, PC-Engine-, Mega-Drive- oder C64-Spiel zu zweit: Das eine Gerät ist
 Controller 1, das andere Controller 2, beide zeigen dasselbe Bild.
 
 Das kann PBCemu (`dist/pbcemu.uf2`) seit November 2026; bis dahin war es eine
@@ -15,8 +15,8 @@ common/test/run.sh     # Protokolle am PC, über eine fehlerhafte Leitung
 ```
 
 **Stand:** Finden und Spielen zu zweit laufen mit NES auf zwei echten Geräten.
-Master System, PC Engine, C64, MSX, Amstrad CPC, SG-1000 und Atari 2600 sind im
-Link-Spiel auf Geräten noch nicht getestet. MSX und Atari 2600 laufen allein auf dem Gerät
+Master System, PC Engine, C64, MSX, ZX Spectrum, Amstrad CPC, SG-1000 und
+Atari 2600 sind im Link-Spiel auf Geräten noch nicht getestet. MSX und Atari 2600 laufen allein auf dem Gerät
 in Echtzeit, SG-1000 bisher nur am PC.
 
 ## Benutzung
@@ -51,6 +51,7 @@ vom Controller.
 | C64 | der Port aus den Spieloptionen | der andere Port |
 | SG-1000 | Controller 1 | Controller 2 |
 | MSX | Joystick 1 und Tastatur | Joystick 2 |
+| ZX Spectrum | Joystick-Art aus dem Menü (Kempston, Sinclair 1 …) | Sinclair-Joystick 2 (Tasten 1–5); SPACE, ENTER und Menütasten gehen von beiden |
 | Amstrad CPC | Joystick 0 (Art aus dem Menü) | Joystick 1 (Tastaturzeile 6); RETURN und Menütasten gehen von beiden |
 | Atari 2600 | linker Joystick | rechter Joystick; RESET und SELECT gehen von beiden |
 | Mega Drive | Controller 1 | Controller 2 |
@@ -109,7 +110,7 @@ geschrieben: fester Start, keine Zeit, kein Zufall.
 | `common/pbc_lockstep.*`, `pbc_link.*`, `pbc_lobby.*`, `usblink.*` | Tastentausch, Verbindung, Partnersuche, Leitung |
 | `common/test/` | die Protokolle am PC zweimal gelinkt, über eine Leitung mit Fehlern |
 | `pbcemu/src/ui.c`, `main.c`, `devices.*` | Partner finden, Controller wählen, Spiel anbieten, nur bei Link-Geräten (`device_link`) |
-| `nes/`, `sms/`, `pce/`, `c64/`, `msx/`, `a2600/`, `cpc/`, `megadrive/` (`src/main.c`) | je ein Aufruf von `pbc_link_frame()` pro Bild, Controller 2, Prüfsumme beim Start |
+| `nes/`, `sms/`, `pce/`, `c64/`, `msx/`, `a2600/`, `zx/`, `cpc/`, `megadrive/` (`src/main.c`) | je ein Aufruf von `pbc_link_frame()` pro Bild, Controller 2, Prüfsumme beim Start |
 
 In den Emulatoren sind es nur wenige Zeilen, alle unter `#if PBC_MULTI`.
 

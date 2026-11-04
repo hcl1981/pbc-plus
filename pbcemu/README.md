@@ -5,7 +5,8 @@ Atari 2600, ZX Spectrum, ColecoVision, Commodore 64, NES, SG-1000, MSX,
 Amstrad CPC, Master System, Atari 7800, PC Engine, Mega Drive, Game Gear und
 Game Boy (Color). Fertig als **`dist/pbcemu.uf2`**,
 eine Datei für alles. Zwei Geräte am USB-C-Kabel spielen Atari 2600, C64,
-NES, SG-1000, MSX, Amstrad CPC, Master System, PC Engine und Mega Drive zu zweit
+NES, SG-1000, MSX, ZX Spectrum, Amstrad CPC, Master System, PC Engine und Mega
+Drive zu zweit
 ([`../docs/LINKSPIEL.md`](../docs/LINKSPIEL.md)); im Karussell tragen diese
 Konsolen die goldene Plakette **LINK**.
 Der alte PicoBoyGB-Emulator ist nicht dabei; Game-Boy-Spiele laufen im
@@ -136,8 +137,8 @@ eigenständige Firmwares (`dist/nes.uf2` usw.).
 
 | Adresse | Inhalt |
 |---|---|
-| `0x000000` | Starter (272 KB vorgesehen, ca. 257 KB belegt: Schriften und Gerätebilder) |
-| `0x044000` … | Mega Drive, Master System/Game Gear/SG-1000, NES, PC Engine, Game Boy Color, C64, MSX, Atari 2600, ZX Spectrum, Amstrad CPC — dicht gepackt, auf 4 KB gerundet (zusammen ca. 1,7 MB, bis `0x200000`) |
+| `0x000000` | Starter (268 KB vorgesehen, ca. 261 KB belegt: Schriften und Gerätebilder) |
+| `0x043000` … | Mega Drive, Master System/Game Gear/SG-1000, NES, PC Engine, Game Boy Color, C64, MSX, Atari 2600, ZX Spectrum, Amstrad CPC — dicht gepackt, auf 4 KB gerundet (zusammen ca. 1,7 MB, bis `0x200000`) |
 | `0x200000` | ROM des laufenden Spiels (5 MB) |
 | `0x700000` | FatFs = USB-Laufwerk `PBC-ROMS`, ca. 9 MB (Einzel-Firmwares: ab `0x600000`) |
 | `0xFF0000` | gehört den Einzel-Firmwares (welches Spiel in *ihrem* ROM-Bereich liegt); der Starter löscht es, weil dort jetzt Emulatoren liegen |

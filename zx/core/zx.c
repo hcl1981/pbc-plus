@@ -304,6 +304,8 @@ void zx_init(int m, const uint8_t *r48, const uint8_t *r128_0, const uint8_t *r1
 
 int zx_model(void) { return model; }
 
+const uint8_t *zx_ram(void) { return &ram[0][0]; }
+
 uint32_t zx_frame_us(void)
 {
     return model == ZX_128K ? 19992 : 19968;

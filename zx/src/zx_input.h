@@ -7,6 +7,10 @@
  *   CENTER + B    -> ENTER
  *   CENTER + A    -> menu: joystick, machine, tape, any key (main.c)
  *
+ * In link play the second player is the second Sinclair joystick (the
+ * keys 1-5 of Interface 2 and the +2: 1 left, 2 right, 3 down, 4 up,
+ * 5 fire, on B); A, CENTER + B and a key from the menu work for both.
+ *
  * A frame's state is one 16-bit word: bits 0..6 the buttons (IN_*), 8..14
  * a key chosen in the menu (index into zx_keys_menu + 1, 0: none), 15
  * "Center + A just pressed".
@@ -32,7 +36,8 @@ extern const int zx_key_count;
 
 uint16_t zx_input_word(void);
 void zx_input_press(int index);
-/* the word into zx_keys and zx_kempston (before each frame) */
-void zx_input_apply(uint16_t w);
+/* the words of both players into zx_keys and zx_kempston (before each
+ * frame); p2 = 0 without link play */
+void zx_input_apply(uint16_t p1, uint16_t p2);
 
 #endif /* PBC_ZX_INPUT_H */
