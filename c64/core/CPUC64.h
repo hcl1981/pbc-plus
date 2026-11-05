@@ -135,7 +135,8 @@ public:
 		c_flag = (val & 0x01) != 0;
 	}
 
-	int interrupt_delay;
+	int interrupt_delay;		// instructions until a pending IRQ is looked for (CLI, PLP, RTI)
+	bool irq_poll_i;		// the I flag that decides then
 
 	int ExtConfig;			// Memory configuration for ExtRead/WriteByte (0..7)
 

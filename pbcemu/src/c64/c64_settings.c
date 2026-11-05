@@ -112,6 +112,14 @@ int settings_key(const char *game)
     return g && g->key < C64_KEY_COUNT ? g->key : 0;
 }
 
+/* The same byte for another system's game (the CPC's key on Center + B,
+ * index into its own list): unchecked, 0 if none. */
+int settings_key_raw(const char *game)
+{
+    const game_t *g = find(game);
+    return g ? g->key : 0;
+}
+
 bool settings_true_drive(const char *game)
 {
     const game_t *g = find(game);
@@ -184,6 +192,13 @@ void settings_set_key(const char *game, int key)
     game_t *g = entry(game);
     if (g)
         g->key = (uint8_t)(key >= 0 && key < C64_KEY_COUNT ? key : 0);
+}
+
+void settings_set_key_raw(const char *game, int key)
+{
+    game_t *g = entry(game);
+    if (g)
+        g->key = (uint8_t)key;
 }
 
 void settings_set_true_drive(const char *game, bool on)

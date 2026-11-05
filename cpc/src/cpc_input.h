@@ -4,7 +4,7 @@
  *                    keys (fire COPY) or QAOP (fire SPACE)
  *   B             -> fire
  *   A             -> SPACE
- *   CENTER + B    -> RETURN
+ *   CENTER + B    -> RETURN, or another key from the menu
  *   CENTER + A    -> menu: joystick, restart, tape, any key (main.c)
  *
  * In link play the second player is joystick 1 (keyboard row 6: the keys
@@ -32,6 +32,7 @@ extern const char *const cpc_joy_names[CPC_JOYS];
 typedef struct { const char *name; uint8_t key; } cpc_menu_key_t;
 extern const cpc_menu_key_t cpc_keys_menu[];
 extern const int cpc_key_count;
+extern int cpc_center_b;                /* the key on CENTER + B: index into cpc_keys_menu */
 
 uint16_t cpc_input_word(void);
 void cpc_input_press(int index);

@@ -159,7 +159,8 @@ static const char *start(void)
 
 /* ---- the in-game menu (Center + A) ------------------------------------------------ */
 
-enum { M_JOY = 0, M_RESTART = CPC_JOYS, M_REWIND, M_KEYS };
+enum { M_JOY = 0, M_RESTART = CPC_JOYS, M_REWIND, M_CENTER_B, M_KEYS,
+       M_SET_CENTER_B = M_KEYS + 64 };   /* + key index: the choice for Center + B */
 
 #define LINK_DONE 0x8000u               /* with the choice + 1 in bits 0..6 */
 
@@ -194,7 +195,17 @@ static const char *menu_do(int sel)
         }
         cpc_reset();
         return "Reset";
+    case M_CENTER_B:                    /* became M_SET_CENTER_B + key in menu() */
+        return NULL;
     default:
+        if (sel >= M_SET_CENTER_B) {
+            static char s[24];
+            if (sel - M_SET_CENTER_B >= cpc_key_count)
+                return NULL;
+            cpc_center_b = sel - M_SET_CENTER_B;
+            snprintf(s, sizeof s, "Center + B: %s", cpc_keys_menu[cpc_center_b].name);
+            return s;
+        }
         cpc_input_press(sel - M_KEYS);
         return cpc_keys_menu[sel - M_KEYS].name;
     }
@@ -203,8 +214,10 @@ static const char *menu_do(int sel)
 static const char *menu(void)
 {
     static const char *rows[M_KEYS + 64];
+    static const char *plain[64];
     static char names[64][20];
     static char joy[CPC_JOYS][28];
+    static char center_b[28];
     int n = 0;
     for (int j = 0; j < CPC_JOYS; j++) {
         snprintf(joy[j], sizeof joy[j], "Joystick: %s", cpc_joy_names[j]);
@@ -212,12 +225,21 @@ static const char *menu(void)
     }
     rows[n++] = "Restart";
     rows[n++] = game_kind == G_CDT ? "Rewind tape" : "Reset";
+    snprintf(center_b, sizeof center_b, "Center + B: %s", cpc_keys_menu[cpc_center_b].name);
+    rows[n++] = center_b;
     for (int i = 0; i < cpc_key_count && i < 64; i++) {
         snprintf(names[i], sizeof names[i], "Key %s", cpc_keys_menu[i].name);
         rows[n++] = names[i];
+        plain[i] = cpc_keys_menu[i].name;
     }
-    int sel = menu_pick("Amstrad CPC", rows, n, cpc_joy_mode, cpc_joy_mode, NULL,
-                        pbc_link_active() ? link_idle : NULL);
+    void (*idle)(void) = pbc_link_active() ? link_idle : NULL;
+    int sel = menu_pick("Amstrad CPC", rows, n, cpc_joy_mode, cpc_joy_mode, NULL, idle);
+    if (sel == M_CENTER_B) {
+        /* which key Center + B gives from now on: in link play for both */
+        int k = menu_pick("Center + B", plain, cpc_key_count, cpc_center_b, cpc_center_b,
+                          "in use", idle);
+        sel = k >= 0 ? M_SET_CENTER_B + k : -1;
+    }
     if (pbc_link_active())
         link_swap((uint16_t)(LINK_DONE | (sel + 1)));
     return menu_do(sel);
@@ -230,7 +252,7 @@ static const char *menu_wait(void)
     uint16_t w;
     while (!((w = link_swap(0)) & LINK_DONE))
         ;
-    return menu_do((int)(w & 0x7f) - 1);
+    return menu_do((int)(w & 0x7fff) - 1);
 }
 
 /* ---- emulation ------------------------------------------------------------------- */
@@ -399,6 +421,9 @@ int main(void)
     if (!launch || !fs_mount())
         reboot_to_menu();
     strncpy(game, launch->game, sizeof game - 1);
+    /* the key on Center + B from the game's options (link play: RETURN) */
+    if (!(launch->flags & (PBC_LAUNCH_LINK1 | PBC_LAUNCH_LINK2)) && launch->key < cpc_key_count)
+        cpc_center_b = launch->key;
     game_kind = ends_ci(game, ".cdt") ? G_CDT : ends_ci(game, ".sna") ? G_SNA : G_DSK;
 
     if (!rom_store_matches(game)) {

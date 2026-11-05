@@ -1,5 +1,6 @@
 /* menu.c -- see menu.h */
 #include <string.h>
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "pico/stdlib.h"
@@ -373,16 +374,27 @@ static bool pick(char *out, int out_size)
 
 #define DISK_ROWS 8                     /* rows of the plain list */
 
-static void draw_disks(const char *title, const char *const *names, int n, int sel, int cur)
+/* What a list is for: how the current entry is marked, what B does. */
+typedef struct { const char *mark, *foot; } pick_t;
+static const pick_t pick_disk = { "in drive", "B  insert      A  back" };
+static const pick_t pick_key  = { "in use",   "B  choose      A  back" };
+
+static void draw_disks(const char *title, const char *const *names, int n, int sel, int cur,
+                       const pick_t *p)
 {
 #if PBC_MULTI
-    pbc_loading_list(title, names, n, sel, cur, "in drive", "B  insert      A  back");
+    pbc_loading_list(title, names, n, sel, cur, p->mark, p->foot);
 #else
     static int top;
     if (sel < top) top = sel;
     if (sel >= top + DISK_ROWS) top = sel - DISK_ROWS + 1;
     char buf[NAME_CHARS + 2];
-    header("INSERT DISK");
+    char head[24];
+    int h = 0;
+    for (; title[h] && h < (int)sizeof head - 1; h++)
+        head[h] = (char)toupper((unsigned char)title[h]);
+    head[h] = 0;
+    header(head);
     for (int k = 0; k < DISK_ROWS; k++) {
         int i = top + k;
         uint16_t bg = i == sel ? COL_SEL_BG : COL_BG;
@@ -396,8 +408,8 @@ static void draw_disks(const char *title, const char *const *names, int n, int s
     snprintf(pos, sizeof pos, "%d/%d", sel + 1, n);
     pbc_display_fill(0, 230, PBC_LCD_W, 8, COL_BG);
     pbc_display_text_centered(230, pos, COL_DIM, COL_BG, 1);
-    pbc_display_text_centered(266, "B: insert   A: back", COL_DIM, COL_BG, 1);
-    (void)title;
+    pbc_display_text_centered(266, p == &pick_key ? "B: choose   A: back" : "B: insert   A: back",
+                              COL_DIM, COL_BG, 1);
 #endif
 }
 
@@ -413,11 +425,12 @@ static void pick_wait_release(void (*idle)(void))
     }
 }
 
-int menu_pick_disk(const char *title, const char *const *names, int n, int cur, void (*idle)(void))
+static int pick_list(const char *title, const char *const *names, int n, int cur, void (*idle)(void),
+                const pick_t *p)
 {
     int sel = cur >= 0 ? cur : 0;
     pick_wait_release(idle);
-    draw_disks(title, names, n, sel, cur);
+    draw_disks(title, names, n, sel, cur, p);
     for (;;) {
         if (idle)
             idle();
@@ -441,8 +454,18 @@ int menu_pick_disk(const char *title, const char *const *names, int n, int cur, 
         if (e & IN_LEFT)  sel = sel >= DISK_ROWS ? sel - DISK_ROWS : 0;
         if (e & IN_RIGHT) sel = sel + DISK_ROWS < n ? sel + DISK_ROWS : n - 1;
         if (sel != old)
-            draw_disks(title, names, n, sel, cur);
+            draw_disks(title, names, n, sel, cur, p);
     }
     pick_wait_release(idle);
     return sel;
+}
+
+int menu_pick_disk(const char *title, const char *const *names, int n, int cur, void (*idle)(void))
+{
+    return pick_list(title, names, n, cur, idle, &pick_disk);
+}
+
+int menu_pick_key(const char *title, const char *const *names, int n, int cur, void (*idle)(void))
+{
+    return pick_list(title, names, n, cur, idle, &pick_key);
 }

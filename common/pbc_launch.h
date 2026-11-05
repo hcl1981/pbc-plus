@@ -69,7 +69,9 @@ typedef struct {
     uint8_t  flags;                         /* PBC_LAUNCH_* below */
     uint8_t  video;                         /* display mode, per emulator (0 = its default) */
     uint8_t  brightness;                    /* backlight 1..255, 0 = PBC_BACKLIGHT */
-    uint8_t  reserved[2];
+    uint8_t  key;                           /* CPC: the key on Center + B, index into
+                                               cpc_keys_menu (cpc/src/cpc_input.c), 0 = RETURN */
+    uint8_t  reserved[1];
     char     game[PBC_LAUNCH_NAME_MAX];     /* file in the FatFs root */
     uint32_t check;                         /* FNV-1a over everything above */
 } pbc_launch_t;

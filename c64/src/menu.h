@@ -33,4 +33,7 @@ void menu_wait_release(void);
  * partner company with it. */
 int menu_pick_disk(const char *title, const char *const *names, int n, int cur, void (*idle)(void));
 
+/* The same list for the key on Center + B: `cur` is the one in use. */
+int menu_pick_key(const char *title, const char *const *names, int n, int cur, void (*idle)(void));
+
 #endif /* PBC_MENU_H */

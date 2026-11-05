@@ -344,7 +344,10 @@ static const char *start_status;
  *
  * Center + A pauses the game and lists every disk image on the drive, as
  * the game list does; the one in drive 8 is marked. The chosen one goes in.
- * The list lives on the heap only while it is shown. */
+ * Above them a row for the key on Center + B: games and their cracktros
+ * want SPACE, Y, N, RUN/STOP or a number one after the other. The choice
+ * holds until the game ends; the game's options keep the one it starts
+ * with. The list lives on the heap only while it is shown. */
 #define DISK_LIST_MAX 200
 
 static char disk_now[ROM_NAME_MAX];     /* in drive 8, "" for none */
@@ -395,7 +398,7 @@ static const char *disk_menu(void)
     static FILINFO fi;
     char (*files)[ROM_NAME_MAX] = malloc(DISK_LIST_MAX * sizeof *files);
     char (*shown)[ROM_NAME_MAX] = malloc(DISK_LIST_MAX * sizeof *shown);
-    const char **rows = malloc(DISK_LIST_MAX * sizeof *rows);
+    const char **rows = malloc((DISK_LIST_MAX + 1) * sizeof *rows);
     int n = 0;
     if (files && shown && rows && f_opendir(&dir, "/") == FR_OK) {
         while (n < DISK_LIST_MAX && f_readdir(&dir, &fi) == FR_OK && fi.fname[0]) {
@@ -407,12 +410,17 @@ static const char *disk_menu(void)
         f_closedir(&dir);
     }
     const char *status = NULL;
-    if (n == 0) {
-        status = "No disk images";
+    static const char *const key_names[] = { C64_KEYS(C64_KEY_NAME) };
+    static char key_row[24];
+    if (!files || !shown || !rows) {
+        status = "No memory";
         if (pbc_link_active())
             link_swap(LINK_DISK_DONE);
     } else {
         qsort(files, (size_t)n, sizeof *files, by_name);
+        /* row 0: the key on Center + B, then the disks */
+        snprintf(key_row, sizeof key_row, "Center + B: %s", key_names[c64_input_key()]);
+        rows[0] = key_row;
         int cur = -1;
         for (int i = 0; i < n; i++) {
             if (strcmp(files[i], disk_now) == 0)
@@ -421,10 +429,20 @@ static const char *disk_menu(void)
             char *dot = strrchr(shown[i], '.');
             if (dot)
                 *dot = 0;
-            rows[i] = shown[i];
+            rows[i + 1] = shown[i];
         }
         c64_video_wait_idle();
-        int sel = menu_pick_disk("Insert disk", rows, n, cur, pbc_link_active() ? link_idle : NULL);
+        void (*idle)(void) = pbc_link_active() ? link_idle : NULL;
+        int sel = menu_pick_disk("Insert disk", rows, n + 1, cur >= 0 ? cur + 1 : (n ? 1 : 0), idle);
+        if (sel == 0) {
+            int k = menu_pick_key("Center + B", key_names, C64_KEY_COUNT, c64_input_key(), idle);
+            if (k >= 0) {
+                c64_input_set_key(k);
+                snprintf(key_row, sizeof key_row, "Center + B: %s", key_names[k]);
+                status = key_row;
+            }
+        }
+        sel--;                          /* index into files; -1: back or the key */
         pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
         if (sel >= 0 && sel != cur) {
             char path[ROM_NAME_MAX + 2];

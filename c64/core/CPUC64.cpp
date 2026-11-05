@@ -81,6 +81,7 @@ MOS6510::MOS6510(C64 *c64, uint8_t *Ram, const uint8_t *Basic, const uint8_t *Ke
 	i_flag = true;
 
 	interrupt_delay = 0;
+	irq_poll_i = true;
 
 	int_line[INT_VICIRQ] = false;
 	int_line[INT_CIAIRQ] = false;
@@ -715,11 +716,6 @@ C64_HOT(MOS6510_EmulateLine) int MOS6510::EmulateLine(int cycles_left)
 #define RESET_PENDING (int_line[INT_RESET])
 #define IRQ_PENDING (int_line[INT_VICIRQ] || int_line[INT_CIAIRQ])
 #define CHECK_SO ;
-
-	if (interrupt_delay > 0) {
-		interrupt_delay--;
-		return 0; // Return immediately to let EmulateLine be called again
-	}
 
 #include "CPU_emulline.h"
 

@@ -79,8 +79,8 @@ bei PicoBoyGB.
 | Joystick (Port aus den Optionen) | Joystick |
 | Feuer | B |
 | RETURN | A |
-| Leertaste (andere Taste je Spiel in den Optionen: RUN/STOP, F1–F7, Y, N, 1–4) | Mitte + B |
-| Diskette wählen | Mitte + A |
+| Leertaste (andere Taste je Spiel in den Optionen: RUN/STOP, F1–F7, Y, N, 1–4; im Spiel über Mitte + A umstellbar) | Mitte + B |
+| Diskette wählen, Taste auf Mitte + B | Mitte + A |
 
 **Diskettenwechsel:** Mitte + A hält das Spiel an und zeigt alle `.d64` auf
 dem Laufwerk, nach Namen sortiert, wie die Spieleliste. Die im Laufwerk ist
@@ -88,6 +88,13 @@ markiert („in drive“) und vorausgewählt. Hoch/runter wählt, links/rechts
 blättert, B legt sie in Laufwerk 8, A geht ohne Wechsel zurück. Ein zu langer
 Name läuft in der markierten Zeile durch. Nach einem Wechsel steht der Name
 zwei Sekunden unter dem Bild.
+
+Ganz oben in dieser Liste steht **„Center + B: …“**: B darauf öffnet die
+Tastenliste (SPACE, RUN/STOP, F1–F7, Y, N, 1–4), die gewählte gilt sofort.
+Cracktros, Trainer-Fragen und Spiele wollen oft nacheinander verschiedene
+Tasten; so geht das ohne Neustart. Die Wahl hält bis zum Ende des Spiels,
+beim nächsten Start gilt wieder die aus den Optionen. Im Link-Spiel hat
+jeder seine eigene.
 
 Zurück zur Spieleliste geht es mit RESET. Mit `-DSHOW_FPS=1` gebaut (in
 PBCemu: Option im Starter), stehen unter dem Bild gezeichnete Bilder pro
@@ -192,6 +199,16 @@ behoben: Die Klasse `Prefs` war zweimal mit verschiedenem Aufbau definiert
 (`Prefs_rp2350.h` ohne zwei Felder von `Prefs.h`), sodass `ThePrefs = prefs`
 beim Einhängen einer Diskette über das Objekt hinaus schrieb; und die CPU rief
 die Kassettensteuerung über einen Nullzeiger auf.
+
+Ein dritter Fehler aus frank-c64 betraf Interrupts: Nach `CLI`, `PLP` und
+`RTI` nahm die CPU einen anstehenden IRQ erst in der nächsten Rasterzeile an,
+der echte 6510 nach dem nächsten Befehl (nach `RTI` sofort). Folgte innerhalb
+der Zeile ein `SEI`, kam der IRQ nie, und ein unbeantworteter CIA-Interrupt
+blieb für immer anstehend. Bei Great Giana Sisters liefen dann die
+Raster-Interrupts des Titelbilds pausenlos hintereinander: Der Scroller
+zitterte, und die Hauptschleife, die die Taste 1 abfragt, kam nie dran.
+Seit der Korrektur in `core/CPU_emulline.h` kommen die Interrupts an
+denselben Zeilen wie in VICE.
 
 ## Ton
 

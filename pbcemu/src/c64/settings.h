@@ -45,6 +45,9 @@ void settings_set_file(const char *game, const char *file);
 #define C64_KEY_COUNT 12
 int  settings_key(const char *game);                /* 0..C64_KEY_COUNT-1 */
 void settings_set_key(const char *game, int key);
+/* the same byte for a CPC game: its key on Center + B (cpc_keys_menu index) */
+int  settings_key_raw(const char *game);
+void settings_set_key_raw(const char *game, int key);
 
 /* Processor-level 1541 ("True drive") for a game: needed by fast loaders,
  * costs time; needs 1541.rom on the drive. Off by default. */

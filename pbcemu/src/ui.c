@@ -413,7 +413,8 @@ typedef struct {
     int  port;
     char (*files)[D64_NAME_MAX + 1];
     int  nfiles, file;
-    int  key;                       /* on Center + B, C64_KEYS index */
+    int  key;                       /* on Center + B: C64_KEYS index, or the CPC's */
+    bool cpc;                       /* a CPC game: only that key */
     bool drive;                     /* processor-level 1541 */
     bool drive_rom;                 /* ... possible: 1541.rom is on the drive */
     bool fav;                       /* the game is a favourite */
@@ -421,7 +422,7 @@ typedef struct {
 } opt_t;
 
 #define C64_FILES_MAX 64
-#define OPT_ROW_H     32            /* fewer pixels when more rows than fit */
+#define OPT_ROW_H     32            /* 30 when the rows scroll */
 
 /* PETSCII file name -> something the font can show. */
 static void petscii_to_ascii(const char *in, char *out)
@@ -459,6 +460,25 @@ static void value_arrows(int x_right, int y, const char *s)
 static void key_chips(int x, int y, const char *keys);
 static bool c64_drive_rom(void);
 
+/* The CPC's keys for Center + B, in the order of cpc_keys_menu
+ * (cpc/src/cpc_input.c): nine by name, F0-F9, 0-9, A-Z. */
+#define CPC_KEYS 55
+static const char *cpc_key_name(int i)
+{
+    static const char *const named[] = { "RETURN", "SPACE", "ESC", "COPY", "DEL", "SHIFT",
+                                         "CTRL", "TAB", "CAPS LOCK" };
+    static char s[4];
+    if (i < 9)
+        return named[i];
+    if (i < 19)
+        snprintf(s, sizeof s, "F%d", i - 9);
+    else if (i < 29)
+        snprintf(s, sizeof s, "%d", i - 19);
+    else
+        snprintf(s, sizeof s, "%c", 'A' + i - 29);
+    return s;
+}
+
 static int mode_count(int device)
 {
     int n = 0;
@@ -472,11 +492,19 @@ static void options_screen(void (*under)(void *), void *arg, const char *title,
 {
     under(arg);
     gfx_rect(0, 0, GFX_W, GFX_H, 0x000000, 150);
-    int rh = OPT_ROW_H;
-    if (56 + o->nrows * rh + 30 > GFX_H - 8)
-        rh = (GFX_H - 8 - 86) / o->nrows;
+    /* Up to seven rows fit; more (a C64 game has ten) scroll, six at a
+     * time, rather than getting squeezed. */
+    int rh = OPT_ROW_H, vis = o->nrows;
+    if (56 + vis * rh + 30 > GFX_H - 8) {
+        rh = OPT_ROW_H - 2;
+        vis = (GFX_H - 8 - 86) / rh;
+    }
+    static int top;                     /* first row shown */
+    if (row < top) top = row;
+    if (row >= top + vis) top = row - vis + 1;
+    if (top > o->nrows - vis) top = o->nrows - vis;
     int c = (rh - 4) / 2;               /* middle of a row's highlight */
-    int h = 56 + o->nrows * rh + 30, y0 = (GFX_H - h) / 2;
+    int h = 56 + vis * rh + 30, y0 = (GFX_H - h) / 2;
     gfx_rrect(14, y0, GFX_W - 28, h, 16, CARD, 255);
     char t[GAME_NAME_MAX + 4];
     gfx_text_fit(&font_head, title, GFX_W - 60, t);
@@ -485,8 +513,13 @@ static void options_screen(void (*under)(void *), void *arg, const char *title,
     static const char *const names[] = { "Sound", "Volume", "Display", "Show FPS", "Joystick", "Program",
                                          "", "True drive", "Favorite", "Brightness" };
     static const char *const key_names[] = { C64_KEYS(C64_KEY_NAME) };
-    for (int i = 0; i < o->nrows; i++) {
-        int y = y0 + 48 + i * rh, kind = o->rows[i];
+    if (vis < o->nrows) {               /* where in the rows: a thin bar on the right */
+        int track = vis * rh - 4, th = track * vis / o->nrows;
+        gfx_rrect(GFX_W - 21, y0 + 48, 3, track, 1, 0xffffff, 18);
+        gfx_rrect(GFX_W - 21, y0 + 48 + (track - th) * top / (o->nrows - vis), 3, th, 1, accent, 255);
+    }
+    for (int i = top; i < top + vis; i++) {
+        int y = y0 + 48 + (i - top) * rh, kind = o->rows[i];
         if (i == row)
             gfx_rrect(22, y, GFX_W - 44, rh - 4, 9, accent, 55);
         y += c - 14;                    /* the items below are placed for a 32 pixel row */
@@ -519,7 +552,7 @@ static void options_screen(void (*under)(void *), void *arg, const char *title,
         }
         case ROW_KEY:
             key_chips(34, y + 7, "Center + B");     /* as on the start screen */
-            value_arrows(xr - 8, y + 4, key_names[o->key]);
+            value_arrows(xr - 8, y + 4, o->cpc ? cpc_key_name(o->key) : key_names[o->key]);
             break;
         case ROW_DRIVE:
             if (o->drive_rom) {
@@ -546,6 +579,20 @@ static void options(void (*under)(void *), void *arg, int device, const char *ga
         o.rows[o.nrows++] = ROW_FAV;
         o.fav = favs_has(device, game);
     }
+    /* a C64 game's own rows first, the ones for all games below them */
+    bool c64 = game_opts && device >= 0 && devices[device].app == APP_C64;
+    if (c64) {
+        o.rows[o.nrows++] = ROW_PORT;
+        o.rows[o.nrows++] = ROW_PROGRAM;
+        o.rows[o.nrows++] = ROW_KEY;
+        o.rows[o.nrows++] = ROW_DRIVE;
+    }
+    o.cpc = game_opts && devices[device].app == APP_CPC;
+    if (o.cpc) {
+        o.rows[o.nrows++] = ROW_KEY;
+        settings_load();
+        o.key = settings_key_raw(game) % CPC_KEYS;
+    }
     o.rows[o.nrows++] = ROW_SOUND;
     o.rows[o.nrows++] = ROW_VOLUME;
     o.rows[o.nrows++] = ROW_BRIGHT;
@@ -553,12 +600,7 @@ static void options(void (*under)(void *), void *arg, int device, const char *ga
         o.rows[o.nrows++] = ROW_DISPLAY;
     if (device >= 0 && devices[device].app != APP_NONE)
         o.rows[o.nrows++] = ROW_STATS;
-    bool c64 = game_opts && device >= 0 && devices[device].app == APP_C64;
     if (c64) {
-        o.rows[o.nrows++] = ROW_PORT;
-        o.rows[o.nrows++] = ROW_PROGRAM;
-        o.rows[o.nrows++] = ROW_KEY;
-        o.rows[o.nrows++] = ROW_DRIVE;
         settings_load();
         o.game = game;
         o.port = settings_port(game);
@@ -627,7 +669,11 @@ static void options(void (*under)(void *), void *arg, int device, const char *ga
                 break;
             case ROW_PORT: o.port = o.port == 1 ? 2 : 1; break;
             case ROW_PROGRAM: o.file = (o.file + o.nfiles + d) % o.nfiles; break;
-            case ROW_KEY: o.key = (o.key + C64_KEY_COUNT + d) % C64_KEY_COUNT; break;
+            case ROW_KEY: {
+                int n = o.cpc ? CPC_KEYS : C64_KEY_COUNT;
+                o.key = (o.key + n + d) % n;
+                break;
+            }
             case ROW_DRIVE: o.drive = o.drive_rom && !o.drive; break;
             }
         }
@@ -651,6 +697,10 @@ static void options(void (*under)(void *), void *arg, int device, const char *ga
             settings_set_true_drive(game, o.drive);
         settings_save();
         free(o.files);
+    }
+    if (o.cpc && o.key != settings_key_raw(game) % CPC_KEYS) {
+        settings_set_key_raw(game, o.key);  /* only then: an entry for every game would fill the table */
+        settings_save();
     }
     ui_wait_release();
 }
@@ -1182,6 +1232,12 @@ void ui_starting(int device, const char *game)
         b[3] = key_names[settings_key(game)];      /* the key on Center + B */
         snprintf(note, sizeof note, "ROMs: %s%s", c64_own_roms() ? "Commodore" : "OpenROMs",
                  settings_true_drive(game) && c64_drive_rom() ? ", true drive" : "");
+    }
+    if (dev->app == APP_CPC && !ui_link_player) {
+        settings_load();
+        for (int i = 0; i < n; i++)
+            if (strcmp(k[i], "Center + B") == 0)
+                b[i] = cpc_key_name(settings_key_raw(game) % CPC_KEYS);
     }
 
     if (ui_link_player) {

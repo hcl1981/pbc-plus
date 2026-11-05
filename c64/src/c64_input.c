@@ -37,6 +37,11 @@ void c64_input_set_key(int k)
     key = (k >= 0 && k < C64_KEY_COUNT) ? k : 0;
 }
 
+int c64_input_key(void)
+{
+    return key;
+}
+
 bool c64_input_disk_change(void)
 {
     bool d = disk_change;

@@ -50,12 +50,14 @@ auf einer Diskette kein Programm, bleibt BASIC stehen.
 | Joystick | Joystick (oder Cursortasten, oder QAOP, siehe Menü) |
 | B | Feuer (Joystick: Feuer 1; Cursor: COPY; QAOP: SPACE) |
 | A | SPACE |
-| Mitte + B | RETURN |
+| Mitte + B | RETURN (andere Taste: Einstellungen des Spiels im Starter oder Menü) |
 | Mitte + A | Menü |
 
-**Menü:** Joystick-Art, Neustart, Band zurückspulen (sonst Reset) und jede
-Taste einmal drücken (RETURN, SPACE, ESC, COPY, DEL, SHIFT, CTRL, TAB, CAPS
-LOCK, F0–F9, 0–9, A–Z).
+**Menü:** Joystick-Art, Neustart, Band zurückspulen (sonst Reset), welche
+Taste auf Mitte + B liegt („Center + B: …“, bis zum Ende des Spiels; im
+Link-Spiel für beide; dauerhaft je Spiel in dessen Einstellungen im Starter,
+Mitte in der Spieleliste, außer im Link-Spiel: dort beginnt es mit RETURN) und jede Taste einmal drücken (RETURN, SPACE, ESC,
+COPY, DEL, SHIFT, CTRL, TAB, CAPS LOCK, F0–F9, 0–9, A–Z).
 
 ## Link-Spiel
 
@@ -63,7 +65,7 @@ Zwei PicoBoys am USB-C-Kabel spielen zu zweit (`../docs/LINKSPIEL.md`):
 beide rechnen im Gleichschritt und tauschen jedes Bild ihre Tasten.
 Spieler 2 ist **Joystick 1** des CPC, auf der Tastaturzeile 6 (Tasten 6 5
 R T für die Richtungen, B = Feuer 1 = F, A = Feuer 2 = G); Mitte + B
-(RETURN) und Tasten aus dem Menü wirken bei beiden. Spieler 1 behält die
+(RETURN oder die Taste aus dem Menü) und Tasten aus dem Menü wirken bei beiden. Spieler 1 behält die
 Joystick-Art aus dem Menü. Öffnet einer das Menü, hält es beide an; seine
 Wahl geht über das Kabel, so dass beide sie im selben Bild ausführen. Die
 Maschine hat weder Uhr noch Zufall, das Spiel liegt auf beiden im Flash und

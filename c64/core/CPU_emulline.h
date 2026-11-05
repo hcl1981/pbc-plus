@@ -139,6 +139,9 @@
 // End of opcode, decrement cycles left
 #define ENDOP(cyc) last_cycles = cyc; break;
 
+// CLI, PLP: an IRQ is looked for after the next instruction
+#define poll_irq_after_next() (interrupt_delay = 2)
+
 
 	// Handle pending interrupts
 handle_int:
@@ -163,6 +166,7 @@ handle_int:
 		adr = read_word(0xfffe);
 		jump(adr);
 		last_cycles = 7;
+		interrupt_delay = 0;
 	}
 
 
@@ -187,6 +191,28 @@ handle_int:
 #else
 	while ((cycles_left -= last_cycles) >= 0) {
 #endif
+
+		/* After CLI or PLP the 6510 takes a pending IRQ at the end of the
+		 * next instruction, judged by the I flag from before it (so even
+		 * CLI; SEI lets one in); after RTI at once. Waiting for the next
+		 * raster line instead let a CLI ... SEI pair swallow it, and a
+		 * CIA IRQ that was never answered then stayed pending for good. */
+		if (interrupt_delay) {
+			if (--interrupt_delay == 0) {
+				if (IRQ_PENDING && !irq_poll_i && !jammed) {
+					push_byte(pc >> 8);
+					push_byte(pc);
+					push_flags(false);
+					i_flag = true;
+					adr = read_word(0xfffe);
+					jump(adr);
+					last_cycles = 7;
+					continue;
+				}
+			} else {
+				irq_poll_i = i_flag;
+			}
+		}
 
 		switch (read_byte_imm()) {
 
@@ -797,9 +823,8 @@ handle_int:
 
 		case 0x28:	// PLP
 			pop_flags();
-			if (IRQ_PENDING && !i_flag)
-				//goto handle_int;
-				interrupt_delay = 1;
+			if (!i_flag)
+				poll_irq_after_next();
 			ENDOP(4);
 
 
@@ -833,9 +858,10 @@ handle_int:
 			adr = pop_byte();	// Split because of pop_byte ++sp side-effect
 			adr = adr | (pop_byte() << 8);
 			jump(adr);
-			if (IRQ_PENDING && !i_flag)
-				//goto handle_int;
+			if (!i_flag) {		// RTI: looked for at once, with the new flag
 				interrupt_delay = 1;
+				irq_poll_i = false;
+			}
 			ENDOP(6);
 
 		case 0x00:	// BRK
@@ -911,9 +937,7 @@ handle_int:
 
 		case 0x58:	// CLI
 			i_flag = false;
-			if (IRQ_PENDING)
-				//goto handle_int;
-				interrupt_delay = 1;
+			poll_irq_after_next();
 			ENDOP(2);
 
 		case 0xb8:	// CLV

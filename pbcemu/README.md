@@ -61,8 +61,12 @@ getestet, auch nicht der Sprung vom Starter in die Emulatoren.
 | Display | Anzeigemodus des Systems (gemerkt je System) |
 | Show FPS | blendet im Spiel Bilder/s, Tempo in % des Originals und Auslastung von Kern 0 ein, z. B. `60fps 100% CPU71%` |
 | Joystick / Program | nur bei C64-Spielen: Port und Programm auf der Diskette |
-| Mitte + B | nur bei C64-Spielen: welche Taste dort liegt (Vorgabe SPACE). Mitte + A öffnet im Spiel die Diskettenauswahl, siehe `../c64/README.md` |
+| Mitte + B | bei C64- und CPC-Spielen: welche Taste dort liegt (Vorgabe SPACE bzw. RETURN; beim CPC nicht im Link-Spiel). Der Starter gibt die CPC-Taste im Übergabe-Datensatz mit. Mitte + A öffnet im Spiel die Diskettenauswahl; ihre oberste Zeile stellt die Taste auch während des Spiels um, siehe `../c64/README.md` |
 | True drive | nur bei C64-Spielen: echte 1541-Emulation für Spiele mit eigenem Schnelllader; braucht `1541.rom` auf dem Laufwerk, siehe `../c64/README.md` |
+
+Passen nicht alle Zeilen auf die Karte (ein C64-Spiel hat zehn), blättert sie:
+sechs Zeilen auf einmal, rechts ein schmaler Balken. Bei C64-Spielen stehen
+dessen eigene Zeilen gleich unter Favorite.
 
 Anzeigemodi (der erste ist jeweils die Vorgabe):
 

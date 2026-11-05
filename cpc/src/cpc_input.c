@@ -27,6 +27,8 @@ const cpc_menu_key_t cpc_keys_menu[] = {
 };
 const int cpc_key_count = sizeof cpc_keys_menu / sizeof cpc_keys_menu[0];
 
+int cpc_center_b;                       /* index into cpc_keys_menu: RETURN */
+
 static int  held_key, held_frames;
 static bool menu_held;
 
@@ -70,7 +72,7 @@ static void apply_word(uint16_t w, const uint8_t *j, uint8_t a_key)
     if (w & IN_LEFT)  cpc_key_set(j[2]);
     if (w & IN_RIGHT) cpc_key_set(j[3]);
     if (w & IN_CENTER) {
-        if (w & IN_B) cpc_key_set(CPCK_RETURN);
+        if (w & IN_B) cpc_key_set(cpc_keys_menu[cpc_center_b].key);
     } else {
         if (w & IN_B) cpc_key_set(j[4]);
         if (w & IN_A) cpc_key_set(a_key);

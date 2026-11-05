@@ -114,6 +114,7 @@ void MOS6502_1541::AsyncReset()
 	int_line[INT_RESET1541] = true;
 	Idle = false;
 	interrupt_delay = 0;
+	irq_poll_i = true;
 }
 
 
@@ -129,6 +130,7 @@ void MOS6502_1541::Reset()
 	int_line[INT_RESET1541] = false;
 	
 	interrupt_delay = 0;
+	irq_poll_i = true;
 
 	nmi_triggered = false;
 
@@ -595,11 +597,6 @@ C64_HOT(MOS6502_1541_EmulateLine) int MOS6502_1541::EmulateLine(int cycles_left)
 		v_flag = true; \
 	}
 	
-	if (interrupt_delay > 0) {
-		interrupt_delay--;
-		return 0; // Return immediately to let EmulateLine be called again
-	}
-
 #include "CPU_emulline.h"
 
 		// Extension opcode

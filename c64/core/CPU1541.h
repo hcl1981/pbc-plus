@@ -82,7 +82,8 @@ public:
 
 	bool Idle;				// true: 1541 is idle
 	
-	int interrupt_delay;
+	int interrupt_delay;		// instructions until a pending IRQ is looked for (CLI, PLP, RTI)
+	bool irq_poll_i;		// the I flag that decides then
 
 private:
 	uint8_t read_byte(uint16_t adr);

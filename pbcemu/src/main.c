@@ -39,6 +39,7 @@
 #include "pbc_launch.h"
 #include "pbc_lobby.h"
 #include "pbc_rgb.h"
+#include "c64/settings.h"
 
 static FATFS g_fs;
 extern volatile bool usb_msc_ejected;
@@ -98,6 +99,10 @@ static void write_launch(int device, const char *game)
                    (ui_link_master ? PBC_LAUNCH_LINK_MASTER : 0);
     l.video = (uint8_t)prefs_video(device);
     l.brightness = prefs_backlight();
+    if (devices[device].app == APP_CPC && !ui_link_player) {
+        settings_load();                /* the key on Center + B; in link play RETURN for both */
+        l.key = (uint8_t)settings_key_raw(game);
+    }
     snprintf(l.game, sizeof l.game, "%s", game);
     l.check = pbc_launch_hash(&l);
     if (memcmp((const void *)(XIP_BASE + PBC_LAUNCH_OFFSET), &l, sizeof l) == 0)
