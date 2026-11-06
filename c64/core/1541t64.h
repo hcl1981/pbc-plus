@@ -38,7 +38,9 @@ enum {
 	TYPE_P00			// .p00 file
 };
 
-// Archive file drive class
+// Archive file drive class. On the PicoBoy (rp2350/T64Drive.cpp) only .t64:
+// the programs are read straight out of the archive, without the temporary
+// files Frodo's own version makes.
 class ArchDrive : public Drive {
 public:
 	ArchDrive(IEC *iec, const std::string & filepath);
@@ -50,26 +52,29 @@ public:
 	uint8_t Write(int channel, uint8_t byte, bool eoi) override;
 	void Reset() override;
 
+	/* LOAD from the tape (device 1) out of the archive: no name, the file
+	 * after the last one loaded; else the first whose name begins so. SA 0
+	 * puts it at `xy`. False if there is none; else the end in *end. */
+	bool TapeLoad(uint8_t *ram, bool verify, uint8_t sa, uint16_t xy,
+	              const uint8_t *name, int name_len, uint16_t *end);
+
 private:
-	bool change_arch(const std::string & path);
-
-	uint8_t open_file(int channel, const uint8_t *name, int name_len);
-	uint8_t open_directory(int channel, const uint8_t *pattern, int pattern_len);
 	bool find_first_file(const uint8_t *pattern, int pattern_len, int &num);
-	void close_all_channels();
+	int last;				// the file loaded last (the tape's position)
+	void make_directory();
 
-	void rename_cmd(const uint8_t *new_file, int new_file_len, const uint8_t *old_file, int old_file_len) override;
-	void initialize_cmd() override;
-	void validate_cmd() override;
-
-	FILE *the_file;			// File pointer for archive file
-	int archive_type;		// File/archive type (see defines above)
-	std::vector<c64_dir_entry> file_info;	// Vector of file information structs for all files in the archive
-
+	FILE *the_file;			// The archive
+	std::vector<c64_dir_entry> file_info;	// Its programs (offset, size, load address)
 	char dir_title[16];		// Directory title
-	FILE *file[16];			// File pointers for each of the 16 channels (all temporary files)
 
-	uint8_t read_char[16];	// Buffers for one-byte read-ahead
+	struct channel_t {
+		bool open, dir;		// a program, or the directory listing
+		int entry;
+		uint32_t pos, len;	// bytes handed out / to hand out (with the load address)
+		uint8_t buf[64];	// read-ahead from the archive
+		uint32_t buf_at;
+		int buf_len;
+	} chan[15];
 };
 
 

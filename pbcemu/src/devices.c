@@ -61,6 +61,9 @@ static const control_t c_cv[] = {
 static const control_t c_a78[] = {
     { "Joystick", "Joystick" }, { "Button 1", "B" }, { "Button 2", "A" }, { "RESET", "Center + B" },
     { "SELECT", "Center + A" }, { "PAUSE", "Center + Down" }, { NULL } };
+static const control_t c_vec[] = {
+    { "Joystick", "Joystick" }, { "Button 4", "B" }, { "Button 3", "A" }, { "Button 2", "Center + B" },
+    { "Button 1", "Center + A" }, { NULL } };
 static const control_t c_none[] = { { NULL } };
 
 /* Display modes, in the order the emulators number them (their video.c);
@@ -79,6 +82,7 @@ static const char *const m_a26[] = { "Scale 1.5x", NULL };
 static const char *const m_a78[] = { "Fit width", NULL };
 static const char *const m_zx[]  = { "Fit width", "Crop 1:1", NULL };
 static const char *const m_cpc[] = { "Fit width", "Crop 1:1", NULL };
+static const char *const m_vec[] = { "Full screen", NULL };
 
 /* The list itself is in common/pbc_devices.h: the emulators' loading
  * screen takes name, colour and icon from it by the same index. */
@@ -131,7 +135,9 @@ bool device_is_coleco(const device_t *d)
 bool device_link(const device_t *d)
 {
     switch (d->app) {
-    case APP_NES: case APP_PCE: case APP_C64: case APP_MSX: case APP_A26: case APP_MD: case APP_CPC: case APP_ZX:
+    case APP_A26:
+        return d->controls != c_vec;    /* the Vectrex: not (yet) */
+    case APP_NES: case APP_PCE: case APP_C64: case APP_MSX: case APP_MD: case APP_CPC: case APP_ZX:
         return true;
     case APP_SMS:
         return d->controls == c_sms || d->controls == c_sg || d->controls == c_cv;  /* not the Game Gear */

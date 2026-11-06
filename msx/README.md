@@ -32,6 +32,12 @@ ab 0000h), MegaROMs mit den Mappern Konami, Konami SCC, ASCII 8 KB und ASCII
 beim Start, welcher es geworden ist. C-BIOS hat kein BASIC und keine
 Disketten.
 
+Ein `.rom`, dessen Name einen bekannten MSX2-Titel enthält (Metal Gear,
+Space Manbow, Vampire Killer, Usas, Aleste 2, Psycho World, Undeadline,
+Super Laydock, Zanac EX, Golvellius II), startet von selbst auf dem MSX2:
+Das Modul selbst verrät nicht, für welchen Rechner es ist. Andere
+MSX2-Module brauchen weiter die Endung `.mx2`.
+
 **MSX2:** `.mx2` (Module, wie oben) und `.dsk` (Disketten-Abbilder, 360 oder
 720 KB) laufen auf einem MSX2. Eingebaut ist C-BIOS für MSX2 mit C-DISK:
 Module laufen damit, Disketten nur, wenn sie über ihren Bootsektor selbst
@@ -60,8 +66,14 @@ Füllen, Linien) sind sofort fertig statt nach ihrer echten Laufzeit.
 | B | Feuer 1 und SPACE |
 | A | Feuer 2 und M |
 | Center + B | F1 |
-| Center + A | Menü: jede andere Taste einmal drücken |
+| Center + A | Menü: Diskette wechseln (bei Diskettenspielen), jede andere Taste einmal drücken |
 | RESET | zurück zum Starter |
+
+**Diskettenwechsel:** Bei einem Diskettenspiel steht oben im Menü „Insert
+disk“: alle MSX-Disketten des Laufwerks (CPC-Disketten mit derselben Endung
+bleiben draußen). Die gewählte kommt sofort in Laufwerk A:, DSKCHG meldet den
+Wechsel. Im Link-Spiel wechseln beide nur, wenn der ganze Inhalt der Datei auf
+beiden gleich ist (die Disketten werden beschrieben).
 
 Im Link-Spiel hat Spieler 1 Joystick 1 und die Tastatur, Spieler 2 Joystick 2.
 Wer das Menü öffnet, wählt; beide halten nach demselben Bild an, und die

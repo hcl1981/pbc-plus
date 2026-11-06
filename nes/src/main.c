@@ -475,6 +475,7 @@ int main(void)
     if (!launch || !fs_mount())
         reboot_to_menu();
     strncpy(rom, launch->game, sizeof rom - 1);
+    input_set_swap(launch->key & 1);    /* the game's options: buttons swapped */
 #else
     if (input_raw() & (IN_A | IN_B))
         usb_stick_mode();

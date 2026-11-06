@@ -35,6 +35,10 @@ typedef struct {
 /* Call once per emulated frame. */
 genesis_input_t input_poll_genesis(void);
 
+/* Which Mega Drive button is on PicoBoy B, A and CENTER, 0..5 in the order
+ * ABC BAC ACB CAB BCA CBA (0: A on B, B on A, C on CENTER). */
+void input_set_layout(int layout);
+
 /* Menu navigation: returns the raw bits newly pressed since the last call,
  * with auto-repeat for up/down. */
 uint32_t input_menu_edges(void);

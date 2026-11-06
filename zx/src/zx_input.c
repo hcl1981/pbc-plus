@@ -8,6 +8,7 @@
 #define N 0xff
 
 int zx_joy_mode = ZX_JOY_KEMPSTON;
+int zx_center_b;                        /* index into zx_keys_menu: ENTER */
 const char *const zx_joy_names[ZX_JOYS] = { "Kempston", "Sinclair", "Cursor", "QAOP" };
 
 #define K(row, bit) ZX_KEY(row, bit)
@@ -82,7 +83,11 @@ static void apply_word(uint16_t w, int mode, const uint8_t *keys)
         if (fire) zx_key_set(keys[4]);
     }
     if (w & IN_CENTER) {
-        if (w & IN_B) zx_key_set(ZXK_ENTER);
+        if (w & IN_B) {
+            zx_key_set(zx_keys_menu[zx_center_b].k1);
+            if (zx_keys_menu[zx_center_b].k2 != N)
+                zx_key_set(zx_keys_menu[zx_center_b].k2);
+        }
     } else if (w & IN_A) {
         zx_key_set(ZXK_SPACE);
     }

@@ -92,7 +92,7 @@ static uint8_t span_n[5], span_x[5][3], span_w[5][3];
 
 /* ---- tables -------------------------------------------------------------- */
 
-static TIA_RAM void make_tables(void)
+static __attribute__((optimize("Os"))) void make_tables(void)   /* once, at reset */
 {
     for (int b = 0; b < 64; b++) {
         uint16_t c = 0;
@@ -148,7 +148,7 @@ static const uint32_t ntsc[128] = {
     0x442800, 0x644818, 0x846830, 0xa08444, 0xb89c58, 0xd0b46c, 0xe8cc7c, 0xfce08c,
 };
 
-void tia_make_palette(bool pal)
+__attribute__((optimize("Os"))) void tia_make_palette(bool pal)
 {
     if (!pal) {
         memcpy(tia_palette, ntsc, sizeof ntsc);
@@ -372,7 +372,7 @@ static TIA_RAM void lock_missile(int i)
 
 /* ---- registers ----------------------------------------------------------- */
 
-void tia_reset(void)
+__attribute__((optimize("Os"))) void tia_reset(void)       /* once: small, not fast */
 {
     memset(&t, 0, sizeof t);
     memset(pix, 0, sizeof pix);

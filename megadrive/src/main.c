@@ -724,6 +724,7 @@ int main(void)
     if (!launch || !fs_mount())
         reboot_to_menu();
     strncpy(rom, launch->game, sizeof rom - 1);
+    input_set_layout(launch->key);  /* the game's button layout from the launcher */
 #else
     if (input_raw() & (IN_A | IN_B))
         usb_stick_mode();

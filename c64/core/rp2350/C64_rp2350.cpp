@@ -49,6 +49,7 @@ extern "C" {
 #include "pbc_rgb.h"
 
 #include <cstring>
+#include <strings.h>
 #include <cstdlib>
 
 // Global flag for Frodo SC mode
@@ -763,6 +764,30 @@ void c64_show_notification(const char *msg)
  *  Mount a disk image using DOS-level IEC emulation
  *  This uses Frodo's built-in IEC class with ImageDrive
  */
+/* With a .t64 in drive 8 a LOAD from the tape (device 1) comes out of the
+ * archive too: the KERNAL's entry LOAD ($FFD5, a JMP in both ROM sets)
+ * becomes the trap $F2 $30 (CPUC64.cpp), which goes on to the JMP's target
+ * for every other device. In the RAM copy of the KERNAL; undone when a
+ * disk goes in. Games that call the vector at $0330 directly miss it. */
+uint16_t t64_load_jmp;
+static uint8_t ffd5[3];
+static bool ffd5_trapped;
+
+static void tape_trap(bool on)
+{
+    uint8_t *k = (uint8_t *)TheC64->Kernal;
+    if (on && !ffd5_trapped && k[0x1fd5] == 0x4c) {
+        memcpy(ffd5, k + 0x1fd5, 3);
+        t64_load_jmp = (uint16_t)(ffd5[1] | ffd5[2] << 8);
+        k[0x1fd5] = 0xf2;
+        k[0x1fd6] = 0x30;
+        ffd5_trapped = true;
+    } else if (!on && ffd5_trapped) {
+        memcpy(k + 0x1fd5, ffd5, 3);
+        ffd5_trapped = false;
+    }
+}
+
 void c64_mount_disk(const uint8_t *data, uint32_t size, const char *filename)
 {
     (void)data;
@@ -772,7 +797,11 @@ void c64_mount_disk(const uint8_t *data, uint32_t size, const char *filename)
 
     // Use Frodo's built-in DOS-level IEC emulation
     // processor-level 1541 when its ROM is there ("True drive"), else DOS level
-    TheC64->MountDrive8(c64_roms_drive() != NULL, filename);
+    /* a .t64 archive only at DOS level: the real 1541 needs a disk */
+    const char *ext = strrchr(filename, '.');
+    bool t64 = ext && strcasecmp(ext, ".t64") == 0;
+    TheC64->MountDrive8(c64_roms_drive() != NULL && !t64, filename);
+    tape_trap(t64);
 
     MII_DEBUG_PRINTF("c64_mount_disk: mounted via Frodo IEC (Emul1541Proc=%d)\n",
            ThePrefs.Emul1541Proc);

@@ -5,6 +5,7 @@
 #include "pico/stdlib.h"
 #include "hardware/flash.h"
 #include "hardware/sync.h"
+#include "pico/multicore.h"
 #include "hardware/regs/addressmap.h"
 #include "ff.h"
 #include "rom_store.h"
@@ -115,21 +116,31 @@ bool rom_store_matches(const char *name)
     return size == i->file_size && hash == i->file_hash;
 }
 
-/* flash_range_* must not run while code executes from XIP. Only core 0 is
- * running at this point (core 1 is started with the emulator), so masking
- * interrupts is enough. */
+/* flash_range_* must not run while code executes from XIP. At the start
+ * only core 0 runs, so masking interrupts is enough; a disk changed during
+ * the game (rom_store_live) also parks core 1 for each piece. */
+bool rom_store_live;
+
 static void flash_erase(uint32_t off, uint32_t len)
 {
+    if (rom_store_live)
+        multicore_lockout_start_blocking();
     uint32_t irq = save_and_disable_interrupts();
     flash_range_erase(off, len);
     restore_interrupts(irq);
+    if (rom_store_live)
+        multicore_lockout_end_blocking();
 }
 
 static void flash_program(uint32_t off, const uint8_t *src, uint32_t len)
 {
+    if (rom_store_live)
+        multicore_lockout_start_blocking();
     uint32_t irq = save_and_disable_interrupts();
     flash_range_program(off, src, len);
     restore_interrupts(irq);
+    if (rom_store_live)
+        multicore_lockout_end_blocking();
 }
 
 

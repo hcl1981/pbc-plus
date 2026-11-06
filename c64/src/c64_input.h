@@ -18,6 +18,7 @@ void c64_input_set_port(int port);
 /* The key on Center + B: index into C64_KEYS (settings.h). */
 void c64_input_set_key(int key);
 int  c64_input_key(void);
+int  c64_input_port(void);
 
 /* True once per press of Center + A; in link play on both devices, after
  * the same frame. _mine: this device's player asked, the other one waits. */

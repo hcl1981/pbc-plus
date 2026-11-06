@@ -1,7 +1,7 @@
 # PBCemu — alle Emulatoren in einer Firmware
 
 Ein Starter mit Gerätewahl und Spieleliste vor allen Emulatoren dieses Repos:
-Atari 2600, ZX Spectrum, ColecoVision, Commodore 64, NES, SG-1000, MSX,
+Atari 2600, ZX Spectrum, ColecoVision, Commodore 64, Vectrex, NES, SG-1000, MSX,
 Amstrad CPC, Master System, Atari 7800, PC Engine, Mega Drive, Game Gear und
 Game Boy (Color). Fertig als **`dist/pbcemu.uf2`**,
 eine Datei für alles. Zwei Geräte am USB-C-Kabel spielen Atari 2600, C64,
@@ -28,7 +28,7 @@ getestet, auch nicht der Sprung vom Starter in die Emulatoren.
    die Spieleliste. Unter jedem Gerät steht, wie viele Spiele es gibt.
    **Mitte** öffnet die Einstellungen des Geräts (siehe unten). Die letzte
    Seite, **Add Games**, schaltet den USB-Laufwerk-Modus ein. Oben in der
-   Mitte steht die Seite (`1 / 16`), oben rechts der Ladestand der
+   Mitte steht die Seite (`1 / 17`), oben rechts der Ladestand der
    Batterien in vier Balken (grün, ab zwei Balken gelb, dann rot), bei
    Betrieb über das Kabel (Schalter auf USB) ein Blitz mit „USB“.
 3. **Favoriten:** die erste Seite, mit dem goldenen Stern; dort beginnt der
@@ -48,7 +48,13 @@ getestet, auch nicht der Sprung vom Starter in die Emulatoren.
    laufen die Status-LEDs rot, gelb, grün durch, jede in 0,15 s ein- und in
    0,35 s ausgeblendet, so dass sie ineinander übergehen. Ein Link-Partner, der ein Spiel startet, weckt ihn auch. Eine Taste macht
    es in 150 ms wieder hell und bewirkt sonst nichts. In den Spielen nicht.
-6. Vor dem Start zeigt der Starter die Tastenbelegung (zwei Sekunden, B
+6. **Batteriewarnung im Spiel:** Sind die Batterien so leer, dass der
+   Starter keinen Balken mehr zeigt (unter 2,25 V), blinkt im Spiel an
+   derselben Stelle oben rechts dessen Batteriesymbol, rot und
+   durchgestrichen, zweimal pro Sekunde (`common/pbc_battwarn.c`; im
+   schwarzen Rand direkt gezeichnet, über dem Bild in dessen Zeilen
+   gemischt). Mit Kabelstrom oder vollen Batterien nichts.
+7. Vor dem Start zeigt der Starter die Tastenbelegung (zwei Sekunden, B
    überspringt). Zurück zur Liste: **RESET**.
 
 ### Einstellungen (Mitte)
@@ -59,9 +65,16 @@ getestet, auch nicht der Sprung vom Starter in die Emulatoren.
 | Sound / Volume | Ton und Lautstärke, für alle Systeme |
 | Brightness | Helligkeit in acht Stufen, für Starter und alle Systeme (Vorgabe Stufe 6 = die bisherige); wirkt sofort. Die Emulatoren bekommen sie im Übergabe-Datensatz |
 | Display | Anzeigemodus des Systems (gemerkt je System) |
+| Scanlines | jede zweite Zeile auf dem Display auf drei Viertel Helligkeit, wie bei einem Röhrenfernseher (je System; `common/pbc_scanline.h`) |
 | Show FPS | blendet im Spiel Bilder/s, Tempo in % des Originals und Auslastung von Kern 0 ein, z. B. `60fps 100% CPU71%` |
 | Joystick / Program | nur bei C64-Spielen: Port und Programm auf der Diskette |
-| Mitte + B | bei C64- und CPC-Spielen: welche Taste dort liegt (Vorgabe SPACE bzw. RETURN; beim CPC nicht im Link-Spiel). Der Starter gibt die CPC-Taste im Übergabe-Datensatz mit. Mitte + A öffnet im Spiel die Diskettenauswahl; ihre oberste Zeile stellt die Taste auch während des Spiels um, siehe `../c64/README.md` |
+| Link cable | Game Boy: zwei PicoBoys am USB-C-Kabel wie zwei Game Boys mit Linkkabel, jeder mit seinem eigenen Spiel (`../docs/LINKSPIEL.md`) |
+| Tasten tauschen (B A) | NES und Game Boy: A und B; Master System, Game Gear, SG-1000, ColecoVision: 1 und 2 |
+| Palette | alte Game-Boy-Spiele (`.gb`): Auto (Super-Game-Boy-Farben bei Spielen dafür, sonst Grün), Grey, Brown, Red, Blue, Dark blue, Pastel, Inverted (die Farben des Game Boy Color für alte Spiele) |
+| Left/Right difficulty, TV type | Atari: Schwierigkeitsschalter A/B, beim 2600 Farbe oder Schwarzweiß (nicht im Link-Spiel) |
+| Joystick | CPC-Spiele: Joystick, Cursortasten oder QAOP (nicht im Link-Spiel) |
+| Buttons (B A Mitte) | nur bei Mega-Drive-Spielen: welche Mega-Drive-Taste auf B, A und Mitte liegt, alle sechs Verteilungen von A, B, C (Vorgabe A B C). Je Spiel gemerkt, im Übergabe-Datensatz an den Emulator; die Tastenübersicht vor dem Start zeigt sie, im Link-Spiel hat jeder seine eigene |
+| Mitte + B | bei C64-, CPC- und ZX-Spielen: welche Taste dort liegt (Vorgabe SPACE, RETURN bzw. ENTER; bei CPC und ZX nicht im Link-Spiel). Der Starter gibt die CPC-Taste im Übergabe-Datensatz mit. Mitte + A öffnet im Spiel die Diskettenauswahl; ihre oberste Zeile stellt die Taste auch während des Spiels um, siehe `../c64/README.md` |
 | True drive | nur bei C64-Spielen: echte 1541-Emulation für Spiele mit eigenem Schnelllader; braucht `1541.rom` auf dem Laufwerk, siehe `../c64/README.md` |
 
 Passen nicht alle Zeilen auf die Karte (ein C64-Spiel hat zehn), blättert sie:
@@ -99,7 +112,8 @@ nach Endung:
 | ColecoVision | `.col`, auch `.rom` und `.bin` (erkannt an AA 55 / 55 AA am Anfang); BIOS `coleco.rom` ins Hauptverzeichnis, sonst ein eigenes Mini-BIOS, siehe `../sms` |
 | Atari 7800 | `.a78` (mit oder ohne Kopf), siehe `../a2600` |
 | ZX Spectrum | `.tap` `.tzx` (Bänder, starten von selbst) `.z80` `.sna` (Snapshots); die ROMs sind eingebaut, siehe `../zx` |
-| Commodore 64 | `.d64` `.prg` `.crt` (eigene ROMs: `kernal.rom`, `basic.rom`, siehe `../c64`) |
+| Commodore 64 | `.d64` `.t64` `.prg` `.crt` (eigene ROMs: `kernal.rom`, `basic.rom`, siehe `../c64`) |
+| Vectrex | `.vec` (System-ROM mit Mine Storm eingebaut, `../a2600/LICENSE.vectrex`) |
 | NES | `.nes` |
 | SG-1000 | `.sg` |
 | MSX | `.rom` `.mx1` (MSX1-Module; C-BIOS ist eingebaut), `.mx2` (MSX2-Module) und `.dsk` (MSX2-Disketten); eingebaut ist C-BIOS (Module, selbst startende Disketten), für BASIC und MSX-DOS `msx2.rom`, `msx2ext.rom` und `disk.rom` ins Hauptverzeichnis, siehe `../msx` |
@@ -142,7 +156,7 @@ eigenständige Firmwares (`dist/nes.uf2` usw.).
 | Adresse | Inhalt |
 |---|---|
 | `0x000000` | Starter (268 KB vorgesehen, ca. 261 KB belegt: Schriften und Gerätebilder) |
-| `0x043000` … | Mega Drive, Master System/Game Gear/SG-1000, NES, PC Engine, Game Boy Color, C64, MSX, Atari 2600, ZX Spectrum, Amstrad CPC — dicht gepackt, auf 4 KB gerundet (zusammen ca. 1,7 MB, bis `0x200000`) |
+| `0x044000` … | Mega Drive, Master System/Game Gear/SG-1000, NES, PC Engine, Game Boy Color, C64, MSX, Atari 2600, ZX Spectrum, Amstrad CPC — dicht gepackt, in 512-Byte-Schritten (die Vektortabelle muss so ausgerichtet sein; mit 4-KB-Schritten gingen rund 14 KB verloren), zusammen ca. 1,7 MB, bis `0x200000` |
 | `0x200000` | ROM des laufenden Spiels (5 MB) |
 | `0x700000` | FatFs = USB-Laufwerk `PBC-ROMS`, ca. 9 MB (Einzel-Firmwares: ab `0x600000`) |
 | `0xFF0000` | gehört den Einzel-Firmwares (welches Spiel in *ihrem* ROM-Bereich liegt); der Starter löscht es, weil dort jetzt Emulatoren liegen |

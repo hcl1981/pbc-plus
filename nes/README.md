@@ -57,7 +57,8 @@ bei PicoBoyGB.
 | SELECT | Mitte + A |
 
 Mitte allein tut nichts, wie bei PicoBoyGB. Zurück zur Spieleliste geht es
-mit RESET.
+mit RESET. In PBCemu tauscht die Zeile „B A“ in den Einstellungen des Spiels
+A und B.
 
 ### Spielstände
 

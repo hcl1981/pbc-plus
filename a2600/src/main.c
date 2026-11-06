@@ -46,6 +46,7 @@
 #include "a26_video.h"
 #include "a2600.h"
 #include "a7800.h"
+#include "vectrex.h"
 #include "tia.h"
 #include "tilt.h"
 
@@ -120,6 +121,7 @@ static void overclock(void)
  * play swaps them with the partner). 2600: B or A is the button; 7800: B
  * the left one, A the right one, Center + Down PAUSE. */
 static bool is7800;
+static bool isvec;                      /* the Vectrex (vectrex.h) */
 
 static uint8_t joy_of(uint16_t w)
 {
@@ -191,9 +193,14 @@ static uint32_t paddle_time(uint16_t w)
     return 228u + (255u - (w >> 8)) * (win - 456u) / 255u;
 }
 
+/* The switches that stay put, from the game's options (PBCemu): bit 0 left
+ * difficulty A, bit 1 right difficulty A, bit 2 black and white (2600). In
+ * link play both devices take the defaults (difficulty B, colour). */
+static uint8_t fixed_switches;
+
 static uint8_t switches_of(uint16_t w)
 {
-    uint8_t s = 0;
+    uint8_t s = fixed_switches;
     if ((w & IN_CENTER) && (w & IN_B)) s |= A26_RESET;
     if ((w & IN_CENTER) && (w & IN_A)) s |= A26_SELECT;
     if (is7800 && (w & IN_CENTER) && (w & IN_DOWN)) s |= A26_BW;      /* PAUSE */
@@ -213,7 +220,7 @@ static void __attribute__((noreturn)) emulation_loop(bool show_stats, const char
     /* PAL or NTSC: what the game makes, 312 or 262 lines a frame; the
      * switch waits for 30 frames in a row (the lines count is the
      * emulation's, so both devices switch in the same frame) */
-    bool pal = is7800 && a7800_pal();
+    bool pal = isvec || (is7800 && a7800_pal());   /* the Vectrex: 50 frames a second */
     int pal_votes = 0;
 
     if (start_status) {
@@ -225,8 +232,17 @@ static void __attribute__((noreturn)) emulation_loop(bool show_stats, const char
     for (;;) {
         uint16_t p1, p2;
         uint32_t raw = input_raw();
-        pbc_link_frame((uint16_t)((raw & 0x7F) | paddle_word(raw)), is7800 ? a7800_ram() : a2600_ram(),
-                       is7800 ? 0x1000 : 128, &p1, &p2);
+        pbc_link_frame((uint16_t)((raw & 0x7F) | paddle_word(raw)),
+                       isvec ? vectrex_ram() : is7800 ? a7800_ram() : a2600_ram(),
+                       isvec ? 1024 : is7800 ? 0x1000 : 128, &p1, &p2);
+        if (isvec) {
+            /* B button 4, A 3, Center + B 2, Center + A 1; the stick at its ends */
+            bool c = p1 & IN_CENTER;
+            uint8_t b = (uint8_t)((!c && (p1 & IN_B) ? 8 : 0) | (!c && (p1 & IN_A) ? 4 : 0) |
+                                  (c && (p1 & IN_B) ? 2 : 0) | (c && (p1 & IN_A) ? 1 : 0));
+            vectrex_input(b, (p1 & IN_RIGHT) ? 127 : (p1 & IN_LEFT) ? -128 : 0,
+                          (p1 & IN_UP) ? 127 : (p1 & IN_DOWN) ? -128 : 0);
+        }
         a26_joy[0] = joy_of(p1);
         a26_joy[1] = joy_of(p2);
         a26_switches = switches_of(p1 | p2);
@@ -246,7 +262,11 @@ static void __attribute__((noreturn)) emulation_loop(bool show_stats, const char
         unsigned n = sample_acc / fps;
         sample_acc -= n * fps;
         int lines;
-        if (is7800) {
+        if (isvec) {
+            vectrex_frame(samples, (int)n);
+            __sev();                    /* core 1 draws it (a26_video.c) */
+            lines = 312;
+        } else if (is7800) {
             a7800_frame(a26_video_line320, samples, (int)n);
             lines = pal ? 313 : 263;
         } else {
@@ -261,7 +281,7 @@ static void __attribute__((noreturn)) emulation_loop(bool show_stats, const char
             }
         }
         audio_pwm_push(samples, (int)n);
-        if (!is7800 && (lines >= 290) != pal) {
+        if (!is7800 && !isvec && (lines >= 290) != pal) {
             if (++pal_votes >= 30) {
                 pal = !pal;
                 pal_votes = 0;
@@ -277,7 +297,7 @@ static void __attribute__((noreturn)) emulation_loop(bool show_stats, const char
 
         /* 262 lines at 1.193 MHz (NTSC), 312 at 1.182 MHz (PAL); the 7800
          * 263 or 313 lines of 454 clocks at 7.16 / 7.09 MHz */
-        const uint32_t period = is7800 ? (pal ? 20033 : 16683) : pal ? 20056 : 16688;
+        const uint32_t period = isvec ? 20000 : is7800 ? (pal ? 20033 : 16683) : pal ? 20056 : 16688;
         next_frame += period;
         uint64_t now = time_us_64();
         stat_busy_us += now - frame_start;
@@ -370,6 +390,9 @@ int main(void)
     if (!launch || !fs_mount())
         reboot_to_menu();
     strncpy(game, launch->game, sizeof game - 1);
+    if (!(launch->flags & (PBC_LAUNCH_LINK1 | PBC_LAUNCH_LINK2)))
+        fixed_switches = (uint8_t)(((launch->key & 1) ? A26_DIFF0 : 0) | ((launch->key & 2) ? A26_DIFF1 : 0) |
+                                   ((launch->key & 4) ? A26_BW : 0));
 
     if (!rom_store_matches(game)) {
         uint8_t *scratch = malloc(0x4000);
@@ -389,7 +412,14 @@ int main(void)
 
     const char *ext = strrchr(game, '.');
     is7800 = ext && strcasecmp(ext, ".a78") == 0;
-    if (is7800) {
+    isvec = ext && strcasecmp(ext, ".vec") == 0;
+    if (is7800)
+        fixed_switches &= (uint8_t)~A26_BW;     /* there it is PAUSE */
+    if (isvec) {
+        if (!vectrex_insert(rom_store_data(), rom_store_size()))
+            fatal("Not a Vectrex cartridge", game);
+        vectrex_reset();
+    } else if (is7800) {
         if (!a7800_insert(rom_store_data(), rom_store_size()))
             fatal("Not a 7800 cartridge", game);
         a26_video_set_pal(a7800_pal());
@@ -401,8 +431,10 @@ int main(void)
         a2600_reset();
     }
 
-    pbc_link_start(pbc_link_hash(PBC_LINK_HASH_START ^ (is7800 ? 9 : 8), rom_store_data(), rom_store_size()));
+    pbc_link_start(pbc_link_hash(PBC_LINK_HASH_START ^ (isvec ? 12 : is7800 ? 9 : 8), rom_store_data(), rom_store_size()));
     pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
+    if (isvec)
+        a26_video_vectrex();
     multicore_launch_core1(a26_video_core1_main);
     pbc_fade_in(false);
     emulation_loop(pbc_launch_stats(), NULL);

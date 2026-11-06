@@ -44,7 +44,7 @@
  * and messages with (common/pbc_loading.c) instead of a copy of their own.
  * The launcher fills the first PBC_LAUNCHER_SIZE bytes of flash. */
 #define PBC_SHARED_MAGIC    0x544E4F46u     /* "FONT" */
-#define PBC_LAUNCHER_SIZE   0x43000u        /* = LAUNCHER_SIZE, pbcemu/build.sh */
+#define PBC_LAUNCHER_SIZE   0x45000u        /* = LAUNCHER_SIZE, pbcemu/build.sh */
 typedef struct {
     uint32_t magic;
     const struct pbc_font_s *font_head, *font_body, *font_small;
@@ -55,6 +55,7 @@ typedef struct {
 #define PBC_LAUNCH_LINK1    0x02            /* link play, this device is player 1 */
 #define PBC_LAUNCH_LINK2    0x04            /* ... player 2 */
 #define PBC_LAUNCH_LINK_MASTER 0x08         /* ... and it started the game: keeps the pace */
+#define PBC_LAUNCH_SCANLINES 0x10           /* every second panel row dimmed (pbc_scanline.h) */
 
 /* Display modes: each emulator numbers its own, 0 is its default, and the
  * launcher's device table (pbcemu/src/devices.c) has the names in the same
@@ -69,8 +70,16 @@ typedef struct {
     uint8_t  flags;                         /* PBC_LAUNCH_* below */
     uint8_t  video;                         /* display mode, per emulator (0 = its default) */
     uint8_t  brightness;                    /* backlight 1..255, 0 = PBC_BACKLIGHT */
-    uint8_t  key;                           /* CPC: the key on Center + B, index into
-                                               cpc_keys_menu (cpc/src/cpc_input.c), 0 = RETURN */
+    uint8_t  key;                           /* the game's own options, per system:
+                                               CPC: bits 0-5 the key on Center + B (cpc_keys_menu
+                                               index, 0 = RETURN), 6-7 the joystick kind;
+                                               ZX: the key on Center + B (zx_keys_menu, 0 = ENTER);
+                                               Mega Drive: button layout 0..5 (megadrive/src/input.h);
+                                               NES, SMS/GG/SG: bit 0 buttons swapped;
+                                               Game Boy: bits 0-2 palette of an old game
+                                               (gbc/src/main.c), bit 3 A/B swapped,
+                                               bit 4 link cable (pbc_cable.h);
+                                               Atari: bit 0/1 left/right difficulty A, bit 2 b/w */
     uint8_t  reserved[1];
     char     game[PBC_LAUNCH_NAME_MAX];     /* file in the FatFs root */
     uint32_t check;                         /* FNV-1a over everything above */

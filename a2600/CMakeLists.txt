@@ -50,6 +50,8 @@ add_executable(pbc_a2600
     # Atari 2600 core
     ${CORE}/a2600.c
     ${CORE}/a7800.c
+    ${CORE}/vectrex.c
+    ${CMAKE_CURRENT_LIST_DIR}/../msx/core/msx1/ay8910.c     # the Vectrex's sound chip
     ${CORE}/pokey.c
     ${CORE}/tia.c
 )
@@ -58,6 +60,7 @@ target_include_directories(pbc_a2600 PRIVATE
     src
     fatfs
     ${CORE}
+    ${CMAKE_CURRENT_LIST_DIR}/../msx/core/msx1           # ay8910.h
 )
 
 target_compile_definitions(pbc_a2600 PRIVATE

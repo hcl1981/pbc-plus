@@ -64,12 +64,27 @@ unter demselben Namen und mit demselben Inhalt haben, sonst bleibt auf beiden
 die alte drin und unter dem Bild steht, was fehlt. Drücken beide gleichzeitig,
 wählt Spieler 1. Beim MSX geht das Tastenmenü (Center + A) genauso; eine MSX2-Diskette wird
 auf beiden Geräten in die eigene Datei geschrieben, beide brauchen also
-dieselbe. Game Gear und Game Boy bieten kein Link-Spiel an: Der Game Gear hat
-keinen zweiten Controller, der Game Boy ist dafür nicht umgebaut.
+dieselbe. Der Game Gear bietet kein Link-Spiel an, er hat keinen zweiten
+Controller; der Game Boy verbindet sich stattdessen wie mit einem Linkkabel
+(unten).
 
 Beim Mega Drive liefert das Sprite-Overflow-Flag des Videochips im
 Link-Spiel immer 0: Es entsteht beim Zeichnen auf Kern 1 und hinge sonst
 davon ab, wann und ob ein Bild gezeichnet wird. Kaum ein Spiel liest es.
+
+## Game Boy: Linkkabel
+
+Der Game Boy spielt nicht im Gleichschritt, sondern wie mit einem echten
+Linkkabel: In den Einstellungen des Spiels (Mitte in der Spieleliste) den
+Schalter **Link cable** einschalten, auf beiden Geräten, dann startet jeder
+sein eigenes Spiel. Die Spiele müssen nicht gleich sein: Pokémon Rot tauscht
+mit Blau, wie im Original. Beide Geräte laufen unabhängig; nur ein Byte, das
+eines der Spiele über seinen seriellen Anschluss schickt, geht über das
+USB-C-Kabel, und das Byte des anderen kommt im selben Austausch zurück
+(`common/pbc_cable.c`). Wer ein Byte hat, klopft an, das andere Gerät schaut
+bei jeder Bildzeile nach (etwa alle 0,1 ms); ein Austausch dauert weniger als
+eine Millisekunde, so lange wie ein Byte am echten Kabel. Ohne Partner
+antwortet niemand, und das Spiel sieht ein Kabel ohne Gegenüber.
 
 ## Wie es funktioniert
 

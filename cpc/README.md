@@ -53,10 +53,15 @@ auf einer Diskette kein Programm, bleibt BASIC stehen.
 | Mitte + B | RETURN (andere Taste: Einstellungen des Spiels im Starter oder Menü) |
 | Mitte + A | Menü |
 
-**Menü:** Joystick-Art, Neustart, Band zurückspulen (sonst Reset), welche
+**Menü:** Joystick-Art, Neustart, Band zurückspulen (sonst Reset),
+**Diskette wechseln** („Insert disk“: alle CPC-Disketten des Laufwerks; die
+gewählte wird in den Flash kopiert und eingelegt, ohne Neustart; im
+Link-Spiel nur, wenn beide sie haben, beide kopieren Stück für Stück im
+Gleichschritt), welche
 Taste auf Mitte + B liegt („Center + B: …“, bis zum Ende des Spiels; im
 Link-Spiel für beide; dauerhaft je Spiel in dessen Einstellungen im Starter,
-Mitte in der Spieleliste, außer im Link-Spiel: dort beginnt es mit RETURN) und jede Taste einmal drücken (RETURN, SPACE, ESC,
+Mitte in der Spieleliste, außer im Link-Spiel: dort beginnt es mit RETURN;
+dort merkt sich der Starter auch die Joystick-Art je Spiel) und jede Taste einmal drücken (RETURN, SPACE, ESC,
 COPY, DEL, SHIFT, CTRL, TAB, CAPS LOCK, F0–F9, 0–9, A–Z).
 
 ## Link-Spiel

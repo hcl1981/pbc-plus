@@ -4,7 +4,7 @@
  *                    Sinclair (keys 6-0), Cursor (5-8, 0) or QAOP (fire SPACE)
  *   B             -> fire
  *   A             -> SPACE
- *   CENTER + B    -> ENTER
+ *   CENTER + B    -> ENTER, or another key (menu, the game's options)
  *   CENTER + A    -> menu: joystick, machine, tape, any key (main.c)
  *
  * In link play the second player is the second Sinclair joystick (the
@@ -33,6 +33,7 @@ extern const char *const zx_joy_names[ZX_JOYS];
 typedef struct { const char *name; uint8_t k1, k2; } zx_menu_key_t;
 extern const zx_menu_key_t zx_keys_menu[];
 extern const int zx_key_count;
+extern int zx_center_b;                 /* the key on CENTER + B: index into zx_keys_menu */
 
 uint16_t zx_input_word(void);
 void zx_input_press(int index);

@@ -57,12 +57,35 @@ function(pbc_multi target)
     target_sources(${target} PRIVATE
         ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/pbc_loading.c
         ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/pbc_link.c
+        ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/pbc_cable.c
+        ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/pbc_battwarn.c
+        ${launcher}/battery.c
         ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/pbc_lockstep.c
         ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/usblink.c
         ${launcher}/gfx.c
         ${launcher}/assets.c)
     set_source_files_properties(${CMAKE_CURRENT_FUNCTION_LIST_DIR}/pbc_loading.c
         PROPERTIES INCLUDE_DIRECTORIES ${launcher})
+    # gfx.c here only draws loading screens and messages: small, not fast
     set_source_files_properties(${launcher}/gfx.c
-        PROPERTIES COMPILE_DEFINITIONS GFX_STRIP COMPILE_OPTIONS -O3)
+        PROPERTIES COMPILE_DEFINITIONS GFX_STRIP COMPILE_OPTIONS -Os)
+    # the battery warning reads the supply like the launcher (battery.c)
+    target_link_libraries(${target} hardware_adc)
+    # FatFs only runs while loading and saving, never in the emulation:
+    # small rather than fast (at -O3 it took 21 KB instead of 11.5 KB). The
+    # flash for all emulators together is short, the time is not.
+    # Likewise what only runs before and between the game: the menus, the
+    # copy into the ROM region, the settings, the loading screens.
+    get_target_property(srcs ${target} SOURCES)
+    foreach(src ${srcs})
+        if(src MATCHES "fatfs/ff\\.c$" OR src MATCHES "fatfs/ffunicode\\.c$" OR
+           src MATCHES "src/menu\\.c$" OR src MATCHES "src/rom_store\\.c$" OR
+           src MATCHES "src/settings\\.c$" OR src MATCHES "src/cart_store\\.c$")
+            set_source_files_properties(${src} PROPERTIES COMPILE_OPTIONS -Os)
+        endif()
+    endforeach()
+    foreach(src pbc_loading.c pbc_battwarn.c pbc_cable.c)
+        set_source_files_properties(${CMAKE_CURRENT_FUNCTION_LIST_DIR}/${src} PROPERTIES COMPILE_OPTIONS -Os)
+    endforeach()
+    set_source_files_properties(${launcher}/battery.c PROPERTIES COMPILE_OPTIONS -Os)
 endfunction()

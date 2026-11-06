@@ -33,6 +33,8 @@ enum {
 
 /* Call once per emulated frame. */
 uint8_t input_poll_gb(void);
+/* true: Game Boy A on PicoBoy A and B on B (the game's options in PBCemu) */
+void input_set_swap(bool swap);
 
 /* Menu navigation: returns the raw bits newly pressed since the last call,
  * with auto-repeat for the joystick. */

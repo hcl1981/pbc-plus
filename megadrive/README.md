@@ -67,6 +67,11 @@ Mitte wird erst nach 40 ms als C gemeldet. So wird aus „Mitte, kurz danach B�
 sicher START und kein versehentliches C. Solange Mitte gehalten wird, sind A und
 B für die Kombinationen reserviert: **C gleichzeitig mit A oder B geht nicht.**
 
+In PBCemu lässt sich die Verteilung je Spiel ändern: In den Einstellungen des
+Spiels (Mitte in der Spieleliste) legt die Zeile **B A Mitte** fest, welche
+der Tasten A, B, C auf PicoBoy-B, -A und -Mitte liegt (alle sechs
+Verteilungen). Die 40-ms-Wartezeit gilt dann für die Taste auf Mitte.
+
 Zurück zur Spieleliste geht es mit RESET.
 
 Mit `-DSHOW_FPS=1` gebaut, steht unter dem Bild z. B. `47fps 100% CPU99% Z13 V27 S47`:

@@ -1,5 +1,7 @@
 /* a26_video.c -- see a26_video.h */
 #include <string.h>
+#include "pbc_scanline.h"
+#include "pbc_battwarn.h"
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
 #include "hardware/sync.h"
@@ -8,6 +10,7 @@
 #include "display.h"
 #include "a26_video.h"
 #include "tia.h"
+#include "vectrex.h"
 
 static uint16_t pal565[128];            /* the TIA colours */
 
@@ -25,9 +28,10 @@ static int win_y0 = 26;                 /* first line shown: NTSC 26, PAL 42 */
 
 static uint8_t __aligned(4) ring[RING_N][LINE_MAX];
 static int16_t ring_y[RING_N];
-static uint8_t ring_h[RING_N];
+static uint16_t ring_h[RING_N];
 static bool ring_blank[RING_N];
 static bool ring_wide[RING_N];          /* 320 pixels (7800), else 160 */
+static uint16_t pal_vec[256];           /* the Vectrex: brightness -> a slightly blue white */
 static volatile uint32_t ring_head, ring_tail;
 
 static const int frame_h = WIN_H;
@@ -48,6 +52,8 @@ void a26_video_init(unsigned mode)
     (void)mode;                         /* one mode: 160 -> 240 */
     tia_make_palette(false);
     make_pal565();
+    for (int i = 0; i < 256; i++)       /* the phosphor: white with a touch of blue */
+        pal_vec[i] = PBC_RGB(i * 220 / 255, i * 235 / 255, i);
 }
 
 void a26_video_set_pal(bool pal)
@@ -96,8 +102,19 @@ void __not_in_flash_func(a26_video_line320)(int y, const uint8_t *px)
     lines_this_frame = true;
 }
 
+static bool vec_mode;                   /* the Vectrex: core 1 draws (vec_core1) */
+static volatile uint32_t vec_shown;     /* pictures it has sent */
+
+void a26_video_vectrex(void) { vec_mode = true; }
+
 bool a26_video_frame_drawn(void)
 {
+    if (vec_mode) {
+        static uint32_t seen;
+        bool d = vec_shown != seen;
+        seen = vec_shown;
+        return d;
+    }
     bool d = lines_this_frame;
     lines_this_frame = false;
     return d;
@@ -175,9 +192,83 @@ static void draw_status(void)
         pbc_display_text_centered(STATUS_Y, status_text, PBC_GREY, PBC_BLACK, 1);
 }
 
+/* The Vectrex: the picture is drawn here (vectrex_picture), as often as
+ * the panel takes it, and core 0 never waits. Only rows with light in them
+ * go out, and the rows that had light the last time (now black); most of a
+ * vector picture is black. */
+static void __not_in_flash_func(vec_core1)(void)
+{
+    static uint16_t __aligned(4) lbuf[2][PBC_LCD_W];
+    static bool lit[PBC_LCD_H], need[PBC_LCD_H];
+    bool scan = pbc_scanlines_on();
+    for (;;) {
+        if (pause_req) {
+            pause_ack = true;
+            while (pause_req)
+                __wfe();
+            pause_ack = false;
+            memset(lit, 1, sizeof lit);   /* a menu was drawn over everything */
+            status_dirty = true;
+            continue;
+        }
+        if (!vectrex_picture()) {
+            if (status_dirty)
+                draw_status();
+            __wfe();
+            continue;
+        }
+        pbc_battwarn_frame(0, 0, PBC_LCD_W, PBC_LCD_H);
+        bool batt = pbc_battwarn_rows();
+        for (int y = 0; y < PBC_LCD_H; y++) {
+            /* light: a value of 8 or more (below that the panel shows black) */
+            const uint32_t *w = (const uint32_t *)vectrex_row(y);
+            uint32_t any = 0;
+            for (int i = 0; i < PBC_LCD_W / 4; i++)
+                any |= w[i];
+            bool on = (any & 0xf8f8f8f8u) || (batt && y < 32);
+            need[y] = on || lit[y];
+            lit[y] = on;
+        }
+        bool status_hit = false;
+        int cur = 0;
+        for (int y = 0; y < PBC_LCD_H; ) {
+            if (!need[y]) {
+                y++;
+                continue;
+            }
+            int y1 = y;
+            while (y1 < PBC_LCD_H && need[y1])
+                y1++;
+            pbc_display_window(0, y, PBC_LCD_W, y1 - y);
+            pbc_display_begin();
+            for (; y < y1; y++) {
+                const uint8_t *px = vectrex_row(y);
+                uint16_t *d = lbuf[cur];
+                for (int i = 0; i < PBC_LCD_W; i++)
+                    d[i] = pal_vec[px[i]];
+                if (scan && (y & 1))
+                    pbc_scanline_dim(d, PBC_LCD_W);
+                pbc_battwarn_row(d, y, 0, PBC_LCD_W);
+                pbc_display_wait();
+                pbc_display_send(d, PBC_LCD_W);
+                cur ^= 1;
+                if (y >= STATUS_Y && y < STATUS_Y + 8)
+                    status_hit = true;
+            }
+            pbc_display_wait();
+            pbc_display_end();
+        }
+        if (status_dirty || (status_hit && status_text[0]))
+            draw_status();
+        vec_shown++;
+    }
+}
+
 void __not_in_flash_func(a26_video_core1_main)(void)
 {
     core1_running = true;
+    if (vec_mode)
+        vec_core1();
 
     bool open = false;                  /* a window is being written */
     int  next_y = 0, h = 0, y0 = 0;
@@ -226,11 +317,19 @@ void __not_in_flash_func(a26_video_core1_main)(void)
                     draw_status();
                 y0 = (PBC_LCD_H - h) / 2;
             }
+            if (y == 0)
+                pbc_battwarn_frame(0, y0, PBC_LCD_W, h);
             pbc_display_window(0, y0 + y, PBC_LCD_W, h - y);
             pbc_display_begin();
             open = true;
             next_y = y;
         }
+        static int8_t scan = -1;
+        if (scan < 0)
+            scan = pbc_scanlines_on();
+        if (scan && (y & 1))
+            pbc_scanline_dim(lbuf[cur], PBC_LCD_W);
+        pbc_battwarn_row(lbuf[cur], y0 + y, 0, PBC_LCD_W);
         pbc_display_wait();
         pbc_display_send(lbuf[cur], PBC_LCD_W);
         cur ^= 1;

@@ -96,6 +96,9 @@ Tasten; so geht das ohne Neustart. Die Wahl hält bis zum Ende des Spiels,
 beim nächsten Start gilt wieder die aus den Optionen. Im Link-Spiel hat
 jeder seine eigene.
 
+Darunter schaltet **„Joystick: port …“** den Joystick-Port um (nicht im
+Link-Spiel), ebenfalls bis zum Ende des Spiels.
+
 Zurück zur Spieleliste geht es mit RESET. Mit `-DSHOW_FPS=1` gebaut (in
 PBCemu: Option im Starter), stehen unter dem Bild gezeichnete Bilder pro
 Sekunde, Emulationstempo (100 % = 50 Bilder/s, PAL) und die Auslastung von
@@ -123,6 +126,27 @@ Alle Modi behalten das Seitenverhältnis.
 Kern 1 rechnet das Bild nach jedem Frame um und schickt es per DMA, während
 Kern 0 schon den nächsten emuliert. Weil Kern 1 schneller von oben liest, als
 der VIC neu zeichnet, reicht ein einziger Bildpuffer.
+
+## T64-Archive
+
+Eine `.t64` ist trotz des Namens kein Bandabbild, sondern ein Behälter des
+alten Emulators C64S: Programme, wie sie im Speicher liegen, mit einem
+Inhaltsverzeichnis davor. Der PicoBoy hängt sie wie eine Diskette als
+Laufwerk 8 ein (`core/rp2350/T64Drive.cpp`): `LOAD"*",8,1` holt das erste
+Programm, und ein Spiel, das weitere Teile nachlädt, findet sie im Archiv
+unter ihrem Namen; `LOAD"$",8` zeigt den Inhalt. Nur lesen; die bei vielen
+Archiven falsche Endadresse ersetzt der Abstand zum nächsten Programm. „True
+drive“ gilt für T64 nicht (die echte 1541 braucht eine Diskette). Auch ein LOAD
+vom **Band** (Gerät 1) kommt aus dem Archiv: Mit eingelegter T64 ist der
+KERNAL-Eintrag LOAD (`$FFD5`) eine Falle (`$F2 $30`, `core/CPUC64.cpp`); für
+Gerät 1 liefert sie ohne Namen die Datei nach der zuletzt geladenen, wie das
+Band, mit Namen die erste, deren Name so beginnt; alle anderen Geräte gehen
+weiter wie sonst. Spiele, die den Vektor `$0330` direkt anspringen, sehen das
+nicht; das BASIC der OpenROMs lehnt `LOAD"",1` selbst ab („NOT IMPLEMENTED“),
+Programme, die den KERNAL aufrufen, gehen auch dort. Am PC mit
+einem T64 aus den vier Dateien von Great Giana Sisters geprüft: Start und
+Nachladen der Highscores; das Band mit einem BASIC-Lader, der `LOAD"",1,1`
+den zweiten Teil holt und anspringt.
 
 ## ROMs: OpenROMs statt Commodore
 

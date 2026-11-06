@@ -1098,6 +1098,18 @@ void __not_in_flash_func(__gb_write)(struct gb_s *gb, uint_fast16_t addr, uint8_
 			 * The lower bits are overwritten later, and the two most
 			 * significant bits are unused. */
 			gb->hram_io[IO_JOYP] = val;
+#ifdef PEANUT_GB_SGB_HOOK
+			/* PBC: Super Game Boy packets and joypad IDs (gbc/src/main.c);
+			 * >= 0: the low nibble to read */
+			{
+				int id = PEANUT_GB_SGB_HOOK(gb, val);
+				if(id >= 0)
+				{
+					gb->hram_io[IO_JOYP] = (uint8_t)((val & 0xF0) | id);
+					return;
+				}
+			}
+#endif
 
 			/* Direction keys selected */
 			if((gb->hram_io[IO_JOYP] & 0x10) == 0)

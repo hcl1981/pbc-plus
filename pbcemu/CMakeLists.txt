@@ -14,7 +14,7 @@ endif()
 # Directory with the pbc_apps.h written by build.sh (emulator offsets).
 set(PBC_APPS_DIR "" CACHE PATH "Directory holding the generated pbc_apps.h")
 # Room the launcher has at the start of the flash; the emulators follow.
-set(PBC_LAUNCHER_SIZE "0x43000" CACHE STRING "Flash reserved for the launcher")
+set(PBC_LAUNCHER_SIZE "0x45000" CACHE STRING "Flash reserved for the launcher")
 
 include(pico_sdk_import.cmake)
 

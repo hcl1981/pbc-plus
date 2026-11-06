@@ -36,6 +36,9 @@
 
 #include "board.h"
 #include "pbc_launch.h"
+#if PBC_MULTI
+#include "pbc_cable.h"
+#endif
 #include "color565.h"
 #include "display.h"
 #include "input.h"
@@ -53,6 +56,10 @@
 #define ENABLE_LCD   1
 #define RGB555_TO_RGB444(c) (c)     /* the core keeps a 444 copy for HDMI; unused */
 #include "minigb_apu.h"
+/* Super Game Boy packets arrive through writes to the joypad register */
+struct gb_s;
+static int sgb_joyp(struct gb_s *gb, uint8_t val);
+#define PEANUT_GB_SGB_HOOK sgb_joyp
 #include "peanut_gb.h"
 
 /* ---- build-time configuration (see CMakeLists.txt) ---------------------- */
@@ -288,10 +295,36 @@ void gb_error(struct gb_s *g, const enum gb_error_e e, const uint16_t addr)
     (void)g; (void)e; (void)addr;
 }
 
-/* DMG games: one fixed, easy-to-read green palette for background and both
- * sprite palettes (peanut pixel: bits 4-5 = palette, bits 0-1 = shade). */
-static const uint32_t dmg_shades[4] = { 0xE0F8D0, 0x88C070, 0x346856, 0x081820 };
+/* DMG games: the palette chosen in the game's options (PBCemu), else the
+ * easy-to-read green one. Each has colours for the background and the two
+ * sprite palettes (peanut pixel: bits 4-5 = palette 0 OBJ0, 1 OBJ1, 2 BG;
+ * bits 0-1 = shade). Apart from the first two these are the colourings
+ * the Game Boy Color offers for old games at power-on (Pan Docs). The
+ * order and names are in pbcemu/src/ui.c. */
+#define DMG_PALETTES 8
+static const uint32_t dmg_palettes[DMG_PALETTES][3][4] = {
+    /* OBJ0, OBJ1, BG */
+    { { 0xE0F8D0, 0x88C070, 0x346856, 0x081820 }, { 0xE0F8D0, 0x88C070, 0x346856, 0x081820 },
+      { 0xE0F8D0, 0x88C070, 0x346856, 0x081820 } },                    /* green */
+    { { 0xFFFFFF, 0xA5A5A5, 0x525252, 0x000000 }, { 0xFFFFFF, 0xA5A5A5, 0x525252, 0x000000 },
+      { 0xFFFFFF, 0xA5A5A5, 0x525252, 0x000000 } },                    /* grey */
+    { { 0xFFFFFF, 0xFFAD63, 0x843100, 0x000000 }, { 0xFFFFFF, 0xFFAD63, 0x843100, 0x000000 },
+      { 0xFFFFFF, 0xFFAD63, 0x843100, 0x000000 } },                    /* brown */
+    { { 0xFFFFFF, 0xFF8584, 0x943A3A, 0x000000 }, { 0xFFFFFF, 0xFF8584, 0x943A3A, 0x000000 },
+      { 0xFFFFFF, 0xFF8584, 0x943A3A, 0x000000 } },                    /* red */
+    { { 0xFFFFFF, 0xFF8584, 0x943A3A, 0x000000 }, { 0xFFFFFF, 0xFF8584, 0x943A3A, 0x000000 },
+      { 0xFFFFFF, 0x65A49B, 0x0000FE, 0x000000 } },                    /* blue */
+    { { 0xFFFFFF, 0xFF8584, 0x943A3A, 0x000000 }, { 0xFFFFFF, 0xFFAD63, 0x843100, 0x000000 },
+      { 0xFFFFFF, 0x8C8CDE, 0x52528C, 0x000000 } },                    /* dark blue */
+    { { 0xFFFFA5, 0xFF9494, 0x9494FF, 0x000000 }, { 0xFFFFA5, 0xFF9494, 0x9494FF, 0x000000 },
+      { 0xFFFFA5, 0xFF9494, 0x9494FF, 0x000000 } },                    /* pastel */
+    { { 0x000000, 0x008484, 0xFFDE00, 0xFFFFFF }, { 0x000000, 0x008484, 0xFFDE00, 0xFFFFFF },
+      { 0x000000, 0x008484, 0xFFDE00, 0xFFFFFF } },                    /* inverted */
+};
 static uint16_t dmg_lut[64];
+static int dmg_palette;
+
+#include "sgb.h"
 
 /* CGB colour as fixed by the core (bits 10-14 red, 5-9 green, 0-4 blue)
  * -> panel word. */
@@ -301,8 +334,58 @@ static inline uint16_t cgb_to_panel(uint16_t c)
     return PBC_RGB(r << 3 | r >> 2, g << 3 | g >> 2, b << 3 | b >> 2);
 }
 
+/* ---- the link cable (PBCemu, the game's option "Link cable") ------------------
+ *
+ * The core calls cable_tx when the game starts a transfer and cable_rx when
+ * the byte would be through. If this game clocks (internal clock) the byte
+ * goes over the USB-C cable at once and the partner's comes back; if the
+ * partner's game clocks, its byte arrives in cable_answer (while this side
+ * polls the line, every scanline) and the waiting transfer ends with it. */
+#if PBC_MULTI
+static volatile bool cable_in_ready;
+static volatile uint8_t cable_in;
+static bool cable_out_ok;
+static uint8_t cable_out_reply;
+
+static uint8_t cable_answer(uint8_t in)
+{
+    /* only a game waiting for the partner's clock takes the byte */
+    if ((gb.hram_io[IO_SC] & 0x81) != 0x80)
+        return 0xff;
+    cable_in = in;
+    cable_in_ready = true;
+    return gb.hram_io[IO_SB];
+}
+
+static void cable_tx(struct gb_s *g, const uint8_t tx)
+{
+    if (g->hram_io[IO_SC] & SERIAL_SC_CLOCK_SRC)
+        cable_out_ok = pbc_cable_transfer(tx, &cable_out_reply);
+}
+
+static enum gb_serial_rx_ret_e cable_rx(struct gb_s *g, uint8_t *rx)
+{
+    if (g->hram_io[IO_SC] & SERIAL_SC_CLOCK_SRC) {
+        if (!cable_out_ok)
+            return GB_SERIAL_RX_NO_CONNECTION;
+        cable_out_ok = false;
+        *rx = cable_out_reply;
+        return GB_SERIAL_RX_SUCCESS;
+    }
+    pbc_cable_poll();
+    if (!cable_in_ready)
+        return GB_SERIAL_RX_NO_CONNECTION;
+    cable_in_ready = false;
+    *rx = cable_in;
+    return GB_SERIAL_RX_SUCCESS;
+}
+#endif
+
 void __not_in_flash_func(lcd_draw_line)(struct gb_s *g, const uint8_t *pixels, const uint_fast8_t line)
 {
+#if PBC_MULTI
+    pbc_cable_poll();                   /* the partner may be clocking a byte */
+#endif
     uint16_t *row = video_back() + line * GB_W;
     if (g->cgb.cgbMode) {
         /* Palettes can change between lines; convert only the entries that
@@ -319,6 +402,11 @@ void __not_in_flash_func(lcd_draw_line)(struct gb_s *g, const uint8_t *pixels, c
         valid = true;
         for (int x = 0; x < GB_W; x++)
             row[x] = lut[pixels[x] & 63];
+    } else if (sgb_colour) {
+        /* Super Game Boy: the colours of the cell's palette */
+        const uint8_t *attr = sgb_attr[line >> 3];
+        for (int x = 0; x < GB_W; x++)
+            row[x] = sgb_mask >= 2 ? (sgb_mask == 3 ? sgb_lut[0][0] : 0) : sgb_lut[attr[x >> 3]][pixels[x] & 3];
     } else {
         for (int x = 0; x < GB_W; x++)
             row[x] = dmg_lut[pixels[x] & 0x33];
@@ -402,13 +490,17 @@ static void __attribute__((noreturn)) emulation_loop(void)
 
         uint64_t frame_start = time_us_64();
         gb_run_frame(&gb);
+#if PBC_MULTI
+        pbc_cable_poll();               /* also with the screen off: no scanlines then */
+#endif
 
         audio_callback(NULL, stereo, n * 2 * sizeof stereo[0]);
         for (unsigned i = 0; i < n; i++)
             mono[i] = (int16_t)(((int32_t)stereo[2 * i] + stereo[2 * i + 1]) / 2);
         audio_pwm_push(mono, (int)n);
 
-        if (video_present())
+        /* Super Game Boy MASK_EN 1: the last picture stays while the game uploads */
+        if (!(sgb_on && sgb_mask == 1) && video_present())
             stat_drawn++;
         stat_emulated++;
         save_poll();
@@ -505,6 +597,10 @@ int main(void)
     if (!launch || !fs_mount())
         reboot_to_menu();
     strncpy(game, launch->game, sizeof game - 1);
+    /* the game's options: bits 0-2 the colours of an old Game Boy game,
+     * bit 3 A and B swapped */
+    dmg_palette = launch->key & 7;
+    input_set_swap(launch->key & 8);
 #else
     if (input_raw() & (IN_A | IN_B))
         usb_stick_mode();
@@ -535,13 +631,23 @@ int main(void)
     rom_len = rom_store_size();
     memcpy(bank0, rom, rom_len < sizeof bank0 ? rom_len : sizeof bank0);
 
-    for (int i = 0; i < 64; i++)
-        dmg_lut[i] = pbc_rgb24(dmg_shades[i & 3]);
+    for (int i = 0; i < 64; i++) {
+        int p = (i >> 4) & 3;
+        dmg_lut[i] = pbc_rgb24(dmg_palettes[dmg_palette][p < 3 ? p : 2][i & 3]);
+    }
 
     audio_init();
     if (gb_init(&gb, gb_rom_read, gb_cart_ram_read, gb_cart_ram_write, gb_error, NULL) != GB_INIT_NO_ERROR)
         fatal("Cannot start game:", "unsupported cartridge");
     gb_init_lcd(&gb, lcd_draw_line);
+#if PBC_MULTI
+    if (launch->key & 0x10) {           /* the game's option: link cable over USB-C */
+        pbc_cable_begin(cable_answer);
+        gb_init_serial(&gb, cable_tx, cable_rx);
+    }
+#endif
+    /* a Super Game Boy game with the palette on "Auto": its own colours */
+    sgb_on = dmg_palette == 0 && !gb.cgb.cgbMode && rom_len > 0x146 && rom[0x146] == 0x03;
     gb.direct.frame_skip = false;
 
     save_size = gb_get_save_size(&gb);

@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <strings.h>
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
@@ -250,17 +251,153 @@ static void link_idle(void)
     link_swap(0);
 }
 
+/* ---- changing disks ---------------------------------------------------------------
+ *
+ * For a disk game the menu starts with "Insert disk": the drive's MSX disks
+ * (CPC disks, which share the extension, left out), and the chosen one goes
+ * into drive A: at once (DSKCHG then says "changed"). In link play the
+ * chooser sends the hash of the file's name; both look for that file and
+ * swap the hash of its whole contents, and only if they match do both
+ * change -- the disks are written to, so equal names are not enough. */
+#define DISK_LIST_MAX 100
+#define LINK_DISK 0x0001u               /* with DONE: a disk change follows */
+
+static bool is_disk_game;
+static char disk_now[ROM_NAME_MAX];
+
+static uint32_t fold15(uint32_t h)
+{
+    uint32_t v = (h ^ h >> 15 ^ h >> 30) & 0x7fff;
+    return v ? v : 1;
+}
+
+static uint32_t name_hash(const char *name)
+{
+    return fold15(pbc_link_hash(PBC_LINK_HASH_START, name, strlen(name)));
+}
+
+static int disk_list(char (*files)[ROM_NAME_MAX], int max)
+{
+    static DIR dir;
+    static FILINFO fi;
+    static FIL f;
+    int n = 0;
+    if (f_opendir(&dir, "/") != FR_OK)
+        return 0;
+    while (n < max && f_readdir(&dir, &fi) == FR_OK && fi.fname[0]) {
+        if ((fi.fattrib & (AM_DIR | AM_HID | AM_SYS)) || fi.fname[0] == '.' ||
+            !ends_ci(fi.fname, ".dsk") || strlen(fi.fname) >= ROM_NAME_MAX)
+            continue;
+        char path[ROM_NAME_MAX + 2], head[8];
+        UINT got = 0;
+        snprintf(path, sizeof path, "/%s", fi.fname);
+        if (f_open(&f, path, FA_READ) != FR_OK)
+            continue;
+        f_read(&f, head, sizeof head, &got);
+        f_close(&f);
+        if (got == 8 && (memcmp(head, "MV - CPC", 8) == 0 || memcmp(head, "EXTENDED", 8) == 0))
+            continue;                   /* an Amstrad CPC disk */
+        strcpy(files[n++], fi.fname);
+    }
+    f_closedir(&dir);
+    for (int i = 1; i < n; i++)
+        for (int j = i; j > 0 && strcasecmp(files[j - 1], files[j]) > 0; j--) {
+            char t[ROM_NAME_MAX];
+            strcpy(t, files[j]);
+            strcpy(files[j], files[j - 1]);
+            strcpy(files[j - 1], t);
+        }
+    return n;
+}
+
+static uint32_t file_print(const char *name)
+{
+    static FIL f;
+    static uint8_t buf[512];
+    char path[ROM_NAME_MAX + 2];
+    UINT got;
+    snprintf(path, sizeof path, "/%s", name);
+    if (f_open(&f, path, FA_READ) != FR_OK)
+        return 0;
+    uint32_t h = PBC_LINK_HASH_START;
+    while (f_read(&f, buf, sizeof buf, &got) == FR_OK && got)
+        h = pbc_link_hash(h, buf, got);
+    f_close(&f);
+    return fold15(h);
+}
+
+/* `name`: the chooser's file; NULL on the partner */
+static const char *disk_change(const char *name)
+{
+    static char files[DISK_LIST_MAX][ROM_NAME_MAX];
+    static char shown[32];
+    const char *pick = name;
+    if (pbc_link_active()) {
+        uint16_t got = link_swap((uint16_t)(LINK_DONE | (name ? name_hash(name) : 0)));
+        if (!name) {
+            int n = disk_list(files, DISK_LIST_MAX);
+            for (int i = 0; i < n && !pick; i++)
+                if (name_hash(files[i]) == (got & 0x7fffu))
+                    pick = files[i];
+        }
+        uint16_t mine = pick ? (uint16_t)file_print(pick) : 0;
+        uint16_t other = link_swap((uint16_t)(LINK_DONE | mine)) & 0x7fff;
+        if (!pick || !mine || mine != other)
+            return "Partner has no such disk";
+    }
+    char path[ROM_NAME_MAX + 2];
+    snprintf(path, sizeof path, "/%s", pick);
+    f_close(&disk_file);
+    if (f_open(&disk_file, path, FA_READ | FA_WRITE) != FR_OK &&
+        f_open(&disk_file, path, FA_READ) != FR_OK)
+        return "Cannot open disk";
+    msx2_insert_disk(disk_io, (uint32_t)(f_size(&disk_file) / 512));
+    strcpy(disk_now, pick);
+    snprintf(shown, sizeof shown, "%s", pick);
+    char *dot = strrchr(shown, '.');
+    if (dot)
+        *dot = 0;
+    return shown;
+}
+
+static const char *disk_menu(void)
+{
+    static char files[DISK_LIST_MAX][ROM_NAME_MAX];
+    static const char *rows[DISK_LIST_MAX];
+    int n = disk_list(files, DISK_LIST_MAX), cur = -1;
+    for (int i = 0; i < n; i++) {
+        rows[i] = files[i];
+        if (strcmp(files[i], disk_now) == 0)
+            cur = i;
+    }
+    if (n == 0)
+        return NULL;
+    int k = menu_pick("Insert disk", rows, n, cur >= 0 ? cur : 0, cur, "in drive",
+                      pbc_link_active() ? link_idle : NULL);
+    return k >= 0 && k != cur ? files[k] : NULL;
+}
+
 static const char *menu(void)
 {
-    static const char *rows[64];
+    static const char *rows[65];
     static char names[64][16];
-    int n = 0;
-    for (int i = 0; i < msx_key_count && n < 64; i++) {
-        snprintf(names[n], sizeof names[n], "Key %s", msx_keys_menu[i].name);
-        rows[n] = names[n];
-        n++;
+    int n = 0, first = 0;
+    if (is_disk_game) {
+        rows[n++] = "Insert disk";
+        first = 1;
+    }
+    for (int i = 0; i < msx_key_count && i < 64; i++) {
+        snprintf(names[i], sizeof names[i], "Key %s", msx_keys_menu[i].name);
+        rows[n++] = names[i];
     }
     int sel = menu_pick("MSX", rows, n, 0, -1, NULL, pbc_link_active() ? link_idle : NULL);
+    if (first && sel == 0) {
+        const char *disk = disk_menu();
+        if (pbc_link_active())
+            link_swap((uint16_t)(LINK_DONE | (disk ? LINK_DISK : 0)));
+        return disk ? disk_change(disk) : NULL;
+    }
+    sel -= first;
     if (sel >= 0)
         msx_input_press(sel);           /* goes out with the next words */
     if (pbc_link_active())
@@ -272,8 +409,11 @@ static const char *menu(void)
 static const char *menu_wait(void)
 {
     pbc_loading_message("MSX", "Your partner is", "in the menu", NULL);
-    while (!(link_swap(0) & LINK_DONE))
+    uint16_t w;
+    while (!((w = link_swap(0)) & LINK_DONE))
         ;
+    if (w & LINK_DISK)                  /* the partner chose a disk: the same one, if here */
+        return disk_change(NULL);
     return NULL;
 }
 
@@ -416,6 +556,26 @@ static void __attribute__((noreturn)) fatal(const char *what, const char *detail
 }
 
 /* All that makes the game start differently on two devices. */
+/* Cartridges that exist only for the MSX2: the module tells nothing about
+ * it, so the file name decides (a dump's name always carries the title).
+ * The rest are MSX1 games, which the MSX2 would run too, but slower. */
+static bool msx2_title(const char *name)
+{
+    static const char *const titles[] = {
+        "metal gear", "space manbow", "vampire killer", "usas", "aleste 2",
+        "psycho world", "undeadline", "super laydock", "zanac ex", "golvellius ii",
+    };
+    char low[ROM_NAME_MAX];
+    size_t n = 0;
+    for (; name[n] && n < sizeof low - 1; n++)
+        low[n] = (char)tolower((unsigned char)name[n]);
+    low[n] = 0;
+    for (size_t i = 0; i < sizeof titles / sizeof titles[0]; i++)
+        if (strstr(low, titles[i]))
+            return true;
+    return false;
+}
+
 static uint32_t link_config(bool msx2, bool disk, const uint8_t *const *main_rom, const uint8_t *const *sub_rom)
 {
     uint32_t h = PBC_LINK_HASH_START ^ 7;
@@ -454,9 +614,12 @@ int main(void)
     strncpy(game, launch->game, sizeof game - 1);
 
     /* .mx2: an MSX2 cartridge, .dsk: an MSX2 disk (C-BIOS for MSX2 or the
-     * drive's system ROMs). Everything else runs on C-BIOS for MSX1. */
+     * drive's system ROMs); a .rom with the name of a known MSX2 cartridge
+     * too. Everything else runs on C-BIOS for MSX1. */
     bool disk = ends_ci(game, ".dsk");
-    bool msx2 = disk || ends_ci(game, ".mx2");
+    is_disk_game = disk;
+    snprintf(disk_now, sizeof disk_now, "%s", game);
+    bool msx2 = disk || ends_ci(game, ".mx2") || msx2_title(game);
     uint8_t *scratch = malloc(0x8000);
     if (!scratch)
         fatal("Out of memory", "for loading", NULL);

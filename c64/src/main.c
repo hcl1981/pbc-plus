@@ -5,7 +5,7 @@
  * Emulator core: Frodo4 (Christian Bauer) as ported in frank-c64 by
  * rh1tech, GPL-2.0-or-later, in its line-based mode. The platform layer is
  * the one from megadrive and nes:
- *   - disk images (.d64), programs (.prg) and cartridges (.crt) come over USB mass storage into
+ *   - disk images (.d64), archives (.t64), programs (.prg) and cartridges (.crt) come over USB mass storage into
  *     a flash FatFs partition (from PicoBoyGB); Frodo uses the image there
  *     directly, writes included (saved games), see flash_fs.c
  *   - no keyboard: after boot LOAD"*",8,1 is typed automatically (or the
@@ -109,7 +109,7 @@ static void fs_write_readme(void)
         return;
     f_puts("PBC C64 - Commodore 64 emulator for the PicoBoy Color Plus\r\n"
            "\r\n"
-           "Copy disk images (.d64), programs (.prg) or cartridges (.crt) to this\r\n"
+           "Copy disk images (.d64, .t64), programs (.prg) or cartridges (.crt) to this\r\n"
            "drive, then EJECT\r\n"
            "it. The PicoBoy restarts by itself and shows the game list. A game\r\n"
            "starts with LOAD\"*\",8,1 and RUN, typed automatically.\r\n"
@@ -277,10 +277,11 @@ static bool basic_idle(void)
            (pc >= OPENROMS_CURSOR_ENABLE && pc < OPENROMS_CURSOR_ENABLE_END);
 }
 
+/* .d64, or a .t64 archive: both are mounted as drive 8 */
 static bool is_disk(const char *path)
 {
     const char *ext = strrchr(path, '.');
-    return ext && strcasecmp(ext, ".d64") == 0;
+    return ext && (strcasecmp(ext, ".d64") == 0 || strcasecmp(ext, ".t64") == 0);
 }
 
 static void autostart_step(const char *path, const char *file)
@@ -345,9 +346,10 @@ static const char *start_status;
  * Center + A pauses the game and lists every disk image on the drive, as
  * the game list does; the one in drive 8 is marked. The chosen one goes in.
  * Above them a row for the key on Center + B: games and their cracktros
- * want SPACE, Y, N, RUN/STOP or a number one after the other. The choice
- * holds until the game ends; the game's options keep the one it starts
- * with. The list lives on the heap only while it is shown. */
+ * want SPACE, Y, N, RUN/STOP or a number one after the other; and one that
+ * swaps the joystick port (not in link play: both must agree on it). The
+ * choices hold until the game ends; the game's options keep the ones it
+ * starts with. The list lives on the heap only while it is shown. */
 #define DISK_LIST_MAX 200
 
 static char disk_now[ROM_NAME_MAX];     /* in drive 8, "" for none */
@@ -398,7 +400,7 @@ static const char *disk_menu(void)
     static FILINFO fi;
     char (*files)[ROM_NAME_MAX] = malloc(DISK_LIST_MAX * sizeof *files);
     char (*shown)[ROM_NAME_MAX] = malloc(DISK_LIST_MAX * sizeof *shown);
-    const char **rows = malloc((DISK_LIST_MAX + 1) * sizeof *rows);
+    const char **rows = malloc((DISK_LIST_MAX + 2) * sizeof *rows);
     int n = 0;
     if (files && shown && rows && f_opendir(&dir, "/") == FR_OK) {
         while (n < DISK_LIST_MAX && f_readdir(&dir, &fi) == FR_OK && fi.fname[0]) {
@@ -411,16 +413,21 @@ static const char *disk_menu(void)
     }
     const char *status = NULL;
     static const char *const key_names[] = { C64_KEYS(C64_KEY_NAME) };
-    static char key_row[24];
+    static char key_row[24], port_row[24];
     if (!files || !shown || !rows) {
         status = "No memory";
         if (pbc_link_active())
             link_swap(LINK_DISK_DONE);
     } else {
         qsort(files, (size_t)n, sizeof *files, by_name);
-        /* row 0: the key on Center + B, then the disks */
+        /* row 0: the key on Center + B, row 1 the port, then the disks */
         snprintf(key_row, sizeof key_row, "Center + B: %s", key_names[c64_input_key()]);
         rows[0] = key_row;
+        int top = 1;
+        if (!pbc_link_active()) {
+            snprintf(port_row, sizeof port_row, "Joystick: port %d", c64_input_port());
+            rows[top++] = port_row;
+        }
         int cur = -1;
         for (int i = 0; i < n; i++) {
             if (strcmp(files[i], disk_now) == 0)
@@ -429,11 +436,16 @@ static const char *disk_menu(void)
             char *dot = strrchr(shown[i], '.');
             if (dot)
                 *dot = 0;
-            rows[i + 1] = shown[i];
+            rows[i + top] = shown[i];
         }
         c64_video_wait_idle();
         void (*idle)(void) = pbc_link_active() ? link_idle : NULL;
-        int sel = menu_pick_disk("Insert disk", rows, n + 1, cur >= 0 ? cur + 1 : (n ? 1 : 0), idle);
+        int sel = menu_pick_disk("Insert disk", rows, n + top, cur >= 0 ? cur + top : (n ? top : 0), idle);
+        if (sel == 1 && top == 2) {
+            c64_input_set_port(c64_input_port() == 1 ? 2 : 1);
+            snprintf(port_row, sizeof port_row, "Joystick: port %d", c64_input_port());
+            status = port_row;
+        }
         if (sel == 0) {
             int k = menu_pick_key("Center + B", key_names, C64_KEY_COUNT, c64_input_key(), idle);
             if (k >= 0) {
@@ -442,7 +454,7 @@ static const char *disk_menu(void)
                 status = key_row;
             }
         }
-        sel--;                          /* index into files; -1: back or the key */
+        sel = sel >= top ? sel - top : -1;  /* index into files; -1: back, the key or the port */
         pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
         if (sel >= 0 && sel != cur) {
             char path[ROM_NAME_MAX + 2];

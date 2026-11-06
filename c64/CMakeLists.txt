@@ -68,6 +68,7 @@ add_executable(pbc_c64
     ${FRODO}/rp2350/ROM_data.cpp
     ${FRODO}/rp2350/SID_rp2350.cpp
     ${FRODO}/rp2350/Tape_stub.cpp
+    ${FRODO}/rp2350/T64Drive.cpp        # small: only for loading (-Os below)
     ${FRODO}/rp2350/fatfs_stdio.c
 
     # Frodo4 core, line-based (the same set frank-c64 builds)
@@ -82,6 +83,8 @@ add_executable(pbc_c64
     ${FRODO}/CPU1541.cpp
     ${FRODO}/VIA.cpp
 )
+
+set_source_files_properties(${FRODO}/rp2350/T64Drive.cpp PROPERTIES COMPILE_OPTIONS -Os)
 
 target_include_directories(pbc_c64 PRIVATE
     src                 # tusb_config.h

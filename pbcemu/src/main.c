@@ -18,6 +18,9 @@
 #include "pico/unique_id.h"
 #include "hardware/sync.h"
 #include "hardware/watchdog.h"
+#ifdef PBC_AUTOTEST
+#include "pico/bootrom.h"
+#endif
 #include "hardware/structs/watchdog.h"
 #include "hardware/structs/powman.h"
 #include "hardware/structs/scb.h"
@@ -98,9 +101,16 @@ static void write_launch(int device, const char *game)
         l.flags |= (ui_link_player == 1 ? PBC_LAUNCH_LINK1 : PBC_LAUNCH_LINK2) |
                    (ui_link_master ? PBC_LAUNCH_LINK_MASTER : 0);
     l.video = (uint8_t)prefs_video(device);
+    if (prefs_scanlines(device))
+        l.flags |= PBC_LAUNCH_SCANLINES;
     l.brightness = prefs_backlight();
-    if (devices[device].app == APP_CPC && !ui_link_player) {
-        settings_load();                /* the key on Center + B; in link play RETURN for both */
+#ifdef PBC_AUTOTEST
+    l.flags |= PBC_LAUNCH_STATS;        /* the test photos show the speed */
+#endif
+    if (devices[device].app != APP_C64) {
+        /* the game's own options byte (pbc_launch.h); the C64 reads its
+         * settings itself. In link play CPC, ZX and Atari ignore it. */
+        settings_load();
         l.key = (uint8_t)settings_key_raw(game);
     }
     snprintf(l.game, sizeof l.game, "%s", game);
@@ -165,7 +175,8 @@ static void fs_write_readme(void)
            "  Atari 7800       .a78\r\n"
            "  ColecoVision     .col .rom .bin  (coleco.rom here: the BIOS)\r\n"
            "  ZX Spectrum      .tap .tzx .z80 .sna\r\n"
-           "  Commodore 64     .d64 .prg\r\n"
+           "  Commodore 64     .d64 .t64 .prg .crt\r\n"
+           "  Vectrex          .vec\r\n"
            "  NES              .nes   (Game Genie codes: <game>.cht, one per line)\r\n"
            "  SG-1000          .sg\r\n"
            "  MSX              .rom .mx1   (MSX1 cartridges)\r\n"
@@ -283,6 +294,12 @@ int main(void)
     if (watchdog_hw->scratch[0] == PBC_JUMP_MAGIC) {
         uint32_t offset = watchdog_hw->scratch[1];
         watchdog_hw->scratch[0] = 0;
+#ifdef PBC_AUTOTEST
+        /* test build: back to BOOTSEL after a while (watchdog, scratch[3]) */
+        watchdog_hw->scratch[3] = 0xB007B007u;
+        watchdog_hw->scratch[5] = watchdog_hw->scratch[6] = watchdog_hw->scratch[7] = 0;
+        watchdog_enable(PBC_AUTOTEST_MS, false);
+#endif
         if (app_valid(offset))
             jump_to(offset);
     }
@@ -306,6 +323,31 @@ int main(void)
     sound_on();                     /* ramps the speaker up while still dark */
     pbc_display_init();             /* backlight off until the first picture */
     gfx_init();
+#ifdef PBC_AUTOTEST
+    if (watchdog_hw->scratch[3] == 0xB007B007u) {   /* the game's markers on screen */
+        watchdog_hw->scratch[3] = 0;
+        char s[3][40];
+        snprintf(s[0], 40, "A %08lx", (unsigned long)watchdog_hw->scratch[5]);
+        snprintf(s[1], 40, "B %08lx", (unsigned long)watchdog_hw->scratch[6]);
+        snprintf(s[2], 40, "C %08lx", (unsigned long)watchdog_hw->scratch[7]);
+        gfx_background(0, 0);
+        for (int i = 0; i < 3; i++)
+            gfx_text(&font_head, 20, 60 + 50 * i, s[i], 0xffffff, 255);
+        gfx_present();
+        pbc_display_backlight(200);
+        static uint32_t keep[FLASH_PAGE_SIZE / 4];  /* for picotool save (0xFFB000) */
+        memset(keep, 0xFF, sizeof keep);
+        keep[0] = 0x7E577E57u;
+        for (int i = 0; i < 3; i++)
+            keep[1 + i] = watchdog_hw->scratch[5 + i];
+        uint32_t irq = save_and_disable_interrupts();
+        flash_range_erase(0xFFB000u, FLASH_SECTOR_SIZE);
+        flash_range_program(0xFFB000u, (const uint8_t *)keep, FLASH_PAGE_SIZE);
+        restore_interrupts(irq);
+        busy_wait_ms(2000);
+        reset_usb_boot(0, 0);
+    }
+#endif
 
     unexpected_reset_report(reset);
     if ((reset & POWMAN_CHIP_RESET_HAD_POR_BITS) && (input_raw() & (IN_A | IN_B)))
@@ -331,6 +373,20 @@ int main(void)
         id = (id ^ uid.id[i]) * 16777619u;
     lobby_begin(id);
 
+#ifdef PBC_AUTOTEST
+    {                                   /* test build: start the game at once */
+        char (*names)[GAME_NAME_MAX];
+        int n = games_list(PBC_AUTOTEST, &names);
+        device = PBC_AUTOTEST;
+        if (n > PBC_AUTOTEST_GAME) {
+            strcpy(game, names[PBC_AUTOTEST_GAME]);
+            lobby_end();
+            write_launch(device, game);
+            fs_unmount();
+            launch(app_offset(devices[device].app));
+        }
+    }
+#endif
     for (;;) {
         if (ui_run(&device, game) == UI_USB) {
             lobby_end();

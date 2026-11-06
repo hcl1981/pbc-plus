@@ -51,12 +51,14 @@ neu.
 | Joystick | Joystick (Kempston, Sinclair, Cursor oder QAOP, siehe Menü) |
 | B | Feuer |
 | A | SPACE |
-| Mitte + B | ENTER |
+| Mitte + B | ENTER (andere Taste: Menü oder Einstellungen des Spiels im Starter) |
 | Mitte + A | Menü |
 
 **Menü:** Joystick-Art (Kempston an Port 1Fh, Sinclair = Tasten 6–0, Cursor
 = 5–8 und 0, QAOP mit SPACE als Feuer), Neustart als 48K oder 128K, Band
-zurückspulen (bei Snapshots: Reset) und jede Taste einmal drücken (ENTER,
+zurückspulen (bei Snapshots: Reset), welche Taste auf Mitte + B liegt
+(„Center + B: …“; dauerhaft je Spiel in dessen Einstellungen im Starter,
+außer im Link-Spiel) und jede Taste einmal drücken (ENTER,
 SPACE, BREAK, DELETE, CAPS SHIFT, SYMBOL SHIFT, 0–9, A–Z). Die Wahl gilt bis
 zum Verlassen des Spiels.
 

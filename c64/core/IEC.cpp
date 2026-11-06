@@ -86,11 +86,14 @@ Drive *IEC::create_drive(unsigned num, const std::string & path)
 		return nullptr;
 
 #ifdef FRODO_RP2350
-	// On RP2350, only disk images are supported (via FAT filesystem)
+	// On RP2350 disk images and .t64 archives (rp2350/T64Drive.cpp)
 	int type;
 	if (IsMountableFile(path, type)) {
 		if (type == FILE_DISK_IMAGE) {
 			return new ImageDrive(this, path);
+		}
+		if (type == FILE_ARCH) {
+			return new ArchDrive(this, path);
 		}
 	}
 	the_c64->ShowNotification("Unsupported file type");

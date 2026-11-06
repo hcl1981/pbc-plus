@@ -149,8 +149,4 @@ bool CreateTapeImageFile(const std::string &path)
     return false;  // No tape support yet
 }
 
-// IsArchFile stub - required by IEC.cpp (for T64 archives)
-bool IsArchFile(const std::string &path, const uint8_t *header, long size)
-{
-    return false;  // No T64 archive support yet
-}
+// IsArchFile: rp2350/T64Drive.cpp

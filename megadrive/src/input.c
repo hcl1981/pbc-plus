@@ -32,6 +32,24 @@ uint32_t input_raw(void)
     return r;
 }
 
+/* Pad bits of the Mega Drive buttons on PicoBoy B, A and CENTER (A is bit
+ * 6, B bit 4, C bit 5). The default puts A on B: on this small device B is
+ * the easier button. */
+static uint8_t on_b = 6, on_a = 4, on_c = 5;
+
+void input_set_layout(int layout)
+{
+    /* the Mega Drive buttons on B, A, CENTER; as pbcemu/src/ui.c */
+    static const char layouts[6][3] = { "ABC", "BAC", "ACB", "CAB", "BCA", "CBA" };
+    const char *l = layouts[(unsigned)layout < 6 ? layout : 0];
+    uint8_t bit[3];
+    for (int i = 0; i < 3; i++)
+        bit[i] = l[i] == 'A' ? 6 : l[i] == 'B' ? 4 : 5;
+    on_b = bit[0];
+    on_a = bit[1];
+    on_c = bit[2];
+}
+
 genesis_input_t input_poll_genesis(void)
 {
     static uint64_t center_since;
@@ -52,14 +70,13 @@ genesis_input_t input_poll_genesis(void)
             combo_latched = true;
             if (r & IN_B) g.pad &= ~(1u << 7);   /* START  */
         } else if (!combo_latched && now - center_since >= C_GRACE_US) {
-            g.pad &= ~(1u << 5);                 /* C */
+            g.pad &= ~(1u << on_c);              /* C */
         }
     } else {
         center_since = 0;
         combo_latched = false;
-        /* A on B: on this small device B is the easier button */
-        if (r & IN_B) g.pad &= ~(1u << 6);   /* A */
-        if (r & IN_A) g.pad &= ~(1u << 4);   /* B */
+        if (r & IN_B) g.pad &= ~(1u << on_b);   /* A */
+        if (r & IN_A) g.pad &= ~(1u << on_a);   /* B */
     }
     return g;
 }

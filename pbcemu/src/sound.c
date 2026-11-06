@@ -12,7 +12,8 @@
 #define TICK_US  45                     /* 22222 samples a second */
 #define RATE     (1000000 / TICK_US)
 #define RAMP     (RATE / 100)           /* 10 ms to the middle and back */
-#define BUF_N    (10000 + 2 * RAMP + 1) /* 450 ms of bell */
+#define BELL_N   (RATE * 13 / 10)       /* 1.3 s of ringing glass */
+#define BUF_N    (BELL_N + 2 * RAMP + 1)
 
 static uint16_t buf[BUF_N];
 static uint slice;
@@ -104,7 +105,7 @@ static int synth(const partial_t *p, int np, int n, int gain, int from)
     for (int i = 0; i < RAMP; i++)
         buf[i] = (uint16_t)ease(from, MID, i, RAMP);
     uint16_t *out = buf + RAMP;
-    uint32_t ph[3] = { 0 }, inc[3], env[3], dec[3];   /* env, dec: 16.16 */
+    uint32_t ph[4] = { 0 }, inc[4], env[4], dec[4];   /* env, dec: 16.16 */
     for (int k = 0; k < np; k++) {
         inc[k] = (uint32_t)((uint64_t)p[k].hz * 4294967296ull / RATE);
         env[k] = 65536;
@@ -141,9 +142,15 @@ void sound_click(void)
 
 void sound_bell(void)
 {
-    static const partial_t p[] = { { 1319, 16000, 120 }, { 1976, 9600, 90 }, { 2637, 5600, 50 } };
+    /* Ringing glass: C7 and a second tone 3 Hz above it, so that it
+     * shimmers as a struck wine glass does; the glass's own overtone at 2.32
+     * times, shorter; and a bright "tink" at 4.25 times that is gone at once.
+     * The overtones are not whole multiples: that makes it glass, not a
+     * chord. */
+    static const partial_t p[] = { { 2093, 14000, 900 }, { 2096, 6000, 900 },
+                                   { 4856, 6000, 300 }, { 8895, 3500, 60 } };
     if (!up)
         return;
     int from = level_now();
-    play(synth(p, 3, 10000, 36, from));
+    play(synth(p, 4, BELL_N, 36, from));
 }

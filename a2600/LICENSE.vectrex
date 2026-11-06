@@ -1,0 +1,16 @@
+Vectrex System ROM (core/vectrex_bios.h)
+
+The 8 KB System ROM of the GCE Vectrex (1982, with the built-in game Mine
+Storm) is (c) General Consumer Electronics / Milton Bradley. Smith
+Engineering, which held the rights to the Vectrex, gave permission on
+27 October 1992 for the original Vectrex ROMs, manuals and other original
+material to be copied and distributed freely for non-commercial purposes.
+This is a permission, not a release into the public domain; the copyright
+stays with its owner.
+
+The ROM is built in here as the widely used emulator vecx (libretro) builds
+it in, from the same data (MD5 ab082fa8c8e632dd68589a8c7741388f). It is not
+covered by this project's licence. Should the rights holder object, it is
+removed.
+
+Only for non-commercial use.

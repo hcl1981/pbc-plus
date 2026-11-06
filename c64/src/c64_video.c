@@ -1,5 +1,7 @@
 /* c64_video.c -- see c64_video.h */
 #include <string.h>
+#include "pbc_scanline.h"
+#include "pbc_battwarn.h"
 #include "pico/stdlib.h"
 #include "hardware/sync.h"
 #include "pico/multicore.h"
@@ -143,11 +145,18 @@ void __not_in_flash_func(c64_video_core1_main)(void)
             continue;
         }
         __dmb();
+        pbc_battwarn_frame(0, out_y, OUT_W, out_h);
         pbc_display_window(0, out_y, OUT_W, out_h);
         pbc_display_begin();
+        static int8_t scan = -1;
+        if (scan < 0)
+            scan = pbc_scanlines_on();
         int b = 0;
         for (int y = 0; y < out_h; y++) {
             convert_row(y, rowbuf[b]);  /* the DMA sends the other buffer meanwhile */
+            if (scan && (y & 1))
+                pbc_scanline_dim(rowbuf[b], OUT_W);
+            pbc_battwarn_row(rowbuf[b], out_y + y, 0, OUT_W);
             pbc_display_wait();
             pbc_display_send(rowbuf[b], OUT_W);
             b ^= 1;

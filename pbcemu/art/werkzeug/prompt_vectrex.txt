@@ -1,0 +1,11 @@
+Create one illustration of a Vectrex vector video game console with its controller, for an icon set.
+
+The two attached images show the exact style the icon set uses (ZX Spectrum and earlier consoles): copy that style precisely – modern flat vector illustration with subtle shading, like a premium app icon set, NO black outlines, clean shapes, soft gradients.
+
+Requirements:
+- Front view, slightly from above (about 20 degrees), facing the viewer straight on. Light from the upper left.
+- The console: a tall black upright cabinet with a built-in screen (portrait, taller than wide) in its front; the screen dark, showing a few thin glowing white vector lines (a small triangular space ship and some angular outlines). Below the screen a small speaker grille. Slim and tall, like a tiny arcade monitor.
+- The controller: a wide, flat black controller lying in front of the console at the right: a small short joystick on the left and four round buttons in a row on the right. NO cable at all.
+- Background: one single solid flat pure magenta colour (#FF00FF) everywhere, no gradient, no vignette, no floor, no shadow at all (the shadow is added later).
+- Objects centered, generous empty magenta space around them, nothing touching the image border.
+- No text, no labels, no logos, no brand names anywhere.

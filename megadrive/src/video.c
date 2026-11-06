@@ -1,6 +1,8 @@
 /* video.c -- palette, scaler and panel output (see video.h). */
 #include <string.h>
 #include <stdio.h>
+#include "pbc_scanline.h"
+#include "pbc_battwarn.h"
 #include "pico/stdlib.h"
 #include "hardware/sync.h"
 #include "board.h"
@@ -215,6 +217,7 @@ void __not_in_flash_func(video_service)(void)
         frame_out_h = out_h;
         next_row = 0;
         pending = false;
+        pbc_battwarn_frame(0, out_y, OUT_W, frame_out_h);
         pbc_display_window(0, out_y, OUT_W, frame_out_h);
         pbc_display_begin();
     }
@@ -239,6 +242,12 @@ void __not_in_flash_func(video_service)(void)
         if (yb[next_row] >= lines_ready)
             return;
         convert_row(next_row, rowbuf[pbuf]);
+        static int8_t scan = -1;
+        if (scan < 0)
+            scan = pbc_scanlines_on();
+        if (scan && (next_row & 1))
+            pbc_scanline_dim(rowbuf[pbuf], OUT_W);
+        pbc_battwarn_row(rowbuf[pbuf], out_y + next_row, 0, OUT_W);
         pending = true;
     }
 }

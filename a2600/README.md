@@ -97,6 +97,36 @@ XM und YM2151 (z. B. 1942), die Zeitabläufe von MARIA innerhalb der Zeile.
 | Center + A | SELECT |
 | Center + Runter | PAUSE |
 
+## Vectrex
+
+`.vec`-Module laufen auf einem nachgebildeten **GCE Vectrex** (`core/vectrex.c`,
+für dieses Gerät geschrieben): der Motorola 6809 mit allen Befehlen und
+Adressierungsarten, der VIA 6522 (Timer 1 mit PB7, Timer 2, Schieberegister
+auf CB2, CA2/CB2), die Analogtechnik, die den Strahl führt (DAC an Port A,
+Multiplexer an Port B, X/Y-Integratoren mit RAMP, ZERO und BLANK,
+Helligkeit, der Joystick-Vergleicher), und der AY-3-8910 hinter Port A (aus
+`../msx`). Der Strahl wird Takt für Takt verfolgt (ruhige Abschnitte, in
+denen kein Timer abläuft und der Strahl geradeaus läuft, in einem Schritt);
+jede beleuchtete Strecke wird eine Linie. Kern 0 rechnet ein Bild (30000
+Takte, 50 Hz) und gibt die Linien an Kern 1, der sie in ein Helligkeitsbild
+über das ganze Display zeichnet (240 × 280, hochkant wie der Vectrex), das
+je Bild auf die Hälfte nachglüht, mit leichtem Leuchten um den Strahl. Zum
+Display gehen nur Zeilen mit Licht und die, die gerade dunkel wurden.
+Modul und System-ROM liegen im RAM. Das System-ROM mit Mine Storm ist
+eingebaut wie bei vecx (`LICENSE.vectrex`).
+
+| PicoBoy | Vectrex |
+|---|---|
+| Joystick | Joystick (am Anschlag) |
+| B | Knopf 4 |
+| A | Knopf 3 |
+| Mitte + B | Knopf 2 |
+| Mitte + A | Knopf 1 |
+
+Am PC geprüft: Startbild, Mine Storm, Scramble, Berzerk, Star Castle,
+Spike; auf dem Gerät volle Geschwindigkeit (50 Bilder/s). Kein Link-Spiel,
+keine Farbfolien.
+
 ## Tasten
 
 | PicoBoy | Atari 2600 |
@@ -110,6 +140,11 @@ XM und YM2151 (z. B. 1942), die Zeitabläufe von MARIA innerhalb der Zeile.
 
 Im Link-Spiel hat Spieler 1 den linken, Spieler 2 den rechten Joystick; die
 Konsolenschalter können beide drücken.
+
+Die Schwierigkeitsschalter (links, rechts: A oder B) und beim 2600 Farbe
+oder Schwarzweiß stellt man je Spiel in dessen Einstellungen im Starter
+(Mitte in der Spieleliste); Vorgabe B, B, Farbe. Im Link-Spiel gelten die
+Vorgaben.
 
 ## Aufbau
 

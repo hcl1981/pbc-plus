@@ -25,6 +25,8 @@ uint32_t input_raw(void);
 /* Call once per emulated frame. Fills the pad bits (INPUT_UP ... BUTTON1 of
  * SMS Plus) and reports whether START/PAUSE is held. */
 int input_poll_sms(bool *start);
+/* true: button 2 on PicoBoy B, 1 on A (the game's options in PBCemu) */
+void input_set_swap(bool swap);
 
 /* Menu navigation: returns the raw bits newly pressed since the last call,
  * with auto-repeat for the joystick. */

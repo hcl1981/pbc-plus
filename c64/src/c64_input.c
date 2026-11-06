@@ -42,6 +42,11 @@ int c64_input_key(void)
     return key;
 }
 
+int c64_input_port(void)
+{
+    return port;
+}
+
 bool c64_input_disk_change(void)
 {
     bool d = disk_change;

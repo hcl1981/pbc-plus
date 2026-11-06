@@ -159,8 +159,9 @@ static const char *start(void)
 
 /* ---- the in-game menu (Center + A) ------------------------------------------------ */
 
-enum { M_JOY = 0, M_RESTART = CPC_JOYS, M_REWIND, M_CENTER_B, M_KEYS,
-       M_SET_CENTER_B = M_KEYS + 64 };   /* + key index: the choice for Center + B */
+enum { M_JOY = 0, M_RESTART = CPC_JOYS, M_REWIND, M_DISK, M_CENTER_B, M_KEYS,
+       M_SET_CENTER_B = M_KEYS + 64,    /* + key index: the choice for Center + B */
+       M_DISK_DO = M_SET_CENTER_B + 64 };   /* a disk was chosen: its name follows */
 
 #define LINK_DONE 0x8000u               /* with the choice + 1 in bits 0..6 */
 
@@ -174,6 +175,131 @@ static uint16_t link_swap(uint16_t mine)
 static void link_idle(void)
 {
     link_swap(0);
+}
+
+/* ---- changing disks ---------------------------------------------------------------
+ *
+ * "Insert disk" lists the drive's CPC disks; the chosen one is copied into
+ * the ROM region (the disk the game reads, in flash) and goes into the
+ * drive without a restart. In link play the chooser's device sends the
+ * hash of the file's name, both look for that file and swap the hash of
+ * its start and size; only if they match do both copy it -- piece by piece,
+ * a link frame after each, so neither waits long for the other. */
+#define DISK_LIST_MAX 100
+
+static uint32_t fold15(uint32_t h)
+{
+    uint32_t v = (h ^ h >> 15 ^ h >> 30) & 0x7fff;
+    return v ? v : 1;
+}
+
+static void disk_progress(uint32_t done, uint32_t total)
+{
+    menu_progress(done, total);
+    if (pbc_link_active())
+        link_swap(0);
+}
+
+/* the disks on the drive (mounted), sorted; returns how many */
+static int disk_list(char (*files)[ROM_NAME_MAX], int max)
+{
+    static DIR dir;
+    static FILINFO fi;
+    int n = 0;
+    if (f_opendir(&dir, "/") != FR_OK)
+        return 0;
+    while (n < max && f_readdir(&dir, &fi) == FR_OK && fi.fname[0]) {
+        if ((fi.fattrib & (AM_DIR | AM_HID | AM_SYS)) || fi.fname[0] == '.' ||
+            !ends_ci(fi.fname, ".dsk") || strlen(fi.fname) >= ROM_NAME_MAX)
+            continue;
+        strcpy(files[n++], fi.fname);
+    }
+    f_closedir(&dir);
+    for (int i = 1; i < n; i++)         /* by name */
+        for (int j = i; j > 0 && strcasecmp(files[j - 1], files[j]) > 0; j--) {
+            char t[ROM_NAME_MAX];
+            strcpy(t, files[j]);
+            strcpy(files[j], files[j - 1]);
+            strcpy(files[j - 1], t);
+        }
+    return n;
+}
+
+/* what both compare: the file's size and its first 4 KB */
+static uint32_t disk_print(const char *name)
+{
+    static FIL f;
+    static uint8_t buf[4096];
+    char path[ROM_NAME_MAX + 2];
+    UINT got = 0;
+    snprintf(path, sizeof path, "/%s", name);
+    if (f_open(&f, path, FA_READ) != FR_OK)
+        return 0;
+    uint32_t size = (uint32_t)f_size(&f);
+    f_read(&f, buf, sizeof buf, &got);
+    f_close(&f);
+    return fold15(pbc_link_hash(pbc_link_hash(PBC_LINK_HASH_START, &size, 4), buf, got));
+}
+
+/* `name`: the chooser's file; NULL on the partner, who gets the name's
+ * hash over the link. Returns the status line. */
+static const char *disk_change(const char *name)
+{
+    static char files[DISK_LIST_MAX][ROM_NAME_MAX];
+    static char shown[32];
+    const char *pick = name;
+    if (pbc_link_active()) {
+        uint32_t want = name ? fold15(pbc_link_hash(PBC_LINK_HASH_START, name, strlen(name))) : 0;
+        uint16_t got = link_swap((uint16_t)(LINK_DONE | want));
+        if (!name) {                    /* the partner: find the chooser's file */
+            want = got & 0x7fff;
+            int n = disk_list(files, DISK_LIST_MAX);
+            for (int i = 0; i < n && !pick; i++)
+                if (fold15(pbc_link_hash(PBC_LINK_HASH_START, files[i], strlen(files[i]))) == want)
+                    pick = files[i];
+        }
+        uint16_t mine = pick ? (uint16_t)disk_print(pick) : 0;
+        uint16_t other = link_swap((uint16_t)(LINK_DONE | mine)) & 0x7fff;
+        if (!pick || !mine || mine != other)
+            return "Partner has no such disk";
+    }
+    static uint8_t *scratch;
+    if (!scratch)
+        scratch = malloc(0x4000);
+    if (!scratch)
+        return "Out of memory";
+    menu_progress_begin(pick);
+    rom_store_live = true;
+    const char *err = rom_store_program(pick, scratch, disk_progress);
+    rom_store_live = false;
+    if (err)
+        return err;
+    if (!cpc_insert_disk(rom_store_data(), rom_store_size()))
+        return "Not a CPC disk";
+    snprintf(shown, sizeof shown, "%s", pick);
+    char *dot = strrchr(shown, '.');
+    if (dot)
+        *dot = 0;
+    return shown;
+}
+
+/* the chooser: the list, then the change; NULL if nothing was chosen */
+static const char *disk_menu(void)
+{
+    static char files[DISK_LIST_MAX][ROM_NAME_MAX];
+    static const char *rows[DISK_LIST_MAX];
+    int n = disk_list(files, DISK_LIST_MAX);
+    if (n == 0)
+        return NULL;
+    int cur = -1;
+    for (int i = 0; i < n; i++) {
+        rows[i] = files[i];
+        if (strcmp(files[i], rom_store_current() ? rom_store_current() : "") == 0)
+            cur = i;
+    }
+    int k = menu_pick("Insert disk", rows, n, cur >= 0 ? cur : 0, cur, "in drive",
+                      pbc_link_active() ? link_idle : NULL);
+    return k >= 0 && k != cur ? files[k] : NULL;
 }
 
 static const char *menu_do(int sel)
@@ -196,8 +322,11 @@ static const char *menu_do(int sel)
         cpc_reset();
         return "Reset";
     case M_CENTER_B:                    /* became M_SET_CENTER_B + key in menu() */
+    case M_DISK:                        /* became M_DISK_DO in menu() */
         return NULL;
     default:
+        if (sel == M_DISK_DO)               /* the partner's side; the chooser's is in menu() */
+            return NULL;
         if (sel >= M_SET_CENTER_B) {
             static char s[24];
             if (sel - M_SET_CENTER_B >= cpc_key_count)
@@ -225,6 +354,7 @@ static const char *menu(void)
     }
     rows[n++] = "Restart";
     rows[n++] = game_kind == G_CDT ? "Rewind tape" : "Reset";
+    rows[n++] = game_kind == G_DSK ? "Insert disk" : "(no disk)";
     snprintf(center_b, sizeof center_b, "Center + B: %s", cpc_keys_menu[cpc_center_b].name);
     rows[n++] = center_b;
     for (int i = 0; i < cpc_key_count && i < 64; i++) {
@@ -234,6 +364,16 @@ static const char *menu(void)
     }
     void (*idle)(void) = pbc_link_active() ? link_idle : NULL;
     int sel = menu_pick("Amstrad CPC", rows, n, cpc_joy_mode, cpc_joy_mode, NULL, idle);
+    const char *disk = NULL;
+    if (sel == M_DISK) {
+        /* the drive's file system only for this; the game reads its disk
+         * from flash */
+        if (game_kind == G_DSK && fs_mount())
+            disk = disk_menu();
+        sel = disk ? M_DISK_DO : -1;
+        if (!disk)
+            f_unmount("");
+    }
     if (sel == M_CENTER_B) {
         /* which key Center + B gives from now on: in link play for both */
         int k = menu_pick("Center + B", plain, cpc_key_count, cpc_center_b, cpc_center_b,
@@ -242,6 +382,11 @@ static const char *menu(void)
     }
     if (pbc_link_active())
         link_swap((uint16_t)(LINK_DONE | (sel + 1)));
+    if (sel == M_DISK_DO) {
+        const char *s = disk_change(disk);
+        f_unmount("");
+        return s;
+    }
     return menu_do(sel);
 }
 
@@ -252,7 +397,14 @@ static const char *menu_wait(void)
     uint16_t w;
     while (!((w = link_swap(0)) & LINK_DONE))
         ;
-    return menu_do((int)(w & 0x7fff) - 1);
+    int sel = (int)(w & 0x7fff) - 1;
+    if (sel == M_DISK_DO) {             /* the partner chose a disk: the same one, if here */
+        fs_mount();                     /* failing, the list is empty and both say so */
+        const char *s = disk_change(NULL);
+        f_unmount("");
+        return s;
+    }
+    return menu_do(sel);
 }
 
 /* ---- emulation ------------------------------------------------------------------- */
@@ -421,9 +573,14 @@ int main(void)
     if (!launch || !fs_mount())
         reboot_to_menu();
     strncpy(game, launch->game, sizeof game - 1);
-    /* the key on Center + B from the game's options (link play: RETURN) */
-    if (!(launch->flags & (PBC_LAUNCH_LINK1 | PBC_LAUNCH_LINK2)) && launch->key < cpc_key_count)
-        cpc_center_b = launch->key;
+    /* the game's options (link play: RETURN and the joystick): bits 0..5
+     * the key on Center + B, 6..7 the joystick kind */
+    if (!(launch->flags & (PBC_LAUNCH_LINK1 | PBC_LAUNCH_LINK2))) {
+        if ((launch->key & 0x3f) < cpc_key_count)
+            cpc_center_b = launch->key & 0x3f;
+        if ((launch->key >> 6) < CPC_JOYS)
+            cpc_joy_mode = launch->key >> 6;
+    }
     game_kind = ends_ci(game, ".cdt") ? G_CDT : ends_ci(game, ".sna") ? G_SNA : G_DSK;
 
     if (!rom_store_matches(game)) {

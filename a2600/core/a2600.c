@@ -323,7 +323,7 @@ const char *a2600_cart_name(int type)
     return type >= 0 && type <= CART_3F ? n[type] : "?";
 }
 
-int a2600_insert(const uint8_t *r, uint32_t n)
+__attribute__((optimize("Os"))) int a2600_insert(const uint8_t *r, uint32_t n)
 {
     rom = r;
     rom_size = n;
@@ -332,7 +332,7 @@ int a2600_insert(const uint8_t *r, uint32_t n)
     return cart;
 }
 
-void a2600_reset(void)
+__attribute__((optimize("Os"))) void a2600_reset(void)
 {
     memset(ram, 0, sizeof ram);
     memset(sc_ram, 0, sizeof sc_ram);

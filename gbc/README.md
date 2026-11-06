@@ -47,9 +47,30 @@ Vor jedem Spielstart zeigt ein Kasten zwei Sekunden lang diese Belegung.
 | START | Mitte + B |
 | SELECT | Mitte + A |
 
-Wie bei PicoBoyGB. Zurück zur Spieleliste geht es mit RESET.
+Wie bei PicoBoyGB. Zurück zur Spieleliste geht es mit RESET. In PBCemu
+tauscht die Zeile „B A“ in den Einstellungen des Spiels A und B.
 
 ## Bild
+
+Alte Game-Boy-Spiele (`.gb`) sind grün. Spiele für den **Super Game Boy**
+(Kopfbyte 0146h = 03h, etwa Pokémon Rot/Blau/Gelb, Kirby's Dream Land 2,
+Donkey Kong) bekommen dessen Farben: Der Emulator antwortet auf ihre Pakete
+im Joypad-Register wie ein Super Game Boy (`src/sgb.h`): vier Paletten, direkt
+gesetzt oder aus 512 hochgeladenen gewählt, und welche Palette jedes 8×8-Feld
+nimmt (ATTR_BLK/LIN/DIV, hochgeladene Karten); während des Hochladens bleibt
+das Bild stehen. Nicht dabei: Rahmen, Ton, ATTR_CHR. Am PC mit Pokémon Rot
+geprüft (Titelbild und Einleitung farbig wie auf dem Super Game Boy).
+
+**Linkkabel:** In PBCemu verbindet der Schalter „Link cable“ in den
+Einstellungen des Spiels zwei PicoBoys über das USB-C-Kabel wie zwei Game
+Boys mit Linkkabel (Pokémon tauschen und kämpfen, Tetris zu zweit), siehe
+`../docs/LINKSPIEL.md`.
+
+In PBCemu wählt die Zeile **Palette** in den Einstellungen des Spiels: Auto
+(Super-Game-Boy-Farben, sonst Grün), Grey, Brown, Red, Blue, Dark blue,
+Pastel, Inverted (die Färbungen, die der Game Boy Color alten Spielen beim
+Einschalten anbietet). Eine feste Palette schaltet den Super Game Boy ab.
+
 
 160×144 wird auf **240×216** vergrößert (Faktor 1,5), mittig: Aus je zwei
 Quellpixeln a, b werden drei – a, der Mittelwert von a und b, b –,

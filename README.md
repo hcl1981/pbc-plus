@@ -25,7 +25,7 @@ cd spout && ./build.sh      # oder ein einzelnes Projekt
 | [`tyrian`](tyrian/) | OpenTyrian. Firmware plus 8,9 MB Spieldaten in einer Datei. | `tyrian-komplett.uf2` |
 | [`picoboygb`](picoboygb/) | Game-Boy-Emulator. ROMs kommen per USB-Stick-Modus aufs Gerät. | `picoboygb.uf2` |
 | [`pbcemu`](pbcemu/) | **PBCemu**: alle Emulatoren unten (Atari 2600, ZX Spectrum, ColecoVision, C64, NES, SG-1000, MSX, Amstrad CPC, Master System, Atari 7800, PC Engine, Mega Drive, Game Gear, Game Boy Color) in einer Firmware, mit Gerätewahl samt Gerätebildern und Spieleliste; zehn Systeme auch zu zweit über USB-C ([`docs/LINKSPIEL.md`](docs/LINKSPIEL.md)). | `pbcemu.uf2` |
-| [`a2600`](a2600/) | Atari 2600 und Atari 7800 (eigene Kerne), nur in PBCemu. | — |
+| [`a2600`](a2600/) | Atari 2600, Atari 7800 und GCE Vectrex (eigene Kerne), nur in PBCemu. | — |
 | [`cpc`](cpc/) | Amstrad CPC 6128 (eigener Kern, ROMs von Amstrad mit deren Erlaubnis), Disketten, Kassetten und Snapshots, nur in PBCemu. | — |
 | [`zx`](zx/) | ZX Spectrum 48K/128K (eigener Kern, ROMs von Amstrad mit deren Erlaubnis), Bänder und Snapshots, nur in PBCemu. | — |
 | [`msx`](msx/) | MSX1 (eigener Kern, C-BIOS) und MSX2 mit Disketten (eigener V9938; C-BIOS für Module und Bootdisketten, für BASIC/MSX-DOS die Original-ROMs vom Laufwerk), nur in PBCemu. | — |

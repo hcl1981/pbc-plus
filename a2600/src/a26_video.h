@@ -24,6 +24,10 @@ void a26_video_line(int y, const uint8_t *pixels, bool blank);
 /* Core 0: a 7800 line (a7800.h): 320 palette indices, y 0..239 */
 void a26_video_line320(int y, const uint8_t *pixels);
 
+/* Before core 1 starts: the Vectrex. Core 1 then draws its picture itself
+ * (vectrex_picture); core 0 calls __sev() after each vectrex_frame. */
+void a26_video_vectrex(void);
+
 /* Core 1 entry point. */
 void a26_video_core1_main(void);
 

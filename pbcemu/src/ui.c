@@ -267,10 +267,11 @@ static int fav_count;               /* favourites still on the drive */
 
 /* The carousel: page 0 the favourites, then the devices. */
 #define PAGES (device_count + 1)
+#define FIRST_DEVICE 1
 
 static uint32_t page_accent(int p)
 {
-    return p == 0 ? FAV_GOLD : devices[p - 1].accent;
+    return p == 0 ? FAV_GOLD : devices[p - FIRST_DEVICE].accent;
 }
 
 static void games_text(int n, char *out, size_t size)
@@ -336,7 +337,7 @@ static void device_card(int p, int xoff, int alpha)
         gfx_text_centered(&font_small, cx, 222, c, TEXT, alpha);
         return;
     }
-    int d = p - 1;
+    int d = p - FIRST_DEVICE;
     const device_t *dev = &devices[d];
     int up = device_picture(dev->pic, cx - dev->pic->w / 2, 38, alpha, true);
     if (device_link(dev)) {
@@ -405,7 +406,14 @@ static void device_screen(int sel, int next, int t, int dir)
 /* ---- options ----------------------------------------------------------------------- */
 
 /* Rows of the options card; which ones appear depends on where it opens. */
-enum { ROW_SOUND, ROW_VOLUME, ROW_DISPLAY, ROW_STATS, ROW_PORT, ROW_PROGRAM, ROW_KEY, ROW_DRIVE, ROW_FAV, ROW_BRIGHT };
+enum { ROW_SOUND, ROW_VOLUME, ROW_DISPLAY, ROW_STATS, ROW_PORT, ROW_PROGRAM, ROW_KEY, ROW_DRIVE, ROW_FAV, ROW_BRIGHT,
+       ROW_LAYOUT, ROW_JOYKIND, ROW_SWAP, ROW_PALETTE, ROW_DIFF_L, ROW_DIFF_R, ROW_BW, ROW_SCAN,
+       ROW_CABLE };
+
+/* A game's own options byte (c64/settings.h, settings_key_raw), handed to
+ * its emulator in the launch record (pbc_launch.h, `key`): what it means
+ * depends on the system. */
+enum { RAW_NONE, RAW_CPC, RAW_ZX, RAW_MD, RAW_SWAP, RAW_GB, RAW_A26 };
 
 typedef struct {
     int device;                     /* -1: no device (no display row) */
@@ -414,11 +422,13 @@ typedef struct {
     char (*files)[D64_NAME_MAX + 1];
     int  nfiles, file;
     int  key;                       /* on Center + B: C64_KEYS index, or the CPC's */
-    bool cpc;                       /* a CPC game: only that key */
+    int  raw_sys;                   /* RAW_*: what the game's own byte means */
+    int  raw;                       /* ... and the byte */
+    bool nes;                       /* RAW_SWAP: NES (A/B) or Sega (1/2) */
     bool drive;                     /* processor-level 1541 */
     bool drive_rom;                 /* ... possible: 1541.rom is on the drive */
     bool fav;                       /* the game is a favourite */
-    int  rows[11], nrows;
+    int  rows[14], nrows;
 } opt_t;
 
 #define C64_FILES_MAX 64
@@ -463,6 +473,42 @@ static bool c64_drive_rom(void);
 /* The CPC's keys for Center + B, in the order of cpc_keys_menu
  * (cpc/src/cpc_input.c): nine by name, F0-F9, 0-9, A-Z. */
 #define CPC_KEYS 55
+
+/* The Mega Drive buttons on PicoBoy B, A and Center, as megadrive/src/input.c */
+#define MD_LAYOUTS 6
+static const char md_layouts[MD_LAYOUTS][4] = { "ABC", "BAC", "ACB", "CAB", "BCA", "CBA" };
+
+/* The Spectrum's keys for Center + B, in the order of zx_keys_menu
+ * (zx/src/zx_input.c): six by name, 0-9, A-Z. */
+#define ZX_KEYS 42
+static const char *zx_key_name(int i)
+{
+    static const char *const named[] = { "ENTER", "SPACE", "BREAK", "DELETE", "CAPS SH", "SYM SH" };
+    static char s[2];
+    if (i < 6)
+        return named[i];
+    s[0] = (char)(i < 16 ? '0' + i - 6 : 'A' + i - 16);
+    return s;
+}
+
+/* old Game Boy games: as gbc/src/main.c; "Auto" is the Super Game Boy's
+ * colours for a game made for it, green for the others */
+#define GB_PALETTES 8
+static const char *const gb_palettes[GB_PALETTES] = { "Auto", "Grey", "Brown", "Red", "Blue", "Dark blue",
+                                                      "Pastel", "Inverted" };
+static const char *const cpc_joys[3] = { "Joystick", "Cursor keys", "QAOP" };
+
+/* where the game's byte keeps "buttons swapped" */
+static int swap_bit(const opt_t *o)
+{
+    return o->raw_sys == RAW_GB ? 8 : 1;
+}
+
+/* the key on Center + B of a CPC or Spectrum game, from its byte */
+static int raw_key(const opt_t *o)
+{
+    return o->raw_sys == RAW_CPC ? (o->raw & 0x3f) % CPC_KEYS : o->raw % ZX_KEYS;
+}
 static const char *cpc_key_name(int i)
 {
     static const char *const named[] = { "RETURN", "SPACE", "ESC", "COPY", "DEL", "SHIFT",
@@ -511,7 +557,9 @@ static void options_screen(void (*under)(void *), void *arg, const char *title,
     gfx_text(&font_head, 30, y0 + 14, t, TEXT, 255);
 
     static const char *const names[] = { "Sound", "Volume", "Display", "Show FPS", "Joystick", "Program",
-                                         "", "True drive", "Favorite", "Brightness" };
+                                         "", "True drive", "Favorite", "Brightness", "", "Joystick", "",
+                                         "Palette", "Left difficulty", "Right difficulty", "TV type",
+                                         "Scanlines", "Link cable" };
     static const char *const key_names[] = { C64_KEYS(C64_KEY_NAME) };
     if (vis < o->nrows) {               /* where in the rows: a thin bar on the right */
         int track = vis * rh - 4, th = track * vis / o->nrows;
@@ -535,6 +583,8 @@ static void options_screen(void (*under)(void *), void *arg, const char *title,
             value_arrows(xr - 8, y + 4, devices[o->device].modes[prefs_video(o->device)]);
             break;
         case ROW_STATS: switch_toggle(xr - 38, y + 4, g_prefs.stats, accent); break;
+        case ROW_SCAN: switch_toggle(xr - 38, y + 4, prefs_scanlines(o->device), accent); break;
+        case ROW_CABLE: switch_toggle(xr - 38, y + 4, (o->raw & 0x10) != 0, accent); break;
         case ROW_FAV: switch_toggle(xr - 38, y + 4, o->fav, FAV_GOLD); break;
         case ROW_PORT:
             snprintf(v, sizeof v, "Port %d", o->port);
@@ -552,8 +602,25 @@ static void options_screen(void (*under)(void *), void *arg, const char *title,
         }
         case ROW_KEY:
             key_chips(34, y + 7, "Center + B");     /* as on the start screen */
-            value_arrows(xr - 8, y + 4, o->cpc ? cpc_key_name(o->key) : key_names[o->key]);
+            value_arrows(xr - 8, y + 4, o->raw_sys == RAW_CPC ? cpc_key_name(raw_key(o)) :
+                                        o->raw_sys == RAW_ZX ? zx_key_name(raw_key(o)) : key_names[o->key]);
             break;
+        case ROW_LAYOUT: {
+            key_chips(34, y + 7, "B A Center");     /* ... get these Mega Drive buttons */
+            const char *l = md_layouts[o->raw % MD_LAYOUTS];
+            snprintf(v, sizeof v, "%c  %c  %c", l[0], l[1], l[2]);
+            value_arrows(xr - 8, y + 4, v);
+            break;
+        }
+        case ROW_SWAP:
+            key_chips(34, y + 7, "B A");            /* ... get these buttons */
+            value_arrows(xr - 8, y + 4, (o->raw & swap_bit(o)) ? (o->nes ? "B  A" : "2  1") : (o->nes ? "A  B" : "1  2"));
+            break;
+        case ROW_JOYKIND: value_arrows(xr - 8, y + 4, cpc_joys[(o->raw >> 6) % 3]); break;
+        case ROW_PALETTE: value_arrows(xr - 8, y + 4, gb_palettes[o->raw & 7]); break;
+        case ROW_DIFF_L: value_arrows(xr - 8, y + 4, (o->raw & 1) ? "A" : "B"); break;
+        case ROW_DIFF_R: value_arrows(xr - 8, y + 4, (o->raw & 2) ? "A" : "B"); break;
+        case ROW_BW: value_arrows(xr - 8, y + 4, (o->raw & 4) ? "B/W" : "Color"); break;
         case ROW_DRIVE:
             if (o->drive_rom) {
                 switch_toggle(xr - 38, y + 4, o->drive, accent);
@@ -587,17 +654,47 @@ static void options(void (*under)(void *), void *arg, int device, const char *ga
         o.rows[o.nrows++] = ROW_KEY;
         o.rows[o.nrows++] = ROW_DRIVE;
     }
-    o.cpc = game_opts && devices[device].app == APP_CPC;
-    if (o.cpc) {
-        o.rows[o.nrows++] = ROW_KEY;
-        settings_load();
-        o.key = settings_key_raw(game) % CPC_KEYS;
+    if (game_opts) {
+        /* the game's own byte: which rows show it */
+        int app = devices[device].app;
+        const char *ext = strrchr(game, '.');
+        bool gb_old = ext && strcasecmp(ext, ".gb") == 0;                 /* not a Color game */
+        bool a78 = ext && strcasecmp(ext, ".a78") == 0;
+        bool vec = ext && strcasecmp(ext, ".vec") == 0;
+        o.raw_sys = app == APP_CPC ? RAW_CPC : app == APP_ZX ? RAW_ZX : app == APP_MD ? RAW_MD :
+                    app == APP_NES || app == APP_SMS ? RAW_SWAP : app == APP_GBC ? RAW_GB :
+                    app == APP_A26 && !vec ? RAW_A26 : RAW_NONE;
+        o.nes = app == APP_NES || app == APP_GBC;           /* buttons called A and B */
+        if (o.raw_sys != RAW_NONE) {
+            settings_load();
+            o.raw = settings_key_raw(game);
+        }
+        switch (o.raw_sys) {
+        case RAW_CPC: o.rows[o.nrows++] = ROW_KEY; o.rows[o.nrows++] = ROW_JOYKIND; break;
+        case RAW_ZX:  o.rows[o.nrows++] = ROW_KEY; break;
+        case RAW_MD:  o.rows[o.nrows++] = ROW_LAYOUT; break;
+        case RAW_SWAP: o.rows[o.nrows++] = ROW_SWAP; break;
+        case RAW_GB:
+            if (gb_old)
+                o.rows[o.nrows++] = ROW_PALETTE;
+            o.rows[o.nrows++] = ROW_SWAP;
+            o.rows[o.nrows++] = ROW_CABLE;      /* two PicoBoys as two Game Boys */
+            break;
+        case RAW_A26:
+            o.rows[o.nrows++] = ROW_DIFF_L;
+            o.rows[o.nrows++] = ROW_DIFF_R;
+            if (!a78)
+                o.rows[o.nrows++] = ROW_BW;     /* on the 7800 that switch is PAUSE */
+            break;
+        }
     }
     o.rows[o.nrows++] = ROW_SOUND;
     o.rows[o.nrows++] = ROW_VOLUME;
     o.rows[o.nrows++] = ROW_BRIGHT;
     if (device >= 0 && mode_count(device) > 1)
         o.rows[o.nrows++] = ROW_DISPLAY;
+    if (device >= 0 && devices[device].app != APP_NONE)
+        o.rows[o.nrows++] = ROW_SCAN;
     if (device >= 0 && devices[device].app != APP_NONE)
         o.rows[o.nrows++] = ROW_STATS;
     if (c64) {
@@ -660,6 +757,8 @@ static void options(void (*under)(void *), void *arg, int device, const char *ga
                 break;
             }
             case ROW_STATS: g_prefs.stats = !g_prefs.stats; break;
+            case ROW_SCAN: prefs_set_scanlines(device, !prefs_scanlines(device)); break;
+            case ROW_CABLE: o.raw ^= 0x10; break;
             case ROW_FAV: o.fav = !o.fav; break;
             case ROW_BRIGHT:
                 g_prefs.brightness += d;
@@ -669,11 +768,21 @@ static void options(void (*under)(void *), void *arg, int device, const char *ga
                 break;
             case ROW_PORT: o.port = o.port == 1 ? 2 : 1; break;
             case ROW_PROGRAM: o.file = (o.file + o.nfiles + d) % o.nfiles; break;
-            case ROW_KEY: {
-                int n = o.cpc ? CPC_KEYS : C64_KEY_COUNT;
-                o.key = (o.key + n + d) % n;
+            case ROW_KEY:
+                if (o.raw_sys == RAW_CPC)
+                    o.raw = (o.raw & 0xc0) | (raw_key(&o) + CPC_KEYS + d) % CPC_KEYS;
+                else if (o.raw_sys == RAW_ZX)
+                    o.raw = (raw_key(&o) + ZX_KEYS + d) % ZX_KEYS;
+                else
+                    o.key = (o.key + C64_KEY_COUNT + d) % C64_KEY_COUNT;
                 break;
-            }
+            case ROW_LAYOUT: o.raw = (o.raw % MD_LAYOUTS + MD_LAYOUTS + d) % MD_LAYOUTS; break;
+            case ROW_JOYKIND: o.raw = (o.raw & 0x3f) | ((((o.raw >> 6) % 3) + 3 + d) % 3) << 6; break;
+            case ROW_SWAP:    o.raw ^= swap_bit(&o); break;
+            case ROW_PALETTE: o.raw = (o.raw & ~7) | (((o.raw & 7) + GB_PALETTES + d) % GB_PALETTES); break;
+            case ROW_DIFF_L:  o.raw ^= 1; break;
+            case ROW_DIFF_R:  o.raw ^= 2; break;
+            case ROW_BW:      o.raw ^= 4; break;
             case ROW_DRIVE: o.drive = o.drive_rom && !o.drive; break;
             }
         }
@@ -698,8 +807,8 @@ static void options(void (*under)(void *), void *arg, int device, const char *ga
         settings_save();
         free(o.files);
     }
-    if (o.cpc && o.key != settings_key_raw(game) % CPC_KEYS) {
-        settings_set_key_raw(game, o.key);  /* only then: an entry for every game would fill the table */
+    if (o.raw_sys != RAW_NONE && o.raw != settings_key_raw(game)) {
+        settings_set_key_raw(game, o.raw);  /* only then: an entry for every game would fill the table */
         settings_save();
     }
     ui_wait_release();
@@ -825,8 +934,10 @@ static bool link_join(int *device, char game[GAME_NAME_MAX])
 
 /* ---- game list ------------------------------------------------------------------------ */
 
+#define LIST_FAV    (-1)            /* list_t.device: the favourites */
+
 typedef struct {
-    int device;                     /* -1: the favourites */
+    int device;                     /* a device, or LIST_FAV */
     int *devs;                      /* favourites: the device of each game */
     char (*names)[GAME_NAME_MAX];
     int n, cur;
@@ -838,7 +949,7 @@ typedef struct {
 static void list_screen(void *arg)
 {
     list_t *l = arg;
-    bool fav = l->device < 0;
+    bool fav = l->device < 0;           /* games of every system */
     const device_t *dev = fav ? NULL : &devices[l->device];
     uint32_t accent = fav ? FAV_GOLD : dev->accent;
     background();
@@ -931,9 +1042,10 @@ static void list_screen(void *arg)
 
 /* Returns true with the chosen game in `game`, false for "back". A game the
  * link partner started may be on another device: `device` follows it. */
-static bool game_list(int *device_io, char game[GAME_NAME_MAX], bool fav)
+static bool game_list(int *device_io, char game[GAME_NAME_MAX], int which)
 {
-    int device = fav ? -1 : *device_io;
+    bool fav = which < 0;                   /* LIST_FAV: games of every system */
+    int device = fav ? which : *device_io;
     list_t l = { .device = device };
     l.n = fav ? games_favorites(&l.names, &l.devs) : games_list(device, &l.names);
     for (int i = 0; game[0] && i < l.n; i++)
@@ -974,7 +1086,7 @@ static bool game_list(int *device_io, char game[GAME_NAME_MAX], bool fav)
         int dv = fav ? l.devs[l.cur] : device;
         if (e & IN_CENTER) {
             options(list_screen, &l, dv, l.names[l.cur], devices[dv].accent);
-            if (fav) {                  /* it may have left the favourites */
+            if (which == LIST_FAV) {    /* it may have left the favourites */
                 l.n = games_favorites(&l.names, &l.devs);
                 if (l.cur >= l.n)
                     l.cur = l.n ? l.n - 1 : 0;
@@ -1093,7 +1205,7 @@ ui_result_t ui_run(int *device, char game[GAME_NAME_MAX])
         }
         if (next != sel)
             continue;
-        int d = sel - 1;                    /* -1: the favourites */
+        int d = sel - FIRST_DEVICE;         /* -1: the favourites */
         if (e & IN_CENTER) {
             carousel_t c = { sel };
             options(device_still, &c, d < 0 || devices[d].app == APP_NONE ? -1 : d, NULL, page_accent(sel));
@@ -1103,7 +1215,7 @@ ui_result_t ui_run(int *device, char game[GAME_NAME_MAX])
                 return UI_USB;
             if (d >= 0)
                 *device = d;
-            if (game_list(device, game, d < 0))
+            if (game_list(device, game, d < 0 ? LIST_FAV : 0))
                 return UI_PLAY;
             game[0] = 0;
             count_favs();
@@ -1233,11 +1345,36 @@ void ui_starting(int device, const char *game)
         snprintf(note, sizeof note, "ROMs: %s%s", c64_own_roms() ? "Commodore" : "OpenROMs",
                  settings_true_drive(game) && c64_drive_rom() ? ", true drive" : "");
     }
-    if (dev->app == APP_CPC && !ui_link_player) {
+    if (dev->app != APP_C64)
         settings_load();
+    int raw = dev->app != APP_C64 ? settings_key_raw(game) : 0;
+    if ((dev->app == APP_CPC || dev->app == APP_ZX) && !ui_link_player) {
         for (int i = 0; i < n; i++)
             if (strcmp(k[i], "Center + B") == 0)
-                b[i] = cpc_key_name(settings_key_raw(game) % CPC_KEYS);
+                b[i] = dev->app == APP_CPC ? cpc_key_name((raw & 0x3f) % CPC_KEYS) : zx_key_name(raw % ZX_KEYS);
+        if (dev->app == APP_CPC)
+            b[0] = cpc_joys[(raw >> 6) % 3];         /* the joystick kind */
+    }
+    if (((dev->app == APP_NES || dev->app == APP_SMS) && (raw & 1)) || (dev->app == APP_GBC && (raw & 8))) {
+        int ia = -1, ib = -1;                       /* swapped: the names of A and B change places */
+        for (int i = 0; i < n; i++) {
+            if (strcmp(k[i], "A") == 0) ia = i;
+            if (strcmp(k[i], "B") == 0) ib = i;
+        }
+        if (ia >= 0 && ib >= 0) {
+            const char *t = b[ia];
+            b[ia] = b[ib];
+            b[ib] = t;
+        }
+    }
+    if (dev->app == APP_MD) {           /* the game's button layout */
+        static const char *const letter[] = { "A", "B", "C" };
+        static const char *const pbc[] = { "B", "A", "Center" };
+        const char *l = md_layouts[raw % MD_LAYOUTS];
+        for (int i = 0; i < n; i++)
+            for (int j = 0; j < 3; j++)
+                if (strcmp(k[i], pbc[j]) == 0)
+                    b[i] = letter[l[j] - 'A'];
     }
 
     if (ui_link_player) {

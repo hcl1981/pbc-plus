@@ -30,6 +30,7 @@ extern const pbc_picture_t pic_zx, icon_zx;
 extern const pbc_picture_t pic_cpc, icon_cpc;
 extern const pbc_picture_t pic_cv, icon_cv;
 extern const pbc_picture_t pic_a78, icon_a78;
+extern const pbc_picture_t pic_vec, icon_vec;
 extern const pbc_picture_t pic_usb, icon_usb;
 extern const pbc_picture_t pic_fav, icon_fav;
 extern const pbc_picture_t logo_pbc, logo_emu, logo_glint;

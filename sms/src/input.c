@@ -28,6 +28,13 @@ uint32_t input_raw(void)
     return r;
 }
 
+static bool swap_12;                    /* the game's options: button 2 on B */
+
+void input_set_swap(bool swap)
+{
+    swap_12 = swap;
+}
+
 int input_poll_sms(bool *start)
 {
     uint32_t r = input_raw();
@@ -45,8 +52,8 @@ int input_poll_sms(bool *start)
     } else {
         /* SMS Plus's INPUT_BUTTON2 (0x10) is bit 4 of port $DC, which on
          * the console is button 1 (TL); 0x20 is button 2 (TR). */
-        if (r & IN_B) pad |= 0x10;     /* button 1 */
-        if (r & IN_A) pad |= 0x20;     /* button 2 */
+        if (r & IN_B) pad |= swap_12 ? 0x20 : 0x10;     /* button 1 */
+        if (r & IN_A) pad |= swap_12 ? 0x10 : 0x20;     /* button 2 */
     }
     return pad;
 }

@@ -17,7 +17,7 @@ set -uo pipefail
 HIER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "${HIER}/../tools/pbc_build.sh"
 
-LAUNCHER_SIZE=0x43000
+LAUNCHER_SIZE=0x45000
 APPS_END=0x200000                  # ab hier: ROM-Bereich (5 MB), ab 0x700000 FatFs
 # Reihenfolge im Flash; Name im Starter (APP_*), Projektordner, Programmname
 APPS="MD:megadrive:pbc_megadrive SMS:sms:pbc_sms NES:nes:pbc_nes PCE:pce:pbc_pce GBC:gbc:pbc_gbc C64:c64:pbc_c64 MSX:msx:pbc_msx A26:a2600:pbc_a2600 ZX:zx:pbc_zx CPC:cpc:pbc_cpc"
@@ -71,7 +71,10 @@ PY
     echo "#define PBC_APP_${key} $(printf '0x%06xu' ${offset})" >> "${APPS_H}.tmp"
     PACK+=("${bin}@$(printf '0x%x' ${offset})")
     pbc_ok "${dir}: $((size / 1024)) KB"
-    offset=$(( (offset + size + 0xFFF) & ~0xFFF ))
+    # 512-byte steps: the launcher points VTOR at the image's vector table
+    # (68 entries on the RP2350, so it must sit on a 512-byte boundary), and
+    # the UF2 blocks stay 256-byte aligned. 4 KB steps wasted up to 4 KB each.
+    offset=$(( (offset + size + 0x1FF) & ~0x1FF ))
 done
 if [ ${offset} -gt $((APPS_END)) ]; then
     pbc_err "Die Emulatoren brauchen $(printf '0x%x' ${offset}) Byte Flash, Platz ist bis $(printf '0x%x' ${APPS_END})."

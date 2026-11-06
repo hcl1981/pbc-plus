@@ -1,5 +1,7 @@
 /* video.c -- see video.h */
 #include <string.h>
+#include "pbc_scanline.h"
+#include "pbc_battwarn.h"
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
 #include "hardware/sync.h"
@@ -165,8 +167,12 @@ void __not_in_flash_func(video_core1_main)(void)
             last_x = out_x; last_w = out_w; last_h = out_h;
         }
 
+        pbc_battwarn_frame(out_x, y0, out_w, out_h);
         pbc_display_window(out_x, y0, out_w, out_h);
         pbc_display_begin();
+        static int8_t scan = -1;
+        if (scan < 0)
+            scan = pbc_scanlines_on();
         int b = 0;
         for (int y = 0; y < out_h; y++) {
             /* DMA sends the other buffer meanwhile */
@@ -183,6 +189,9 @@ void __not_in_flash_func(video_core1_main)(void)
                 else
                     convert_row2(px + i0 * XBUF_WIDTH, px + i1 * XBUF_WIDTH, rowbuf[b]);
             }
+            if (scan && (y & 1))
+                pbc_scanline_dim(rowbuf[b], out_w);
+            pbc_battwarn_row(rowbuf[b], y0 + y, out_x, out_w);
             pbc_display_wait();
             pbc_display_send(rowbuf[b], out_w);
             b ^= 1;

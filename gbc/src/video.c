@@ -1,5 +1,7 @@
 /* video.c -- see video.h */
 #include <string.h>
+#include "pbc_scanline.h"
+#include "pbc_battwarn.h"
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
 #include "hardware/sync.h"
@@ -78,8 +80,16 @@ static void __not_in_flash_func(blend_rows)(const uint16_t *a, const uint16_t *b
         out[x] = pbc_avg565(a[x], b[x]);
 }
 
+static int8_t scan = -1;                 /* scanlines: every second panel row dimmed */
+static int row_out;                     /* row of the next send_row in the window */
+static int win_x, win_y;                /* the window on the panel */
+
 static inline void __not_in_flash_func(send_row)(uint16_t *buf, int n)
 {
+    if (scan && (row_out & 1))
+        pbc_scanline_dim(buf, n);
+    pbc_battwarn_row(buf, win_y + row_out, win_x, n);
+    row_out++;
     pbc_display_wait();
     pbc_display_send(buf, n);
 }
@@ -88,8 +98,12 @@ static inline void __not_in_flash_func(send_row)(uint16_t *buf, int n)
 static void __not_in_flash_func(send_scaled)(const uint16_t (*src)[GB_W])
 {
     static uint16_t __aligned(4) ra[OUT_W], rb[OUT_W];
+    win_x = 0;
+    win_y = OUT_Y;
+    pbc_battwarn_frame(0, OUT_Y, OUT_W, OUT_H);
     pbc_display_window(0, OUT_Y, OUT_W, OUT_H);
     pbc_display_begin();
+    row_out = 0;
     int b = 0;
     for (int y = 0; y < GB_H; y += 2) {
         /* the DMA sends the previous row meanwhile */
@@ -108,9 +122,22 @@ static void __not_in_flash_func(send_scaled)(const uint16_t (*src)[GB_W])
 /* 1:1 in the middle of the panel, straight out of the frame. */
 static void __not_in_flash_func(send_original)(const uint16_t (*src)[GB_W])
 {
-    pbc_display_window((PBC_LCD_W - GB_W) / 2, (PBC_LCD_H - GB_H) / 2, GB_W, GB_H);
+    win_x = (PBC_LCD_W - GB_W) / 2;
+    win_y = (PBC_LCD_H - GB_H) / 2;
+    pbc_battwarn_frame(win_x, win_y, GB_W, GB_H);
+    pbc_display_window(win_x, win_y, GB_W, GB_H);
     pbc_display_begin();
-    pbc_display_send(&src[0][0], GB_W * GB_H);
+    if (scan || pbc_battwarn_rows()) {  /* row by row: dimmed, or the battery symbol */
+        row_out = 0;
+        int b = 0;
+        for (int y = 0; y < GB_H; y++) {
+            memcpy(rowbuf[b], src[y], GB_W * sizeof(uint16_t));
+            send_row(rowbuf[b], GB_W);
+            b ^= 1;
+        }
+    } else {
+        pbc_display_send(&src[0][0], GB_W * GB_H);
+    }
     pbc_display_wait();
     pbc_display_end();
 }
@@ -119,6 +146,7 @@ void __not_in_flash_func(video_core1_main)(void)
 {
     /* Save files are written while a game runs: park this core per sector. */
     multicore_lockout_victim_init();
+    scan = pbc_scanlines_on();
     pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
     __dmb();
     core1_ready = true;

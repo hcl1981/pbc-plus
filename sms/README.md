@@ -53,7 +53,9 @@ bei PicoBoyGB.
 | Taste 2 | A |
 | START (Game Gear) / PAUSE (Master System) | Mitte + B |
 
-Mitte allein tut nichts. Zurück zur Spieleliste geht es mit RESET.
+Mitte allein tut nichts. Zurück zur Spieleliste geht es mit RESET. In
+PBCemu tauscht die Zeile „B A“ in den Einstellungen des Spiels die Tasten 1
+und 2.
 
 ### Batteriespeicher
 

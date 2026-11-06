@@ -101,7 +101,8 @@ static bool is_c64_name(const char *name)
     if (n < 4)
         return false;
     const char *e = name + n - 4;
-    return strcasecmp(e, ".d64") == 0 || strcasecmp(e, ".prg") == 0 || strcasecmp(e, ".crt") == 0;
+    return strcasecmp(e, ".d64") == 0 || strcasecmp(e, ".t64") == 0 || strcasecmp(e, ".prg") == 0 ||
+           strcasecmp(e, ".crt") == 0;
 }
 
 static int cmp_names(const void *a, const void *b)

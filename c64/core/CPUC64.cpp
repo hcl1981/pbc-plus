@@ -811,6 +811,38 @@ C64_HOT(MOS6510_EmulateLine) int MOS6510::EmulateLine(int cycles_left)
 					ram[0x94] = 0;
 					c_flag = false;
 					break;
+				case 0x30: {	// PBC: LOAD ($FFD5) while a .t64 is in drive 8
+					extern uint16_t t64_load_jmp;
+					extern bool t64_tape_load(uint8_t *ram, bool verify, uint8_t sa, uint16_t xy,
+					                          const uint8_t *name, int name_len, uint16_t *end);
+					if (ram[0xba] != 1) {	// not the tape: as the KERNAL's own entry
+						jump(t64_load_jmp);
+						break;
+					}
+					/* the tape: the file comes out of the archive */
+					uint8_t name[16];
+					int len = ram[0xb7] > 16 ? 16 : ram[0xb7];
+					uint16_t np = ram[0xbb] | ram[0xbc] << 8;
+					for (int i = 0; i < len; i++)
+						name[i] = read_byte((uint16_t)(np + i));
+					uint16_t end;
+					if (t64_tape_load(ram, a != 0, ram[0xb9], (uint16_t)(x | y << 8), name, len, &end)) {
+						x = end & 0xff;
+						y = end >> 8;
+						ram[0xae] = x;
+						ram[0xaf] = y;
+						ram[0x90] = 0;
+						c_flag = false;
+					} else {
+						a = 4;			// FILE NOT FOUND
+						ram[0x90] = 0x42;
+						c_flag = true;
+					}
+					adr = pop_byte();	// back to the caller of $FFD5
+					adr = (adr | (pop_byte() << 8)) + 1;
+					jump(adr);
+					break;
+				}
 				default:
 					illegal_op(pc - 1);
 					break;

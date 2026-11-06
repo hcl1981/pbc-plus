@@ -55,13 +55,25 @@ int prefs_video(int device)
     int n = 0;
     while (devices[device].modes && devices[device].modes[n])
         n++;
-    return g_prefs.video[device] < n ? g_prefs.video[device] : 0;
+    int m = g_prefs.video[device] & 0x7f;     /* bit 7: scanlines */
+    return m < n ? m : 0;
 }
 
 void prefs_set_video(int device, int mode)
 {
     if (device >= 0 && device < PREFS_DEVICES)
-        g_prefs.video[device] = (uint8_t)mode;
+        g_prefs.video[device] = (uint8_t)((g_prefs.video[device] & 0x80) | (mode & 0x7f));
+}
+
+bool prefs_scanlines(int device)
+{
+    return device >= 0 && device < PREFS_DEVICES && (g_prefs.video[device] & 0x80);
+}
+
+void prefs_set_scanlines(int device, bool on)
+{
+    if (device >= 0 && device < PREFS_DEVICES)
+        g_prefs.video[device] = (uint8_t)((g_prefs.video[device] & 0x7f) | (on ? 0x80 : 0));
 }
 
 void prefs_save(void)

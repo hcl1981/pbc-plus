@@ -38,5 +38,8 @@ uint8_t prefs_backlight(void);
 
 int  prefs_video(int device);       /* always a valid mode of the device */
 void prefs_set_video(int device, int mode);
+/* every second panel row dimmed, per device (bit 7 of its video byte) */
+bool prefs_scanlines(int device);
+void prefs_set_scanlines(int device, bool on);
 
 #endif /* PBC_PREFS_H */

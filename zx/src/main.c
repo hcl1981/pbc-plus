@@ -153,7 +153,8 @@ static bool start(int model)
 
 /* ---- the in-game menu (Center + A) ------------------------------------------------ */
 
-enum { M_JOY = 0, M_48K = ZX_JOYS, M_128K, M_REWIND, M_KEYS };
+enum { M_JOY = 0, M_48K = ZX_JOYS, M_128K, M_REWIND, M_CENTER_B, M_KEYS,
+       M_SET_CENTER_B = M_KEYS + 64 };   /* + key index: the choice for Center + B */
 
 #define LINK_DONE 0x8000u               /* with the choice + 1 in bits 0..6 */
 
@@ -193,7 +194,17 @@ static const char *menu_do(int sel)
         }
         start(zx_model());
         return "Reset";
+    case M_CENTER_B:                    /* became M_SET_CENTER_B + key in menu() */
+        return NULL;
     default:
+        if (sel >= M_SET_CENTER_B) {
+            static char s[28];
+            if (sel - M_SET_CENTER_B >= zx_key_count)
+                return NULL;
+            zx_center_b = sel - M_SET_CENTER_B;
+            snprintf(s, sizeof s, "Center + B: %s", zx_keys_menu[zx_center_b].name);
+            return s;
+        }
         zx_input_press(sel - M_KEYS);
         return zx_keys_menu[sel - M_KEYS].name;
     }
@@ -202,8 +213,10 @@ static const char *menu_do(int sel)
 static const char *menu(void)
 {
     static const char *rows[M_KEYS + 64];
+    static const char *plain[64];
     static char names[64][20];
     static char joy[ZX_JOYS][24];
+    static char center_b[28];
     int n = 0;
     for (int j = 0; j < ZX_JOYS; j++) {
         snprintf(joy[j], sizeof joy[j], "Joystick: %s", zx_joy_names[j]);
@@ -213,12 +226,20 @@ static const char *menu(void)
     rows[n++] = "Restart as 128K";
     bool tape = game_kind == G_TAP || game_kind == G_TZX;
     rows[n++] = tape ? "Rewind tape" : "Reset";
+    snprintf(center_b, sizeof center_b, "Center + B: %s", zx_keys_menu[zx_center_b].name);
+    rows[n++] = center_b;
     for (int i = 0; i < zx_key_count && i < 64; i++) {
         snprintf(names[i], sizeof names[i], "Key %s", zx_keys_menu[i].name);
         rows[n++] = names[i];
+        plain[i] = zx_keys_menu[i].name;
     }
-    int sel = menu_pick("ZX Spectrum", rows, n, zx_joy_mode, zx_joy_mode, NULL,
-                        pbc_link_active() ? link_idle : NULL);
+    void (*idle)(void) = pbc_link_active() ? link_idle : NULL;
+    int sel = menu_pick("ZX Spectrum", rows, n, zx_joy_mode, zx_joy_mode, NULL, idle);
+    if (sel == M_CENTER_B) {
+        /* which key Center + B gives from now on: in link play for both */
+        int k = menu_pick("Center + B", plain, zx_key_count, zx_center_b, zx_center_b, "in use", idle);
+        sel = k >= 0 ? M_SET_CENTER_B + k : -1;
+    }
     if (pbc_link_active())
         link_swap((uint16_t)(LINK_DONE | (sel + 1)));
     return menu_do(sel);
@@ -401,6 +422,9 @@ int main(void)
     if (!launch || !fs_mount())
         reboot_to_menu();
     strncpy(game, launch->game, sizeof game - 1);
+    /* the key on Center + B from the game's options (link play: ENTER) */
+    if (!(launch->flags & (PBC_LAUNCH_LINK1 | PBC_LAUNCH_LINK2)) && launch->key < zx_key_count)
+        zx_center_b = launch->key;
     game_kind = ends_ci(game, ".tzx") ? G_TZX : ends_ci(game, ".z80") ? G_Z80 :
                 ends_ci(game, ".sna") ? G_SNA : G_TAP;
 

@@ -1,5 +1,7 @@
 /* zx_video.c -- see zx_video.h */
 #include <string.h>
+#include "pbc_scanline.h"
+#include "pbc_battwarn.h"
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
 #include "hardware/sync.h"
@@ -189,11 +191,19 @@ void __not_in_flash_func(zx_video_core1_main)(void)
         if (y == 0 || !open || y != next_y) {
             if (open)
                 pbc_display_end();
+            if (y == 0)
+                pbc_battwarn_frame(0, y0, PBC_LCD_W, h);
             pbc_display_window(0, y0 + y, PBC_LCD_W, h - y);
             pbc_display_begin();
             open = true;
             next_y = y;
         }
+        static int8_t scan = -1;
+        if (scan < 0)
+            scan = pbc_scanlines_on();
+        if (scan && (y & 1))
+            pbc_scanline_dim(lbuf[cur], PBC_LCD_W);
+        pbc_battwarn_row(lbuf[cur], y0 + y, 0, PBC_LCD_W);
         pbc_display_wait();
         pbc_display_send(lbuf[cur], PBC_LCD_W);
         cur ^= 1;

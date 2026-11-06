@@ -1,5 +1,7 @@
 /* sms_video.c -- see sms_video.h */
 #include <string.h>
+#include "pbc_scanline.h"
+#include "pbc_battwarn.h"
 #include "pico/stdlib.h"
 #include "hardware/sync.h"
 #include "pico/multicore.h"
@@ -282,9 +284,14 @@ void __not_in_flash_func(sms_video_core1_main)(void)
         bool cols = is_gg && out_w != GG_W;     /* SMS columns are done on core 0 */
         bool text = over && status_text[0];
 
+        pbc_battwarn_frame(x0, y0, out_w, out_h);
         pbc_display_window(x0, y0, out_w, out_h);
         pbc_display_begin();
-        if (!cols && out_h == h && !text) {
+        static int8_t scan = -1;
+        if (scan < 0)
+            scan = pbc_scanlines_on();
+        bool batt = pbc_battwarn_rows();
+        if (!cols && out_h == h && !text && !scan && !batt) {
             pbc_display_send(src, src_w * h);   /* 1:1, one piece */
         } else {
             int b = 0;
@@ -303,6 +310,16 @@ void __not_in_flash_func(sms_video_core1_main)(void)
                 }
                 if (ov)
                     overlay_row(rowbuf[b], r, out_w);
+                bool dim = scan && (r & 1), mark = batt && y0 + r >= 10 && y0 + r < 28;
+                if (dim || mark) {
+                    if (line != rowbuf[b])
+                        memcpy(rowbuf[b], line, out_w * sizeof(uint16_t));
+                    if (dim)
+                        pbc_scanline_dim(rowbuf[b], out_w);
+                    if (mark)
+                        pbc_battwarn_row(rowbuf[b], y0 + r, x0, out_w);
+                    line = rowbuf[b];
+                }
                 pbc_display_wait();             /* the DMA still sends the other one */
                 pbc_display_send(line, out_w);
                 b ^= 1;

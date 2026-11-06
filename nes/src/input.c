@@ -28,6 +28,13 @@ uint32_t input_raw(void)
     return r;
 }
 
+static bool swap_ab;                    /* the game's options: A on A, B on B */
+
+void input_set_swap(bool swap)
+{
+    swap_ab = swap;
+}
+
 uint8_t input_poll_nes(void)
 {
     uint32_t r = input_raw();
@@ -43,8 +50,8 @@ uint8_t input_poll_nes(void)
         if (r & IN_A) j |= NES_SELECT;
     } else {
         /* the main button on B: on this small device B is the easier one */
-        if (r & IN_B) j |= NES_A;
-        if (r & IN_A) j |= NES_B;
+        if (r & IN_B) j |= swap_ab ? NES_B : NES_A;
+        if (r & IN_A) j |= swap_ab ? NES_A : NES_B;
     }
     return j;
 }

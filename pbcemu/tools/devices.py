@@ -652,6 +652,39 @@ def atari7800():
     return p.done()
 
 
+def vectrex():
+    """A placeholder until a picture in art/ takes over: the tall cabinet
+    with its portrait screen (a few glowing vector lines), the controller
+    in front at the right."""
+    p = Pic()
+    p.shadow(96, 116, 80, 8)
+    body = '#1b1b1f'
+    # the cabinet: upright, its screen in the front
+    x0, x1, y0, y1 = 52, 120, 6, 112
+    p.poly([(x0 + 4, y0 - 4), (x1 - 4, y0 - 4), (x1, y0), (x0, y0)], shade(body, 0.22))
+    p.rrect(x0, y0, x1, y1, 5, body)
+    p.rrect(x0, y0, x1, y0 + 2, 1, shade(body, 0.30))
+    p.rrect(x0 + 6, y0 + 6, x1 - 6, y0 + 76, 4, '#0a0d12')
+    glow = (210, 235, 255)
+    # a ship and a mine as vectors
+    p.line([(80, 60), (86, 46), (92, 60), (86, 56), (80, 60)], glow, 1.1)
+    p.line([(70, 28), (74, 34), (68, 32), (76, 30), (70, 28)], glow, 0.9)
+    p.line([(98, 24), (104, 30), (96, 30), (104, 24), (98, 24)], glow, 0.9)
+    p.line([(66, 72), (106, 72)], shade(glow, -0.35), 0.7)
+    for k in range(5):
+        p.rrect(x0 + 14, y0 + 84 + k * 4, x1 - 14, y0 + 85.6 + k * 4, 0.8, '#3a3a42')
+    # the controller: wide and flat, a short stick left, four buttons right
+    cx0, cy0, cx1, cy1 = 112, 98, 190, 116
+    p.poly([(cx0 + 4, cy0 - 6), (cx1 - 4, cy0 - 6), (cx1, cy0), (cx0, cy0)], shade(body, 0.25))
+    p.rrect(cx0, cy0, cx1, cy1, 3, shade(body, 0.05))
+    p.ellipse(cx0 + 9, cy0 - 6, cx0 + 21, cy0 - 1, '#111114')
+    p.line([(cx0 + 15, cy0 - 3), (cx0 + 15, cy0 - 13)], '#2b2b31', 2.4)
+    p.ellipse(cx0 + 12, cy0 - 17, cx0 + 18, cy0 - 11, '#3a3a42')
+    for k in range(4):
+        p.button(cx0 + 38 + k * 10, cy0 - 3, 3.2, '#8d8f96')
+    return p.done()
+
+
 def favorites():
     """Favourites: a golden star standing on the floor, its arms bevelled
     into a lit and a shaded half each."""
@@ -689,6 +722,7 @@ DEVICES = {
     'cpc': amstrad_cpc,
     'cv': colecovision,
     'a78': atari7800,
+    'vec': vectrex,
     'usb': usb_drive,
     'fav': favorites,
 }

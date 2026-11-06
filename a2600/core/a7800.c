@@ -556,7 +556,7 @@ static A78_RAM void maria_line(void)
 
 /* ---- the frame ------------------------------------------------------------------------ */
 
-void a7800_reset(void)
+__attribute__((optimize("Os"))) void a7800_reset(void)     /* once: small, not fast */
 {
     memset(ram, 0, sizeof ram);
     memset(riot_ram, 0, sizeof riot_ram);

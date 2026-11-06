@@ -40,6 +40,9 @@ bool rom_store_matches(const char *name);
  * success, otherwise a short error text. */
 const char *rom_store_program(const char *name, uint8_t *scratch, rom_progress_fn progress);
 
+/* True while the game runs (core 1 drawing): the flash writes then park it. */
+extern bool rom_store_live;
+
 /* Pointer to the ROM in XIP flash and its size. */
 const uint8_t *rom_store_data(void);
 uint32_t       rom_store_size(void);
