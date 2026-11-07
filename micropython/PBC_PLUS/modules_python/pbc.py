@@ -628,17 +628,34 @@ accel_z_g = _hw.accel_z_g
 _HIDDEN = ("main.py", "boot.py", "pbc.py", "turtle.py", "png.py")
 
 def _list_programs():
+    """Python programs (.py) and block projects from PBC+ Studio
+    (.pbcp), sorted by name. A block project carries its generated
+    Python code in the field "py"; _pbcp_code() takes it out."""
     progs = []
     try:
         for name in sorted(os.listdir("/")):
-            if name.endswith(".py") and name not in _HIDDEN:
+            if ((name.endswith(".py") and name not in _HIDDEN)
+                    or name.endswith(".pbcp")):
                 progs.append(name)
     except OSError:
         pass
     return progs
 
+def _pbcp_code(path):
+    """Python code of a block project. Projects saved by older Studio
+    builds hold the code without its import lines; _run_program()
+    pre-imports those modules, so they run as well."""
+    import json
+    with open(path) as f:
+        code = json.load(f).get("py")
+    import gc
+    gc.collect()      # drop the parsed block JSON before the program runs
+    if not code:
+        raise ValueError("no Python code in project")
+    return code
+
 def menu(cancel=False):
-    """Show a list of installed .py files.
+    """Show a list of installed .py files and block projects (.pbcp).
 
     cancel : if True, the menu includes a "Cancel" option:
              B aborts the menu and returns to the caller.
@@ -654,7 +671,7 @@ def menu(cancel=False):
     if not progs:
         _screen.fill(BLACK)
         msg1 = "No programs found."
-        msg2 = "Copy *.py via mpremote."
+        msg2 = "Save .py or .pbcp files."
         _screen.text12(msg1, (WIDTH - _screen.text12_width(msg1)) // 2,
                        120, WHITE)
         _screen.text12(msg2, (WIDTH - _screen.text12_width(msg2)) // 2,
@@ -681,6 +698,8 @@ def menu(cancel=False):
     TITLE_FG   = _disp.rgb(0xe6, 0xed, 0xf3)   # --fg-0
     FOOTER_FG  = _disp.rgb(0x7d, 0x88, 0x93)   # --fg-2
     ROW_FG     = _disp.rgb(0xe6, 0xed, 0xf3)
+    BLOCK_FG   = _disp.rgb(0xff, 0xab, 0x19)   # block colour in the
+                                                # menu icon for .pbcp
     ACCENT_BAR = _disp.rgb(0x4f, 0x9e, 0xff)   # --accent, for the
                                                 # left edge marker on
                                                 # the active row
@@ -693,16 +712,24 @@ def menu(cancel=False):
         if idx >= len(progs) or idx < top or idx >= top + visible_lines:
             return
         y = HEADER_H + (idx - top) * LINE_H
-        label = progs[idx][:-3]    # strip .py
+        name = progs[idx]
+        blocks = name.endswith(".pbcp")
+        label = name[:-5] if blocks else name[:-3]
+        bg = HILITE_BG if is_cursor else BLACK
+        _screen.fill_rect(0, y - 1, WIDTH, LINE_H, bg)
         if is_cursor:
-            _screen.fill_rect(0, y - 1, WIDTH, LINE_H, HILITE_BG)
             # 3-px wide accent bar on the left, mirrors the IDE's
             # selected-row treatment.
             _screen.fill_rect(0, y - 1, 3, LINE_H, ACCENT_BAR)
-            _screen.text12(label, 12, y + 2, ROW_FG, HILITE_BG)
-        else:
-            _screen.fill_rect(0, y - 1, WIDTH, LINE_H, BLACK)
-            _screen.text12(label, 12, y + 2, ROW_FG, BLACK)
+        if blocks:
+            # Block projects get a small puzzle block in front of the
+            # name: body plus the notch on top and the tab below,
+            # like the blocks in PBC+ Studio.
+            bx, by = 10, y + 4
+            _screen.fill_rect(bx, by, 14, 9, BLOCK_FG)
+            _screen.fill_rect(bx + 3, by, 4, 2, bg)
+            _screen.fill_rect(bx + 3, by + 9, 4, 2, BLOCK_FG)
+        _screen.text12(label, 30, y + 2, ROW_FG, bg)
 
     def _draw_chrome():
         """Paint header + footer once. These never change while the
@@ -849,9 +876,22 @@ def _run_program(name):
     time.sleep_ms(150)
     try:
         # Read + exec so the loaded program shares no globals with us.
-        with open("/" + name) as f:
-            code = f.read()
         ns = {"__name__": "__main__"}
+        if name.endswith(".pbcp"):
+            code = _pbcp_code("/" + name)
+            # Studio adds these imports in front of the block code;
+            # older .pbcp files saved the code without them.
+            import sys, random, math
+            ns["pbc"] = sys.modules[__name__]
+            ns["time"] = time
+            ns["random"] = random
+            ns["math"] = math
+            if "turtle." in code:
+                import turtle
+                ns["turtle"] = turtle
+        else:
+            with open("/" + name) as f:
+                code = f.read()
         exec(code, ns)
     except KeyboardInterrupt:
         pass
