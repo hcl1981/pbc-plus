@@ -1,22 +1,26 @@
 # Link-Spiel: zwei PicoBoy Color Plus, ein Spiel
 
-Zwei Geräte mit USB-C-Kabel verbunden spielen **ein** Atari-2600-, NES-, SG-1000-,
-MSX-, ZX-Spectrum-, Amstrad-CPC-, Master-System-, PC-Engine-, Mega-Drive- oder C64-Spiel zu zweit: Das eine Gerät ist
-Controller 1, das andere Controller 2, beide zeigen dasselbe Bild.
+Zwei Geräte mit USB-C-Kabel verbunden spielen **ein** Atari-2600-, Atari-7800-,
+ColecoVision-, NES-, SG-1000-, MSX-, ZX-Spectrum-, Amstrad-CPC-, Master-System-,
+PC-Engine-, Mega-Drive- oder C64-Spiel zu zweit: Das eine Gerät ist
+Controller 1, das andere Controller 2, beide zeigen dasselbe Bild. Game Boys
+verbinden sich stattdessen wie mit einem Linkkabel, jeder mit seinem eigenen
+Spiel ([unten](#game-boy-linkkabel)).
 
 Das kann PBCemu (`dist/pbcemu.uf2`) seit November 2026; bis dahin war es eine
-eigene Firmware (PBClink). Game Gear und Game Boy (Color) spielen nur allein. Im Karussell tragen die Konsolen mit Link-Spiel eine runde goldene
+eigene Firmware (PBClink). Game Gear, Vectrex und Arduboy spielen nur allein. Im Karussell tragen die Konsolen mit Link-Spiel eine runde goldene
 Plakette **LINK**. Die Einzel-Firmwares (`nes.uf2`, `sms.uf2`, …) haben kein
 Link-Spiel.
 
 ```bash
 pbcemu/build.sh        # -> dist/pbcemu.uf2
-common/test/run.sh     # Protokolle am PC, über eine fehlerhafte Leitung
+common/test/run.sh     # Protokolle am PC (Gleichschritt, Lobby, Dateiübertragung), über eine fehlerhafte Leitung
 ```
 
 **Stand:** Finden und Spielen zu zweit laufen mit NES auf zwei echten Geräten.
-Master System, PC Engine, C64, MSX, ZX Spectrum, Amstrad CPC, SG-1000 und
-Atari 2600 sind im Link-Spiel auf Geräten noch nicht getestet. MSX und Atari 2600 laufen allein auf dem Gerät
+Master System, PC Engine, C64, MSX, ZX Spectrum, Amstrad CPC, SG-1000,
+Atari 2600, Atari 7800 und ColecoVision sind im Link-Spiel auf Geräten noch
+nicht getestet. MSX und Atari 2600 laufen allein auf dem Gerät
 in Echtzeit, SG-1000 bisher nur am PC.
 
 ## Benutzung
@@ -32,13 +36,36 @@ in Echtzeit, SG-1000 bisher nur am PC.
 5. RESET beendet das Spiel. Das andere Gerät meldet nach 3 Sekunden
    *Connection lost* und geht zurück zum Starter.
 
-Ohne Partner im Starter startet ein Spiel ganz normal allein. Hat das andere
-Gerät die Datei nicht, steht das auf dem startenden Gerät. Wählen beide fast
+Ohne Partner im Starter startet ein Spiel ganz normal allein. Wählen beide fast
 gleichzeitig, gewinnt eines; das andere startet dessen Spiel.
+
+**Spiel fehlt dem Partner:** Das startende Gerät bietet an, es zu schicken
+(*Send it*). Dann geht die Datei übers Kabel, beide zeigen einen Balken mit
+der Restzeit, A bricht ab. Danach startet das Spiel wie gewohnt; beim
+Partner liegt es nun auf dem Laufwerk. Auch ohne Spielstart geht das: In
+den Spieloptionen (Mitte in der Spieleliste) steht bei verbundenem Partner
+**Send to partner**; B schickt das Spiel. Mit dem Spiel gehen die System-ROMs,
+die der Emulator mitvergleicht, falls das sendende Gerät sie hat und dem
+Partner sie fehlen: `coleco.rom` (ColecoVision), `kernal.rom` und
+`basic.rom` (C64), `msx2.rom`, `msx2ext.rom` und `disk.rom` (MSX); was der
+Partner schon hat, bleibt unangetastet. Die Datei entsteht dort erst als
+`PBCXFER.TMP` und bekommt ihren Namen, wenn die Prüfsumme über die ganze
+Datei stimmt; ihr Platz wird vorab belegt, so dass das Schreiben weder FAT
+noch Verzeichnis ändert. Geht ein Gerät aus, merkt es das andere nach 3 s
+(*The transfer broke off*, eine halbe Datei bleibt nicht liegen); eine
+`PBCXFER.TMP` vom ausgeschalteten Empfänger löscht dessen Starter beim
+nächsten Einschalten. Ist das Laufwerk des Partners zu voll, sagen es beide
+Geräte gleich zu Beginn. Geschätzt (nicht gemessen) gehen etwa 20 KB pro Sekunde
+durch: Atari- und Coleco-Module in Sekunden, NES und Master System in
+unter einer halben Minute, ein Mega-Drive-Spiel mit 1 MB in knapp einer
+Minute (`common/pbc_xfer.c`, am PC über eine fehlerhafte Leitung geprüft:
+`common/test/run.sh`).
 
 Beide Geräte brauchen dieselbe ROM-Datei. Beim C64 müssen auch Diskette (auch
 nach einem Spielstand darauf), ROMs, Joystick-Port, Programm und True drive
-gleich sein; sonst steht dort *Game or settings differ*.
+gleich sein; sonst steht dort *Game or settings differ*. Bei der
+ColecoVision gilt das auch für das BIOS: `coleco.rom` auf beiden Geräten
+oder auf keinem.
 
 Das Gerät, das das Spiel gestartet hat, gibt den Takt vor. Das ist unabhängig
 vom Controller.
@@ -54,6 +81,8 @@ vom Controller.
 | ZX Spectrum | Joystick-Art aus dem Menü (Kempston, Sinclair 1 …) | Sinclair-Joystick 2 (Tasten 1–5); SPACE, ENTER und Menütasten gehen von beiden |
 | Amstrad CPC | Joystick 0 (Art aus dem Menü) | Joystick 1 (Tastaturzeile 6); RETURN und Menütasten gehen von beiden |
 | Atari 2600 | linker Joystick | rechter Joystick; RESET und SELECT gehen von beiden |
+| Atari 7800 | linker Joystick | rechter Joystick (beide Knöpfe); RESET, SELECT und PAUSE gehen von beiden |
+| ColecoVision | Controller 1 mit Ziffernfeld | Controller 2 mit Ziffernfeld (Mitte + Richtung usw. wie allein) |
 | Mega Drive | Controller 1 | Controller 2 |
 
 Beim C64 hat jeder Spieler seine eigene Taste auf Center + B und RETURN auf A.

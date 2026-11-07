@@ -215,6 +215,10 @@ static void display_clock(void)
     pll_init(pll_usb, 1, 1500 * MHZ, 5, 2);          /* 12 MHz x 125 / 10 */
     clock_configure(clk_peri, 0, CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLKSRC_PLL_USB,
                     150 * MHZ, 150 * MHZ);
+    /* the USB block clocked again: the link cable (usblink) drives its PHY
+     * and hangs without it */
+    clock_configure(clk_usb, 0, CLOCKS_CLK_USB_CTRL_AUXSRC_VALUE_CLKSRC_PLL_USB,
+                    150 * MHZ, 50 * MHZ);
     spi_set_baudrate(PBC_SPI, PBC_SPI_HZ);
 }
 

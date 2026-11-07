@@ -44,6 +44,7 @@ add_executable(pbcemu
     src/usb_descriptors.c
     ${CMAKE_CURRENT_LIST_DIR}/../common/pbc_rgb.c
     ${CMAKE_CURRENT_LIST_DIR}/../common/pbc_lobby.c
+    ${CMAKE_CURRENT_LIST_DIR}/../common/pbc_xfer.c
     ${CMAKE_CURRENT_LIST_DIR}/../common/usblink.c
     fatfs/ff.c
     fatfs/ffunicode.c
@@ -70,7 +71,8 @@ target_compile_definitions(pbcemu PRIVATE
     PBGB_FS_FLASH_OFFSET=0x700000u  # same as the emulators in the combined firmware
 )
 
-target_compile_options(pbcemu PRIVATE -Wall -Wno-unused-function)
+# small rather than fast (the launcher slot is tight); the drawing stays fast
+target_compile_options(pbcemu PRIVATE -Wall -Wno-unused-function -Os)
 set_source_files_properties(src/gfx.c PROPERTIES COMPILE_FLAGS "-O3")
 
 target_link_libraries(pbcemu

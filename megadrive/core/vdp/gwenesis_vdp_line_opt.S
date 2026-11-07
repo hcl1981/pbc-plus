@@ -17,6 +17,9 @@
  *     leaves 0 (transparent)
  * The bytes in the line come out as before; the stores are words, which
  * may be unaligned (fine on the M33).
+ *
+ * Each routine is a macro, made twice: as before, and for interlace mode 2
+ * (*_im2_asm: tiles 8 x 16, 64 bytes, name bits 9:0, row 0..15).
  */
 
     .syntax unified
@@ -86,10 +89,11 @@ attr_word:
  *   r8 = paty * 4, r9 = (7 - paty) * 4, r10 = 0x01010101,
  *   r3, r11, r12, lr = scratch
  */
-    .global draw_line_b_simple_asm
+    .macro LINE_B name, bits, shift, lastrow
+    .global \name
     .thumb_func
-    .type draw_line_b_simple_asm, %function
-draw_line_b_simple_asm:
+    .type \name, %function
+\name:
     push    {r4-r11, lr}
 
     ldr     r4, [sp, #36]           @ r4 = ntw_mask
@@ -98,24 +102,24 @@ draw_line_b_simple_asm:
 
     mov     r7, r0                  @ r7 = scr
     lsl     r8, r3, #2              @ r8 = paty * 4
-    rsb     r9, r8, #28             @ r9 = (7 - paty) * 4
+    rsb     r9, r8, #\lastrow            @ r9 = (last row - paty) * 4
     ldr     r0, =VRAM
     mov     r10, #0x01010101
     and     r5, r5, #0xFF
     mul     r5, r5, r10             @ r5 = bg|bg|bg|bg
 
-.Lb_tile_loop:
+.Lb_tile_loop\@:
     /* tile name, big-endian in VRAM */
     ldrh    r11, [r1, r2, lsl #1]
     rev16   r11, r11
     /* pattern row: tile * 32 + row * 4, row flipped vertically */
-    ubfx    r12, r11, #0, #11
+    ubfx    r12, r11, #0, #\bits
     tst     r11, #0x1000
     ite     eq
-    addeq   r12, r8, r12, lsl #5
-    addne   r12, r9, r12, lsl #5
+    addeq   r12, r8, r12, lsl #\shift
+    addne   r12, r9, r12, lsl #\shift
     ldr     r3, [r0, r12]
-    cbz     r3, .Lb_background      @ all transparent
+    cbz     r3, .Lb_background\@      @ all transparent
 
     ldr     r12, =attr_word
     lsr     lr, r11, #13
@@ -132,22 +136,25 @@ draw_line_b_simple_asm:
     str     r11, [r7, #0]
     str     r3, [r7, #4]
 
-.Lb_next_tile:
+.Lb_next_tile\@:
     add     r7, r7, #8              @ scr += 8
     add     r2, r2, #1              @ col++
     and     r2, r2, r4              @ col &= ntw_mask
     subs    r6, r6, #1              @ tile_count--
-    bne     .Lb_tile_loop
+    bne     .Lb_tile_loop\@
 
     pop     {r4-r11, pc}
 
-.Lb_background:
+.Lb_background\@:
     str     r5, [r7, #0]
     str     r5, [r7, #4]
-    b       .Lb_next_tile
+    b       .Lb_next_tile\@
 
     .ltorg
-    .size draw_line_b_simple_asm, .-draw_line_b_simple_asm
+    .size \name, .-\name
+    .endm
+    LINE_B draw_line_b_simple_asm, 11, 5, 28
+    LINE_B draw_line_b_im2_asm, 10, 6, 60          @ interlace mode 2: tiles 8 x 16
 
 
 /*
@@ -173,10 +180,11 @@ draw_line_b_simple_asm:
  *
  * Registers as in draw_line_b_simple_asm, r5 = scratch.
  */
-    .global draw_line_a_simple_asm
+    .macro LINE_A name, bits, shift, lastrow
+    .global \name
     .thumb_func
-    .type draw_line_a_simple_asm, %function
-draw_line_a_simple_asm:
+    .type \name, %function
+\name:
     push    {r4-r11, lr}
 
     ldr     r4, [sp, #36]           @ r4 = ntw_mask
@@ -184,21 +192,21 @@ draw_line_a_simple_asm:
 
     mov     r7, r0                  @ r7 = scr
     lsl     r8, r3, #2              @ r8 = paty * 4
-    rsb     r9, r8, #28             @ r9 = (7 - paty) * 4
+    rsb     r9, r8, #\lastrow            @ r9 = (last row - paty) * 4
     ldr     r0, =VRAM
     mov     r10, #0x01010101
 
-.La_tile_loop:
+.La_tile_loop\@:
     ldrh    r11, [r1, r2, lsl #1]
     rev16   r11, r11
-    ubfx    r12, r11, #0, #11
+    ubfx    r12, r11, #0, #\bits
     tst     r11, #0x1000
     ite     eq
-    addeq   r12, r8, r12, lsl #5
-    addne   r12, r9, r12, lsl #5
+    addeq   r12, r8, r12, lsl #\shift
+    addne   r12, r9, r12, lsl #\shift
     ldr     r3, [r0, r12]
     cmp     r3, #0
-    beq     .La_next_tile           @ all transparent: nothing to draw
+    beq     .La_next_tile\@           @ all transparent: nothing to draw
 
     ldr     r12, =attr_word
     lsr     lr, r11, #13
@@ -207,7 +215,7 @@ draw_line_a_simple_asm:
     TILE_PIXELS
 
     tst     r12, #PIXATTR_HIPRI
-    bne     .La_hipri
+    bne     .La_hipri\@
 
     /* low priority: not over a high-priority pixel of plane B */
     ldr     lr, [r7, #0]
@@ -226,9 +234,9 @@ draw_line_a_simple_asm:
     orr     r3, r3, r12
     sel     r3, r3, lr
     str     r3, [r7, #4]
-    b       .La_next_tile
+    b       .La_next_tile\@
 
-.La_hipri:
+.La_hipri\@:
     /* high priority: every non-transparent pixel */
     ldr     lr, [r7, #0]
     usub8   r5, r11, r10
@@ -241,17 +249,20 @@ draw_line_a_simple_asm:
     sel     r3, r3, lr
     str     r3, [r7, #4]
 
-.La_next_tile:
+.La_next_tile\@:
     add     r7, r7, #8              @ scr += 8
     add     r2, r2, #1              @ col++
     and     r2, r2, r4              @ col &= ntw_mask
     subs    r6, r6, #1              @ tile_count--
-    bne     .La_tile_loop
+    bne     .La_tile_loop\@
 
     pop     {r4-r11, pc}
 
     .ltorg
-    .size draw_line_a_simple_asm, .-draw_line_a_simple_asm
+    .size \name, .-\name
+    .endm
+    LINE_A draw_line_a_simple_asm, 11, 5, 28
+    LINE_A draw_line_a_im2_asm, 10, 6, 60          @ interlace mode 2: tiles 8 x 16
 
 
 /*
@@ -272,29 +283,30 @@ draw_line_a_simple_asm:
  * Registers: r0 = VRAM, r1 = name (advances by 2), r6 = tiles left,
  * r7 = scr, r8/r9 = row offsets, r10 = 0x01010101, rest scratch.
  */
-    .global draw_window_line_asm
+    .macro LINE_W name, bits, shift, lastrow
+    .global \name
     .thumb_func
-    .type draw_window_line_asm, %function
-draw_window_line_asm:
+    .type \name, %function
+\name:
     push    {r4-r11, lr}
 
     mov     r7, r0                  @ r7 = scr
     mov     r6, r3                  @ r6 = tile_count
     lsl     r8, r2, #2              @ r8 = paty * 4
-    rsb     r9, r8, #28             @ r9 = (7 - paty) * 4
+    rsb     r9, r8, #\lastrow            @ r9 = (last row - paty) * 4
     ldr     r0, =VRAM
     mov     r10, #0x01010101
 
-.Lw_tile_loop:
+.Lw_tile_loop\@:
     ldrh    r11, [r1], #2
     rev16   r11, r11
-    ubfx    r12, r11, #0, #11
+    ubfx    r12, r11, #0, #\bits
     tst     r11, #0x1000
     ite     eq
-    addeq   r12, r8, r12, lsl #5
-    addne   r12, r9, r12, lsl #5
+    addeq   r12, r8, r12, lsl #\shift
+    addne   r12, r9, r12, lsl #\shift
     ldr     r3, [r0, r12]
-    cbz     r3, .Lw_next_tile
+    cbz     r3, .Lw_next_tile\@
 
     ldr     r12, =attr_word
     lsr     lr, r11, #13
@@ -313,12 +325,15 @@ draw_window_line_asm:
     sel     r3, r3, lr
     str     r3, [r7, #4]
 
-.Lw_next_tile:
+.Lw_next_tile\@:
     add     r7, r7, #8              @ scr += 8
     subs    r6, r6, #1              @ tile_count--
-    bne     .Lw_tile_loop
+    bne     .Lw_tile_loop\@
 
     pop     {r4-r11, pc}
 
     .ltorg
-    .size draw_window_line_asm, .-draw_window_line_asm
+    .size \name, .-\name
+    .endm
+    LINE_W draw_window_line_asm, 11, 5, 28
+    LINE_W draw_window_line_im2_asm, 10, 6, 60          @ interlace mode 2: tiles 8 x 16

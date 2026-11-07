@@ -37,6 +37,11 @@
 #define PBC_LAUNCH_VERSION  2u
 #define PBC_LAUNCH_NAME_MAX 96              /* = ROM_NAME_MAX of the emulators */
 
+/* The Vectrex's own game (Mine Storm, in its system ROM): in the launcher's
+ * list without a file; the emulator starts it with an empty cartridge
+ * slot, as the real console does. A file of that name takes its place. */
+#define PBC_VECTREX_BUILTIN "Mine Storm.vec"
+
 /* watchdog scratch[0] = PBC_JUMP_MAGIC, scratch[1] = flash offset of the
  * emulator: set by the launcher right before its restart. */
 #define PBC_JUMP_MAGIC      0x504D554Au     /* "JUMP" */

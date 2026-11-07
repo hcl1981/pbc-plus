@@ -464,7 +464,8 @@ static void __attribute__((noreturn)) emulation_loop(bool gg, bool show_stats, b
 
     for (;;) {
         uint16_t p1, p2;
-        pbc_link_frame(link_word(), sms.ram, RAMSIZEBYTES, &p1, &p2);
+        /* the RAM the two devices compare: the ColecoVision's 1 KB sits in sms.sram */
+        pbc_link_frame(link_word(), coleco ? sms.sram : sms.ram, coleco ? 0x400 : RAMSIZEBYTES, &p1, &p2);
         input.pad[0] = p1 & 0xFF;
         input.pad[1] = p2 & 0xFF;
         input.system = (p1 | p2) & LINK_START ? (gg ? INPUT_START : INPUT_PAUSE) : 0;
@@ -660,7 +661,14 @@ int main(void)
      * which these systems leave mostly free (no tile cache) */
     sms_cart_to_ram(16 * 1024);
 
-    pbc_link_start(pbc_link_hash(PBC_LINK_HASH_START ^ 2, rom_store_data(), rom_store_size()));
+    {
+        /* the ColecoVision's BIOS too: coleco.rom on one device and the
+         * small one of our own on the other would part at once */
+        uint32_t h = pbc_link_hash(PBC_LINK_HASH_START ^ 2, rom_store_data(), rom_store_size());
+        if (coleco)
+            h = pbc_link_hash(h, coleco_bios_buf, sizeof coleco_bios_buf);
+        pbc_link_start(h);
+    }
     if (saves && !pbc_link_active())    /* link play: same RAM on both, no saves */
         save_load(rom);
     pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);

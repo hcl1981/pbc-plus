@@ -47,6 +47,12 @@ extern void draw_line_b_simple_asm(uint8_t* scr, uint8_t* vram_nt, uint32_t col,
 extern void draw_line_a_simple_asm(uint8_t* scr, uint8_t* vram_nt, uint32_t col, uint32_t paty,
                                    uint32_t ntw_mask, uint32_t tile_count);
 extern void draw_window_line_asm(uint8_t* scr, uint8_t* vram_nt, uint32_t paty, uint32_t tile_count);
+/* the same for interlace mode 2 (tiles 8 x 16, paty 0..15) */
+extern void draw_line_b_im2_asm(uint8_t* scr, uint8_t* vram_nt, uint32_t col, uint32_t paty,
+                                uint32_t ntw_mask, uint32_t background, uint32_t tile_count);
+extern void draw_line_a_im2_asm(uint8_t* scr, uint8_t* vram_nt, uint32_t col, uint32_t paty,
+                                uint32_t ntw_mask, uint32_t tile_count);
+extern void draw_window_line_im2_asm(uint8_t* scr, uint8_t* vram_nt, uint32_t paty, uint32_t tile_count);
 
 /* Use assembly implementations */
 #define USE_ASM_VDP 1
@@ -131,6 +137,7 @@ static uint8_t  spr_line_cnt_core[2][SPR_MAX_LINES];
 static bool     spr_lists_dirty[2] = { true, true };
 static uint32_t spr_lists_sat[2];
 static int      spr_lists_width[2];
+static int      spr_lists_im2[2];      /* built for interlace mode 2 */
 
 /* Called from the VRAM write path whenever a byte of the sprite
  * attribute table changes. */
@@ -139,7 +146,9 @@ void gwenesis_vdp_sprite_cache_dirty(void) {
     spr_lists_dirty[1] = true;
 }
 
-static void spr_build_lists(int core) {
+/* im2: interlace mode 2, Y in double lines from 256, cells 16 high; the
+ * lists are per drawn line (line2 = 2 * line, see draw_lines_im2) */
+static void spr_build_lists(int core, int im2) {
     const int SPRITE_TABLE_SIZE    = (screen_width == 320) ? 80 : 64;
     const int MAX_SPRITES_PER_LINE = (screen_width == 320) ? 20 : 16;
     int h = screen_height;
@@ -150,11 +159,15 @@ static void spr_build_lists(int core) {
     int sidx = 0;
     for (int i = 0; (i < SPRITE_TABLE_SIZE) && sidx < SPRITE_TABLE_SIZE; ++i) {
         uint8_t *cache = SAT_CACHE + __fast_mul(sidx, 8);
-        int sy   = (((cache[0] & 0x3) << 8) | cache[1]) - 128;
+        int sy   = (((cache[0] & 0x3) << 8) | cache[1]) - (im2 ? 256 : 128);
         int sh   = BITS(cache[2], 0, 2) + 1;
         int link = BITS(cache[3], 0, 7);
 
         int y0 = sy, y1 = sy + __fast_mul(sh, 8);
+        if (im2) {                      /* the lines whose 2 * line it covers */
+            y0 = (sy + 1) >> 1;
+            y1 = (sy + sh * 16 + 1) >> 1;
+        }
         if (y0 < 0) y0 = 0;
         if (y1 > h) y1 = h;
         for (int l = y0; l < y1; l++) {
@@ -174,6 +187,7 @@ static void spr_build_lists(int core) {
     spr_lists_dirty[core] = false;
     spr_lists_sat[core]   = REG5_SAT_ADDRESS;
     spr_lists_width[core] = screen_width;
+    spr_lists_im2[core]   = im2;
 }
 
 
@@ -829,8 +843,8 @@ void draw_sprites_over_planes(int line) {
     int core = get_core_num();
     if (spr_lists_dirty[core] ||
         spr_lists_sat[core] != (uint32_t)REG5_SAT_ADDRESS ||
-        spr_lists_width[core] != screen_width)
-        spr_build_lists(core);
+        spr_lists_width[core] != screen_width || spr_lists_im2[core])
+        spr_build_lists(core, 0);
 
     if (line < 0 || line >= SPR_MAX_LINES) return;
 
@@ -1033,6 +1047,170 @@ void draw_sprites(int line) {
 
 /******************************************************************************
  *
+ *  PBC: interlace mode 2 (Sonic 2's two-player screen and a few others).
+ *  Double vertical resolution: 448 lines, tiles 8 x 16 (64 bytes), sprite Y
+ *  offset 256. The panel shows 224 lines, so one field is drawn: the even
+ *  lines, line2 = 2 * line. A 16-line tile reads as two 8-line tiles in a
+ *  row (index 2t and 2t + 1), so the pattern routines above serve unchanged:
+ *  im2_name() picks the half and passes the row within it.
+ *
+ ******************************************************************************/
+
+/* the name of a 16-line tile's row p (0..15) as an 8-line tile, its row p & 7 */
+static inline __attribute__((always_inline))
+uint16_t im2_name(uint16_t name, unsigned int tile, unsigned int p) {
+    unsigned int half = (name & 0x1000) ? 1 - (p >> 3) : p >> 3;   /* V flip: rows 15..0 */
+    return (uint16_t)((name & 0xF800) | (((tile & 0x3FF) << 1) | half));
+}
+
+static void draw_plane_im2(int line, bool plane_a, int first, int last) {
+    uint8_t* scr = &render_buffer[PIX_OVERFLOW];
+    const unsigned int ntaddr = plane_a ? REG2_NAMETABLE_A : REG4_NAMETABLE_B;
+    uint16_t scrollx = FETCH16VRAM(get_hscroll_vram(line) + (plane_a ? 0 : 2)) & 0x3FF;
+    const uint16_t* vsram = &VSRAM[plane_a ? 0 : 1];
+    const bool column_scrolling = gwenesis_vdp_regs[11] & 0x4;
+    const unsigned int line2 = (unsigned int)line << 1;
+
+    scrollx = -scrollx;
+    uint8_t col = (scrollx >> 3) & ntw_mask;
+    uint8_t* pos = scr + first - (scrollx & 7);
+    uint8_t* end = scr + last;
+#if USE_ASM_LINE
+    if (!column_scrolling) {            /* the line routines in assembler */
+        unsigned int v = (*vsram & 0x7FF) + line2;
+        uint8_t* nt = VRAM + ntaddr + ((v >> 4) & nth_mask) * ntwidth_x2;
+        unsigned int tiles = (last - first + (scrollx & 7) + 7) / 8;
+        if (plane_a)
+            draw_line_a_im2_asm(pos, nt, col, v & 15, ntw_mask, tiles);
+        else
+            draw_line_b_im2_asm(pos, nt, col, v & 15, ntw_mask, gwenesis_vdp_regs[7], tiles);
+        return;
+    }
+#endif
+    unsigned int numcell = 0;
+    unsigned int v = (*vsram & 0x7FF) + line2;
+    unsigned int p = v & 15, nt = ntaddr + ((v >> 4) & nth_mask) * ntwidth_x2;
+    while (pos < end) {
+        if (column_scrolling) {         /* each two cells their own scroll */
+            v = (*vsram & 0x7FF) + line2;
+            p = v & 15;
+            nt = ntaddr + ((v >> 4) & nth_mask) * ntwidth_x2;
+        }
+        uint16_t name = FETCH16VRAM(nt + __fast_mul(col, 2));
+        uint16_t n8 = im2_name(name, name, p);
+        if (plane_a)
+            draw_pattern_planeA(pos, n8, p & 7);
+        else
+            draw_pattern_planeB(pos, n8, p & 7);
+        col = (col + 1) & ntw_mask;
+        pos += 8;
+        numcell++;
+        if (column_scrolling && (numcell & 1) == 0)
+            vsram += 2;
+    }
+}
+
+static void draw_lines_im2(int line) {
+    draw_plane_im2(line, false, 0, screen_width);
+
+    /* plane A and the window, split as in draw_line_aw() */
+    int Window_line = REG18_WINDOW_VPOS * 8;
+    int window_down = gwenesis_vdp_regs[18] & 0x80;
+    int PlanA_first = PlanA_firstcol, PlanA_last = PlanA_lastcol;
+    int Window_first = Window_firstcol, Window_last = Window_lastcol;
+    if (window_down ? line > Window_line : line < Window_line) {
+        PlanA_first = PlanA_last = 0;
+        Window_first = 0;
+        Window_last = screen_width;
+    }
+    if (PlanA_first < PlanA_last)
+        draw_plane_im2(line, true, PlanA_first, PlanA_last);
+    if (Window_first < Window_last) {
+        uint8_t* pos = &render_buffer[PIX_OVERFLOW] + Window_first;
+        unsigned int line2 = (unsigned int)line << 1;
+        int wdwidth_x2 = (screen_width == 320 ? 128 : 64);
+        unsigned int nt = base_w + (line2 >> 4) * wdwidth_x2 + Window_first / 4;
+        unsigned int p = line2 & 15;
+#if USE_ASM_LINE
+        if (Window_last / 8 > Window_first / 8)
+            draw_window_line_im2_asm(pos, VRAM + nt, p, Window_last / 8 - Window_first / 8);
+        return;
+#endif
+        for (int i = Window_first / 8; i < Window_last / 8; ++i) {
+            uint16_t name = FETCH16VRAM(nt);
+            draw_pattern_planeA(pos, im2_name(name, name, p), p & 7);
+            nt += 2;
+            pos += 8;
+        }
+    }
+}
+
+/* the sprites of this line from the per-line lists (built for mode 2), as
+ * draw_sprites_over_planes(); into the sprite buffer (shadow/highlight) or
+ * straight over the planes */
+static void draw_sprites_im2(int line, bool over_planes) {
+    uint8_t* scr = over_planes ? &render_buffer[PIX_OVERFLOW] : &sprite_buffer[PIX_OVERFLOW];
+    uint8_t* start_table = VRAM + REG5_SAT_ADDRESS;
+    const int MAX_SPRITES_PER_LINE = (screen_width == 320) ? 20 : 16;
+    const int MAX_PIXELS_PER_LINE = (screen_width == 320) ? 320 : 256;
+    const int line2 = line << 1;
+
+    int core = get_core_num();
+    if (spr_lists_dirty[core] || spr_lists_sat[core] != (uint32_t)REG5_SAT_ADDRESS ||
+        spr_lists_width[core] != screen_width || !spr_lists_im2[core])
+        spr_build_lists(core, 1);
+    if (line < 0 || line >= SPR_MAX_LINES) return;
+
+    bool masking = false, one_sprite_nonzero = false;
+    int num_sprites = 0, num_pixels = 0;
+    int listed = spr_line_cnt_core[core][line];
+    for (int k = 0; k < listed; ++k) {
+        int sidx = spr_line_idx_core[core][line][k];
+        uint8_t* table = start_table + __fast_mul(sidx, 8);
+        uint8_t* cache = SAT_CACHE + __fast_mul(sidx, 8);
+        int sy = (((cache[0] & 0x3) << 8) | cache[1]) - 256;
+        int sx = (((table[6] & 0x3) << 8) | table[7]) - 128;
+        uint16_t name = (table[4] << 8) | table[5];
+        int sh = BITS(cache[2], 0, 2) + 1, sw = BITS(table[2], 2, 2) + 1;
+        if (!(line2 >= sy && line2 < sy + sh * 16)) continue;
+
+        if (sx == -128) {
+            if (one_sprite_nonzero || sprite_overflow == line - 1)
+                masking = true;
+        } else
+            one_sprite_nonzero = true;
+        unsigned int p = (unsigned int)(line2 - sy) & 15;
+        int row = (line2 - sy) >> 4;
+        if (name & 0x1000)
+            row = sh - row - 1;
+        if (sx > -sw * 8 && sx < screen_width && !masking) {
+            int step = (name & 0x0800) ? -sh : sh;
+            unsigned int tile = name + row + ((name & 0x0800) ? sh * (sw - 1) : 0);
+            for (int c = 0; c < sw && num_pixels < MAX_PIXELS_PER_LINE; c++) {
+                int cx = sx + c * 8;
+                if (cx > -8 && cx < screen_width) {
+                    uint16_t n8 = im2_name(name, tile, p);
+                    if (over_planes)
+                        draw_pattern_sprite_over_planes(scr + cx, n8, p & 7);
+                    else
+                        draw_pattern_sprite(scr + cx, n8, p & 7);
+                }
+                tile += step;
+                num_pixels += 8;
+            }
+        } else
+            num_pixels += sw * 8;
+        if (num_pixels >= MAX_PIXELS_PER_LINE) {
+            sprite_overflow = line;
+            break;
+        }
+        if (++num_sprites >= MAX_SPRITES_PER_LINE)
+            break;
+    }
+}
+
+/******************************************************************************
+ *
  *  Parse PLANE A/B size,scrolling at the start of image rendering
  *
  ******************************************************************************/
@@ -1108,8 +1286,10 @@ void __time_critical_func(gwenesis_vdp_render_line)(int line) {  /* PBC: RAM, co
     // Recalculate plane sizes every frame in case registers changed
     if (line == 0) gwenesis_vdp_render_config();
 
-    // interlace mode not implemented
-    if (BITS(gwenesis_vdp_regs[12], 1, 2) != 0)
+    /* interlace: mode 1 draws as usual (one field), mode 2 (both bits) has
+     * its own routines; the third combination is not used */
+    const int im2 = BITS(gwenesis_vdp_regs[12], 1, 2) == 3;
+    if (BITS(gwenesis_vdp_regs[12], 1, 2) == 2)
         return;
 
     if (line >= (REG1_PAL ? 240 : 224))
@@ -1134,12 +1314,19 @@ void __time_critical_func(gwenesis_vdp_render_line)(int line) {  /* PBC: RAM, co
     if (MODE_SHI)
         memset(ps, 0, GWENESIS_SCREEN_WIDTH);
 
-    draw_line_b(line);
-    draw_line_aw(line);
+    if (im2) {
+        draw_lines_im2(line);
+    } else {
+        draw_line_b(line);
+        draw_line_aw(line);
+    }
 
     /* Mode Highlight/shadow is enabled */
     if (MODE_SHI) {
-        draw_sprites(line);
+        if (im2)
+            draw_sprites_im2(line, false);
+        else
+            draw_sprites(line);
 
         for (int x = 0; x < screen_width; x++) {
             const uint8_t plane = pb[x];
@@ -1169,7 +1356,10 @@ void __time_critical_func(gwenesis_vdp_render_line)(int line) {  /* PBC: RAM, co
         /* Normal mode*/
     }
     else {
-        draw_sprites_over_planes(line);
+        if (im2)
+            draw_sprites_im2(line, true);
+        else
+            draw_sprites_over_planes(line);
         memcpy(line_buffer, pb, screen_width);
     }
 }

@@ -29,6 +29,7 @@ auf dem Gerät.
 | `-d FROM[:EVERY]` | Bilder ab FROM als `fNNNNN.ppm` speichern, jedes EVERY-te (sonst nur das letzte) |
 | `-o DIR` | Ordner für die Bilder (Vorgabe: aktueller) |
 | `-z ZONE` | Sonic 2: START drücken, bis ein Level läuft, dieses Level/diesen Akt laden (`0x0D01` Chemical Plant 2, `0x0F00` Aquatic Ruin 1), dann nach rechts laufen und springen. Ohne `-z`: 20 Sekunden lang alle zwei Sekunden START |
+| `-k DATEI` | Pad 1 aus einer Datei mit Zeilen `BILD TASTEN` (U D L R A B C S, `-` für keine), jede gilt bis zur nächsten; z. B. Sonic 2 zu zweit: `900 D`, `910 -`, `960 S`, `966 -`, `1150 S`, `1156 -` |
 | `-s` | mit `-z`: 100 Bilder nach Levelbeginn in den Bonuslevel (Tunnel) wechseln. Mit `MDHOST_TIME=1` davor gibt es die Rechenzeit jedes Bildes aus |
 | `-p` | je gespeichertem Bild ausgeben, ab welcher Zeile wie viele der 64 Farben umgelenkt sind (Palettenwechsel mitten im Bild) |
 

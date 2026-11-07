@@ -23,10 +23,12 @@
 #include "hardware/spi.h"
 #include "board.h"
 #include "pbc_lobby.h"
+#include "pbc_xfer.h"
 #include "ui.h"
 #include "c64/settings.h"
 #include "c64/d64_dir.h"
 #include "ff.h"
+#include "pbc_launch.h"
 
 /* ---- look ------------------------------------------------------------------ */
 
@@ -204,7 +206,7 @@ static void dark_wait(void)
         gpio_set_function(pins[k], GPIO_FUNC_PWM);
     }
     uint64_t t0 = time_us_64();
-    while (!input_raw() && !lobby_incoming(NULL)) {
+    while (!input_raw() && !lobby_incoming(NULL) && !lobby_incoming_send(NULL)) {
         int t = (int)((time_us_64() - t0) % CHASE_US);
         for (int k = 0; k < 3; k++) {
             int dt = t - k * (int)CHASE_STEP_US, v = 0;
@@ -269,7 +271,7 @@ static uint32_t edges(void)
 
 /* ---- device carousel ------------------------------------------------------------ */
 
-static int counts[16];
+static int counts[32];               /* games per device (devices.c) */
 static int fav_count;               /* favourites still on the drive */
 
 /* The carousel: page 0 the favourites, then the devices. */
@@ -415,7 +417,11 @@ static void device_screen(int sel, int next, int t, int dir)
 /* Rows of the options card; which ones appear depends on where it opens. */
 enum { ROW_SOUND, ROW_VOLUME, ROW_DISPLAY, ROW_STATS, ROW_PORT, ROW_PROGRAM, ROW_KEY, ROW_DRIVE, ROW_FAV, ROW_BRIGHT,
        ROW_LAYOUT, ROW_JOYKIND, ROW_SWAP, ROW_PALETTE, ROW_DIFF_L, ROW_DIFF_R, ROW_BW, ROW_SCAN,
-       ROW_CABLE, ROW_MACHINE };
+       ROW_CABLE, ROW_MACHINE, ROW_SEND };
+
+static bool send_game_files(void (*under)(void *), void *arg, int device, const char *game,
+                            const char *title, uint32_t accent, bool told);
+static void background_under(void *arg);
 
 /* A game's own options byte (c64/settings.h, settings_key_raw), handed to
  * its emulator in the launch record (pbc_launch.h, `key`): what it means
@@ -569,7 +575,7 @@ static void options_screen(void (*under)(void *), void *arg, const char *title,
     static const char *const names[] = { "Sound", "Volume", "Display", "Show FPS", "Joystick", "Program",
                                          "", "True drive", "Favorite", "Brightness", "", "Joystick", "",
                                          "Palette", "Left difficulty", "Right difficulty", "TV type",
-                                         "Scanlines", "Link cable", "Machine" };
+                                         "Scanlines", "Link cable", "Machine", "Send to partner" };
     static const char *const key_names[] = { C64_KEYS(C64_KEY_NAME) };
     if (vis < o->nrows) {               /* where in the rows: a thin bar on the right */
         int track = vis * rh - 4, th = track * vis / o->nrows;
@@ -658,6 +664,8 @@ static void options(void (*under)(void *), void *arg, int device, const char *ga
     if (game_opts) {
         o.rows[o.nrows++] = ROW_FAV;
         o.fav = favs_has(device, game);
+        if (lobby_partner() && strcmp(game, PBC_VECTREX_BUILTIN) != 0)
+            o.rows[o.nrows++] = ROW_SEND;   /* the game (and the ROMs it needs) to the partner */
     }
     /* a C64 game's own rows first, the ones for all games below them */
     bool c64 = game_opts && device >= 0 && devices[device].app == APP_C64;
@@ -751,6 +759,7 @@ static void options(void (*under)(void *), void *arg, int device, const char *ga
         strcpy(title, "Settings");
 
     int row = 0;
+    bool send = false;
     ui_wait_release();
     for (;;) {
         options_screen(under, arg, title, &o, row, accent);
@@ -814,9 +823,11 @@ static void options(void (*under)(void *), void *arg, int device, const char *ga
             case ROW_DRIVE: o.drive = o.drive_rom && !o.drive; break;
             }
         }
+        if ((e & IN_B) && o.rows[row] == ROW_SEND)
+            send = true;
         if (e & (IN_A | IN_B | IN_CENTER))
             break;
-        if (lobby_incoming(NULL))           /* the partner started a game */
+        if (lobby_incoming(NULL) || lobby_incoming_send(NULL))  /* the partner started a game */
             break;
     }
     prefs_save();
@@ -847,6 +858,8 @@ static void options(void (*under)(void *), void *arg, int device, const char *ga
         settings_save();
     }
     ui_wait_release();
+    if (send && send_game_files(background_under, NULL, device, game, title, accent, true))
+        ui_message("Link play", "Your partner has", "the game now.", NULL);
 }
 
 /* ---- link play ------------------------------------------------------------------------ */
@@ -877,6 +890,9 @@ static void link_card(void (*under)(void *), void *arg, const char *title, const
     gfx_text_centered(&font_small, GFX_W / 2, y0 + h - 24, foot, DIM, 255);
     gfx_present();
 }
+
+static bool link_send_game(void (*under)(void *), void *arg, int device, const char *game,
+                           const char *title, uint32_t accent);
 
 /* A partner is there: this device picks its controller and offers the game.
  * True: both start it. False: back to the list. */
@@ -912,8 +928,11 @@ static bool link_offer(void (*under)(void *), void *arg, int device, const char 
             ui_link_master = true;
             return true;
         case LOBBY_NO_GAME:
-            ui_message("Link play", "Your partner does not", "have this game.", NULL);
-            return false;
+            if (!link_send_game(under, arg, device, game, title, accent))
+                return false;
+            lobby_offer(&o);            /* it has it now */
+            ui_wait_release();
+            break;
         case LOBBY_GONE:
             ui_message("Link play", "Your partner has left.", NULL, NULL);
             return false;
@@ -932,7 +951,7 @@ static bool file_on_drive(const char *name)
     static FILINFO fi;
     char path[GAME_NAME_MAX + 2];
     snprintf(path, sizeof path, "/%s", name);
-    return f_stat(path, &fi) == FR_OK;
+    return f_stat(path, &fi) == FR_OK || strcmp(name, PBC_VECTREX_BUILTIN) == 0;
 }
 
 /* The partner started a game: this device starts it too.
@@ -965,6 +984,300 @@ static bool link_join(int *device, char game[GAME_NAME_MAX])
     ui_link_player = o.player;
     ui_link_master = false;
     return true;
+}
+
+/* ---- sending a game to the partner (common/pbc_xfer.c) ----------------------------- */
+
+#define XFER_RATE  20000            /* bytes a second, for the estimate before it starts */
+#define XFER_HAVE  100              /* send_file: the partner skipped it (has it already) */
+#define XFER_TMP   "/PBCXFER.TMP"   /* the receiver's file until the hash agrees; main.c deletes it */
+
+typedef struct {
+    const char *title, *line;
+    uint32_t size, accent;
+    uint64_t t0, drawn;
+    bool cancel;
+    FIL *f;                         /* the file being read or written */
+    uint32_t cache_off, cache_n;    /* the sender reads 4 KB at a time */
+    uint8_t cache[4096];
+} xfer_ui_t;
+
+static void size_text(uint32_t n, char *out, size_t size)
+{
+    if (n >= 1024 * 1024)
+        snprintf(out, size, "%lu.%lu MB", (unsigned long)(n >> 20), (unsigned long)((n & 0xFFFFF) * 10 >> 20));
+    else
+        snprintf(out, size, "%lu KB", (unsigned long)((n + 1023) / 1024));
+}
+
+static void secs_text(uint32_t s, char *out, size_t size)
+{
+    if (s >= 60)
+        snprintf(out, size, "%lu min %lu s", (unsigned long)(s / 60), (unsigned long)(s % 60));
+    else
+        snprintf(out, size, "%lu s", (unsigned long)(s ? s : 1));
+}
+
+/* the card: title, what happens, the bar, done of all and the time left */
+static void xfer_draw(xfer_ui_t *u, uint32_t done)
+{
+    background();
+    int h = 150, y0 = (GFX_H - h) / 2;
+    gfx_rrect(14, y0, GFX_W - 28, h, 16, CARD, 255);
+    char t[GAME_NAME_MAX + 4];
+    gfx_text_fit(&font_head, u->title, GFX_W - 60, t);
+    gfx_text(&font_head, 30, y0 + 14, t, TEXT, 255);
+    gfx_text(&font_small, 30, y0 + 42, u->line, DIM, 255);
+    int bx = 30, by = y0 + 68, bw = GFX_W - 60;
+    gfx_rrect(bx, by, bw, 12, 6, FAINT, 255);
+    int fill = u->size ? (int)((uint64_t)bw * done / u->size) : bw;
+    if (fill > 0)
+        gfx_rrect(bx, by, fill < 12 ? 12 : fill, 12, 6, u->accent, 255);
+    char a[24], b[24], left[24], line[64];
+    size_text(done, a, sizeof a);
+    size_text(u->size, b, sizeof b);
+    uint64_t el = time_us_64() - u->t0;
+    uint32_t rate = done > 8192 && el > 1000000 ? (uint32_t)((uint64_t)done * 1000000 / el) : XFER_RATE;
+    secs_text((u->size - done) / (rate ? rate : 1), left, sizeof left);
+    snprintf(line, sizeof line, "%s of %s", a, b);
+    gfx_text(&font_small, 30, by + 22, line, DIM, 255);
+    snprintf(line, sizeof line, "%s left", left);
+    gfx_text(&font_small, GFX_W - 30 - gfx_text_w(&font_small, line), by + 22, line, DIM, 255);
+    gfx_text_centered(&font_small, GFX_W / 2, y0 + h - 24, "A  cancel", DIM, 255);
+    gfx_present();
+}
+
+/* pbc_xfer's tick: A cancels; the card three times a second (drawing it
+ * holds up the line) */
+static bool xfer_tick(void *user, uint32_t done)
+{
+    xfer_ui_t *u = user;
+    if (input_menu_edges() & IN_A)
+        u->cancel = true;
+    uint64_t now = time_us_64();
+    if (now - u->drawn > 300000) {
+        u->drawn = now;
+        xfer_draw(u, done);
+    }
+    return !u->cancel;
+}
+
+static int xfer_read(void *user, uint32_t off, void *buf, int len)
+{
+    xfer_ui_t *u = user;
+    if (off < u->cache_off || off + (uint32_t)len > u->cache_off + u->cache_n) {
+        UINT got = 0;
+        if (f_lseek(u->f, off) != FR_OK || f_read(u->f, u->cache, sizeof u->cache, &got) != FR_OK)
+            return -1;
+        u->cache_off = off;
+        u->cache_n = got;
+        if (got < (UINT)len)
+            return -1;
+    }
+    memcpy(buf, u->cache + (off - u->cache_off), (size_t)len);
+    return len;
+}
+
+static int xfer_write(void *user, const void *buf, int len)
+{
+    xfer_ui_t *u = user;
+    UINT put = 0;
+    return f_write(u->f, buf, (UINT)len, &put) == FR_OK && put == (UINT)len ? len : -1;
+}
+
+/* One file to the partner: announce it, then send it. XFER_*. */
+static int send_file(void (*under)(void *), void *arg, const char *name, const char *title, uint32_t accent)
+{
+    static FIL f;
+    static xfer_ui_t u;
+    char path[GAME_NAME_MAX + 2];
+    snprintf(path, sizeof path, "/%s", name);
+    if (f_open(&f, path, FA_READ) != FR_OK)
+        return XFER_ERROR;
+    uint32_t size = (uint32_t)f_size(&f), hash = XFER_HASH_START;
+    for (;;) {                          /* the hash first, the receiver checks it */
+        UINT got = 0;
+        if (f_read(&f, u.cache, sizeof u.cache, &got) != FR_OK) { f_close(&f); return XFER_ERROR; }
+        if (!got) break;
+        hash = xfer_hash(hash, u.cache, got);
+    }
+    static lobby_file_t lf;
+    snprintf(lf.name, sizeof lf.name, "%s", name);
+    lf.size = size;
+    lf.hash = hash;
+    lobby_send(&lf);
+    while (lobby_send_state() == LOBBY_ASKING) {
+        link_card(under, arg, title, "Asking your partner ...", NULL, 0, 0, "A  back", accent);
+        if (edges() & IN_A) {
+            lobby_send_cancel();
+            f_close(&f);
+            return XFER_CANCEL;
+        }
+    }
+    if (lobby_send_state() != LOBBY_ACCEPTED) {
+        f_close(&f);
+        return XFER_GONE;
+    }
+    lobby_pause();
+    u.title = title;
+    u.line = "Sending to your partner";
+    u.size = size;
+    u.accent = accent;
+    u.t0 = time_us_64();
+    u.drawn = 0;
+    u.cancel = false;
+    u.f = &f;
+    u.cache_off = u.cache_n = 0;
+    xfer_t x = { .size = size, .hash = hash, .read = xfer_read, .tick = xfer_tick, .user = &u };
+    int r = xfer_send(&x);
+    lobby_resume();
+    f_close(&f);
+    if (r == XFER_CANCEL && !u.cancel)
+        r = XFER_HAVE;                  /* cancelled over there: it has it */
+    return r;
+}
+
+/* The partner lacks the game: send it (and the system ROMs it may need that
+ * this drive has, if the partner's lacks them). True: it has it now. */
+static bool link_send_game(void (*under)(void *), void *arg, int device, const char *game,
+                           const char *title, uint32_t accent)
+{
+    static FILINFO fi;
+    char path[GAME_NAME_MAX + 2], est[20], line[48];
+    snprintf(path, sizeof path, "/%s", game);
+    if (f_stat(path, &fi) != FR_OK)
+        return false;
+    secs_text((uint32_t)(fi.fsize / XFER_RATE), est, sizeof est);
+    snprintf(line, sizeof line, "Your partner lacks it. About %s.", est);
+    static const char *const rows[] = { "Send it", "Back" };
+    int sel = 0;
+    ui_wait_release();
+    for (;;) {
+        link_card(under, arg, title, line, rows, 2, sel, "B  choose", accent);
+        uint32_t e = edges();
+        if (e & (IN_UP | IN_DOWN | IN_LEFT | IN_RIGHT))
+            sel = !sel;
+        if ((e & IN_B) && sel == 0)
+            break;
+        if ((e & IN_A) || ((e & IN_B) && sel == 1) || !lobby_partner())
+            return false;
+    }
+    return send_game_files(under, arg, device, game, title, accent, false);
+}
+
+/* The game and the system ROMs the emulator compares too (if this drive has
+ * them; the partner skips, by cancelling, those it has). True if it has the
+ * game now; else said why. told: the player chose to send it (options) */
+static bool send_game_files(void (*under)(void *), void *arg, int device, const char *game,
+                            const char *title, uint32_t accent, bool told)
+{
+    static FILINFO fi;
+    char path[GAME_NAME_MAX + 2];
+    int r = send_file(under, arg, game, title, accent);
+    if (r == XFER_HAVE && told) {
+        ui_wait_release();
+        ui_message("Link play", "Your partner already", "has this game.", NULL);
+        return false;
+    }
+    if (r == XFER_HAVE)
+        r = XFER_OK;
+    if (r == XFER_OK) {
+        /* the ROMs the emulator compares too; the partner skips (cancels)
+         * those it has */
+        static const char *const coleco[] = { "coleco.rom", NULL };
+        static const char *const c64[] = { "kernal.rom", "basic.rom", NULL };
+        static const char *const msx[] = { "msx2.rom", "msx2ext.rom", "disk.rom", NULL };
+        const device_t *d = &devices[device];
+        const char *const *extra = device_is_coleco(d) ? coleco : d->app == APP_C64 ? c64 :
+                                   d->app == APP_MSX ? msx : NULL;
+        for (int k = 0; extra && extra[k] && r == XFER_OK; k++) {
+            snprintf(path, sizeof path, "/%s", extra[k]);
+            if (f_stat(path, &fi) != FR_OK)
+                continue;
+            int e = send_file(under, arg, extra[k], extra[k], accent);
+            if (e != XFER_OK && e != XFER_HAVE)
+                r = e;
+        }
+        if (r == XFER_OK)
+            return true;
+    }
+    ui_wait_release();
+    switch (r) {
+    case XFER_CANCEL: ui_message("Link play", "The transfer was", "cancelled.", NULL); break;
+    case XFER_FULL:   ui_message("Link play", "Your partner's drive", "is full.", NULL); break;
+    case XFER_BAD:    ui_message("Link play", "The game arrived damaged.", "Please try again.", NULL); break;
+    case XFER_ERROR:  ui_message("Link play", "Cannot read the game", "on this drive.", NULL); break;
+    default:          ui_message("Link play", "The transfer broke off.", NULL, NULL); break;
+    }
+    return false;
+}
+
+/* The partner sends a file: receive it into XFER_TMP, then under its name.
+ * Files already here are skipped (the sender takes the cancel as "has it"). */
+static void link_receive(void)
+{
+    static lobby_file_t lf;
+    static FIL f;
+    static xfer_ui_t u;
+    if (!lobby_incoming_send(&lf))
+        return;
+    char path[GAME_NAME_MAX + 2], title[GAME_NAME_MAX], tags[GAME_NAME_MAX];
+    bool name_ok = lf.name[0] && strlen(lf.name) < GAME_NAME_MAX - 1 && !strpbrk(lf.name, "/\\:");
+    snprintf(path, sizeof path, "/%s", name_ok ? lf.name : "?");
+    static FILINFO fi;
+    bool have = !name_ok || f_stat(path, &fi) == FR_OK;
+    games_title(lf.name, title, tags, sizeof title);
+    lobby_pause();
+    bool open = false;
+    int refuse = 0;
+    if (!have) {
+        FATFS *fs;
+        DWORD clusters = 0;
+        uint64_t room = f_getfree("", &clusters, &fs) == FR_OK ? (uint64_t)clusters * fs->csize * FF_MAX_SS : 0;
+        open = room >= (uint64_t)lf.size + FF_MAX_SS &&
+               f_open(&f, XFER_TMP, FA_CREATE_ALWAYS | FA_WRITE) == FR_OK;
+        if (!open)
+            refuse = XFER_FULL;
+        else if (lf.size && f_expand(&f, lf.size, 1) == FR_OK) {
+            /* its clusters claimed and on the flash now: writing the game
+             * then touches neither FAT nor directory, and a power cut leaves
+             * a whole XFER_TMP that the next start deletes (main.c) */
+            f_sync(&f);
+        }
+    }
+    u.title = title;
+    u.line = "Receiving from your partner";
+    u.size = lf.size;
+    u.accent = LINK_GREEN;
+    u.t0 = time_us_64();
+    u.drawn = 0;
+    u.cancel = have;                    /* has it: skip */
+    u.f = &f;
+    xfer_t x = { .size = lf.size, .hash = lf.hash, .write = xfer_write, .tick = xfer_tick,
+                 .foreign = lobby_foreign_reply, .refuse = refuse, .user = &u };
+    int r = xfer_recv(&x);
+    if (open) {
+        f_close(&f);
+        if (r != XFER_OK || f_rename(XFER_TMP, path) != FR_OK) {
+            f_unlink(XFER_TMP);
+            if (r == XFER_OK)
+                r = XFER_ERROR;
+        }
+    }
+    lobby_resume();
+    if (r == XFER_OK) {
+        games_count(counts);            /* the new game in the carousel's numbers */
+        return;
+    }
+    if (have)
+        return;
+    ui_wait_release();
+    switch (r) {
+    case XFER_CANCEL: ui_message("Link play", "The transfer was", "cancelled.", NULL); break;
+    case XFER_FULL:   ui_message("Link play", "Not enough room", "on this drive.", NULL); break;
+    case XFER_BAD:    ui_message("Link play", "The game arrived damaged.", "It was not kept.", NULL); break;
+    default:          ui_message("Link play", "The transfer broke off.", NULL, NULL); break;
+    }
 }
 
 /* ---- game list ------------------------------------------------------------------------ */
@@ -1104,6 +1417,7 @@ static bool game_list(int *device_io, char game[GAME_NAME_MAX], int which)
         list_screen(&l);
         gfx_present();
 
+        link_receive();
         if (link_join(device_io, game))
             return true;
 
@@ -1221,6 +1535,7 @@ ui_result_t ui_run(int *device, char game[GAME_NAME_MAX])
     for (;;) {
         device_screen(sel, next, t, dir);
         gfx_present();
+        link_receive();
         if (link_join(device, game))
             return UI_PLAY;
         if (next != sel) {

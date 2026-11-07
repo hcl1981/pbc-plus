@@ -32,7 +32,7 @@ uint32_t ls_host_ms(void);
 #define UNLOCK(s) restore_interrupts(s)
 #endif
 
-#define MAGIC        0x314B4C50u    /* "PLK1"; same firmware on both */
+#define MAGIC        0x324B4C50u    /* "PLK2" (with SEND); same firmware on both */
 #define KNOCK_MS     5              /* > the partner's tick */
 #define KNOCK_EVERY  700            /* + up to KNOCK_SPREAD */
 #define KNOCK_SPREAD 600
@@ -42,13 +42,14 @@ uint32_t ls_host_ms(void);
 #define OFFER_MS     1500           /* an offer not repeated is withdrawn */
 #define GO_MS        300
 
-enum { T_NONE, T_HELLO, T_OFFER, T_GO };                /* master */
-enum { R_NONE, R_HELLO, R_WAIT, R_ACCEPT, R_NO_GAME, R_BUSY, R_GO };    /* slave */
+enum { T_NONE, T_HELLO, T_OFFER, T_GO, T_SEND };        /* master */
+enum { R_NONE, R_HELLO, R_WAIT, R_ACCEPT, R_NO_GAME, R_BUSY, R_GO, R_SEND_GO };   /* slave */
 
 typedef struct {
     uint32_t magic, id, nonce;
     uint8_t  type, device, player, pad;
-    char     game[LOBBY_NAME_MAX];  /* OFFER only: HELLO and GO stop before it */
+    char     game[LOBBY_NAME_MAX];  /* OFFER and SEND only: HELLO and GO stop before it */
+    uint32_t size, hash;            /* SEND: the file */
 } packet_t;
 
 typedef struct {
@@ -66,6 +67,15 @@ static struct {
     int      offer, result;
     uint32_t go_ms;
     lobby_offer_t mine;
+    /* a file we send */
+    bool     send;
+    int      send_result;
+    uint32_t send_nonce;
+    lobby_file_t send_file;
+    /* a file the partner sends */
+    bool     sin_valid, sin_taken;
+    uint32_t sin_id, sin_nonce, sin_ms;
+    lobby_file_t sin;
     /* the partner's */
     bool     in_valid, in_go;
     uint8_t  in_answer;
@@ -126,6 +136,23 @@ static int slave_reply(int rxlen, void *user)
         }
         lb.in_ms = now;
         tx->type = lb.in_answer ? lb.in_answer : R_WAIT;
+    } else if (rx->type == T_SEND && rxlen == (int)sizeof *rx) {
+        if (lb.offer != OFFER_NONE) {
+            tx->type = R_BUSY;          /* we are starting a game ourselves */
+            return (int)sizeof *tx;
+        }
+        if (!lb.sin_valid || lb.sin_id != rx->id || lb.sin_nonce != rx->nonce) {
+            lb.sin_valid = true;
+            lb.sin_taken = false;
+            lb.sin_id = rx->id;
+            lb.sin_nonce = rx->nonce;
+            memcpy(lb.sin.name, rx->game, sizeof lb.sin.name);
+            lb.sin.name[sizeof lb.sin.name - 1] = 0;
+            lb.sin.size = rx->size;
+            lb.sin.hash = rx->hash;
+        }
+        lb.sin_ms = now;
+        tx->type = R_SEND_GO;
     } else if (rx->type == T_GO && lb.in_valid &&
                lb.in_id == rx->id && lb.in_nonce == rx->nonce) {
         lb.in_go = true;
@@ -145,7 +172,14 @@ static void master_exchange(uint32_t now)
     tx.id = lb.id;
     tx.nonce = lb.nonce;
     int len = (int)offsetof(packet_t, game);
-    if (lb.offer == OFFER_ASK) {
+    if (lb.offer == OFFER_NONE && lb.send) {
+        tx.type = T_SEND;
+        tx.nonce = lb.send_nonce;
+        memcpy(tx.game, lb.send_file.name, sizeof tx.game);
+        tx.size = lb.send_file.size;
+        tx.hash = lb.send_file.hash;
+        len = (int)sizeof tx;
+    } else if (lb.offer == OFFER_ASK) {
         tx.type = T_OFFER;
         tx.device = (uint8_t)lb.mine.device;
         tx.player = (uint8_t)lb.mine.player;
@@ -159,6 +193,16 @@ static void master_exchange(uint32_t now)
     if (n != (int)sizeof rx || rx.magic != MAGIC)
         return;
     saw_partner(now);
+    if (tx.type == T_SEND) {
+        if (rx.nonce == lb.send_nonce && rx.type == R_SEND_GO) {
+            lb.send = false;
+            lb.send_result = LOBBY_ACCEPTED;
+        } else if (rx.nonce == lb.send_nonce && rx.type == R_BUSY) {
+            lb.send = false;
+            lb.send_result = LOBBY_LOST;
+        }
+        return;
+    }
     if (rx.nonce != lb.nonce)
         return;
     if (lb.offer == OFFER_ASK && rx.type == R_ACCEPT) {
@@ -177,7 +221,7 @@ static void master_exchange(uint32_t now)
 
 static void schedule(uint32_t now)
 {
-    lb.next_ms = now + (lb.offer != OFFER_NONE ? OFFER_EVERY
+    lb.next_ms = now + (lb.offer != OFFER_NONE || lb.send ? OFFER_EVERY
                                                : KNOCK_EVERY + rnd() % KNOCK_SPREAD);
 }
 
@@ -193,6 +237,12 @@ void lobby_tick(void)
         lb.offer = OFFER_NONE;
         lb.result = LOBBY_GONE;
     }
+    if (lb.send && !lb.seen) {
+        lb.send = false;
+        lb.send_result = LOBBY_GONE;
+    }
+    if (lb.sin_valid && !lb.sin_taken && now - lb.sin_ms > OFFER_MS)
+        lb.sin_valid = false;
     if (lb.offer == OFFER_GO && now - lb.go_ms > GO_MS) {
         lb.offer = OFFER_NONE;
         lb.result = LOBBY_ACCEPTED;
@@ -254,6 +304,30 @@ void lobby_begin(uint32_t id)
 #endif
 }
 
+void lobby_pause(void)
+{
+#ifndef LS_HOST
+    if (timer_on)
+        cancel_repeating_timer(&timer);
+    timer_on = false;
+#endif
+    lb.knocking = false;
+    usblink_master_abort();
+}
+
+void lobby_resume(void)
+{
+    uint32_t now = NOW_MS();
+    lb.knocking = false;
+    lb.hold_ms = now;
+    lb.next_ms = now + rnd() % KNOCK_EVERY;
+    if (lb.seen)
+        lb.seen_ms = now;               /* it was busy with us all the time */
+#ifndef LS_HOST
+    timer_on = add_repeating_timer_ms(1, on_timer, NULL, &timer);
+#endif
+}
+
 void lobby_end(void)
 {
 #ifndef LS_HOST
@@ -297,6 +371,58 @@ void lobby_offer_cancel(void)
     uint32_t s = LOCK();
     lb.offer = OFFER_NONE;
     UNLOCK(s);
+}
+
+void lobby_send(const lobby_file_t *f)
+{
+    uint32_t s = LOCK();
+    lb.send_file = *f;
+    lb.send_nonce = lb.send_nonce * 1103515245u + 12345u + rnd();
+    lb.send = true;
+    lb.send_result = LOBBY_ASKING;
+    lb.next_ms = NOW_MS();
+    UNLOCK(s);
+}
+
+int lobby_send_state(void)
+{
+    return lb.send_result;
+}
+
+void lobby_send_cancel(void)
+{
+    uint32_t s = LOCK();
+    lb.send = false;
+    UNLOCK(s);
+}
+
+bool lobby_incoming_send(lobby_file_t *f)
+{
+    uint32_t s = LOCK();
+    bool r = lb.sin_valid && !lb.sin_taken;
+    if (r && f) {
+        *f = lb.sin;
+        lb.sin_taken = true;
+    }
+    UNLOCK(s);
+    return r;
+}
+
+/* while pbc_xfer has the line: the announcement again (our answer to it got
+ * lost), anything else of the lobby gets an answer it ignores */
+int lobby_foreign_reply(const void *rxv, int rxlen, void *txv, int txmax)
+{
+    const packet_t *rx = rxv;
+    reply_t *tx = txv;
+    if (txmax < (int)sizeof *tx)
+        return -1;
+    memset(tx, 0, sizeof *tx);
+    if (rxlen >= (int)offsetof(packet_t, game) && rx->magic == MAGIC && rx->type == T_SEND) {
+        tx->magic = MAGIC;
+        tx->nonce = rx->nonce;
+        tx->type = R_SEND_GO;
+    }
+    return (int)sizeof *tx;
 }
 
 bool lobby_incoming(lobby_offer_t *o)

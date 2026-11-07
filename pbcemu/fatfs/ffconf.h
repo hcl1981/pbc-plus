@@ -20,7 +20,7 @@
 #define FF_USE_FIND		1	/* f_findfirst / f_findnext for the ROM scan. */
 #define FF_USE_MKFS		1	/* f_mkfs to format an empty/new partition. */
 #define FF_USE_FASTSEEK	0
-#define FF_USE_EXPAND	0
+#define FF_USE_EXPAND	1	/* the receiver of a game claims its space first (ui.c) */
 #define FF_USE_CHMOD	0
 #define FF_USE_LABEL	1	/* volume label ("PBC-ROMS"). */
 #define FF_USE_FORWARD	0

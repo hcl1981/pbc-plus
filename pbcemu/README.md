@@ -4,9 +4,10 @@ Ein Starter mit Gerätewahl und Spieleliste vor allen Emulatoren dieses Repos:
 Atari 2600, ZX Spectrum, ColecoVision, Commodore 64, Vectrex, NES, SG-1000, MSX,
 Amstrad CPC, Master System, Atari 7800, PC Engine, Mega Drive, Game Gear,
 Game Boy (Color) und Arduboy. Fertig als **`dist/pbcemu.uf2`**,
-eine Datei für alles. Zwei Geräte am USB-C-Kabel spielen Atari 2600, C64,
-NES, SG-1000, MSX, ZX Spectrum, Amstrad CPC, Master System, PC Engine und Mega
-Drive zu zweit
+eine Datei für alles. Zwei Geräte am USB-C-Kabel spielen Atari 2600,
+Atari 7800, ColecoVision, C64, NES, SG-1000, MSX, ZX Spectrum, Amstrad CPC,
+Master System, PC Engine und Mega Drive zu zweit, Game Boys tauschen wie mit
+dem Linkkabel
 ([`../docs/LINKSPIEL.md`](../docs/LINKSPIEL.md)); im Karussell tragen diese
 Konsolen die goldene Plakette **LINK**.
 Der alte PicoBoyGB-Emulator ist nicht dabei; Game-Boy-Spiele laufen im

@@ -9,7 +9,9 @@
  * timing between the two cores (core 1 converting rows late), sound.
  * Keep the loop in step with src/main.c when that changes.
  *
- *   mdhost ROM FRAMES [-z ZONE [-s]] [-d FROM[:EVERY]] [-o DIR] [-p]
+ *   mdhost ROM FRAMES [-z ZONE [-s]] [-k KEYS] [-d FROM[:EVERY]] [-o DIR] [-p]
+ *   -k KEYS   pad 1 from a file of "FRAME BUTTONS" lines (U D L R A B C S,
+ *             - for none), each holding until the next
  *
  *   -z ZONE   Sonic 2: press START until a level runs, start it in this
  *             zone/act (0x0D01 = Chemical Plant 2), then run right and
@@ -175,7 +177,7 @@ static void report_splits(int frame)
 
 static void usage(void)
 {
-    fprintf(stderr, "mdhost ROM FRAMES [-z ZONE [-s]] [-d FROM[:EVERY]] [-o DIR] [-p]\n");
+    fprintf(stderr, "mdhost ROM FRAMES [-z ZONE [-s]] [-k KEYS] [-d FROM[:EVERY]] [-o DIR] [-p]\n");
     exit(2);
 }
 
@@ -187,6 +189,7 @@ int main(int argc, char **argv)
     int zone = -1, dump_from = frames - 1, dump_every = 1;
     bool splits = false, special = false;
     const char *dir = ".";
+    FILE *keys = NULL;
     for (int i = 3; i < argc; i++) {
         if (!strcmp(argv[i], "-z") && i + 1 < argc) zone = (int)strtol(argv[++i], NULL, 0);
         else if (!strcmp(argv[i], "-d") && i + 1 < argc) {
@@ -197,6 +200,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "-o") && i + 1 < argc) dir = argv[++i];
         else if (!strcmp(argv[i], "-p")) splits = true;
         else if (!strcmp(argv[i], "-s")) special = true;
+        else if (!strcmp(argv[i], "-k") && i + 1 < argc) keys = fopen(argv[++i], "r");
         else usage();
     }
 
@@ -240,6 +244,12 @@ int main(int argc, char **argv)
     gwenesis_vdp_render_config();
 
     int last_w = 0, last_h = 0, level_frames = 0;
+    long render_ns = 0;                 /* MDHOST_TIME: the lines' drawing this frame */
+    int key_next = -1;
+    char key_what[16] = "-";
+    uint8_t key_pad = 0xFF;
+    if (keys && fscanf(keys, "%d %15s", &key_next, key_what) != 2)
+        key_next = -1;
     for (int fr = 0; fr < frames; fr++) {
         /* ---- input ---- */
         uint8_t pad = 0xFF;                          /* active low: S A C B R L D U */
@@ -254,6 +264,18 @@ int main(int argc, char **argv)
                 if (fr % 90 < 25) pad &= ~0x40;                           /* A: jump */
                 if (fr % 300 > 200) pad = (pad | 0x08) & ~0x02;           /* down */
             }
+        } else if (keys) {
+            while (key_next >= 0 && fr >= key_next) {
+                key_pad = 0xFF;
+                for (const char *c = key_what; *c; c++) {
+                    static const char names[] = "UDLRBCAS";     /* bits 0..7 */
+                    const char *k = strchr(names, *c);
+                    if (k && *c) key_pad &= (uint8_t)~(1u << (k - names));
+                }
+                if (fscanf(keys, "%d %15s", &key_next, key_what) != 2)
+                    key_next = -1;
+            }
+            pad = key_pad;
         } else if (fr < 1200 && fr % 120 < 5) {
             pad &= ~0x80;
         }
@@ -307,7 +329,11 @@ int main(int argc, char **argv)
             }
             if (scan_line < screen_height) {
                 hdmi_line_lut[scan_line] = line_lut;
+                struct timespec r0, r1;
+                clock_gettime(CLOCK_MONOTONIC, &r0);
                 gwenesis_vdp_render_line(scan_line);
+                clock_gettime(CLOCK_MONOTONIC, &r1);
+                render_ns += (r1.tv_sec - r0.tv_sec) * 1000000000L + (r1.tv_nsec - r0.tv_nsec);
                 convert_line(scan_line);
             }
             scan_line++;
@@ -330,8 +356,9 @@ int main(int argc, char **argv)
             struct timespec t1;
             clock_gettime(CLOCK_MONOTONIC, &t1);
             if (getenv("MDHOST_TIME") && fr)
-                printf("frame %d mode %02x %ld us\n", fr, S2_GAME_MODE,
-                       (t1.tv_sec - t0.tv_sec) * 1000000 + (t1.tv_nsec - t0.tv_nsec) / 1000);
+                printf("frame %d mode %02x %ld us render %ld us\n", fr, S2_GAME_MODE,
+                       (t1.tv_sec - t0.tv_sec) * 1000000 + (t1.tv_nsec - t0.tv_nsec) / 1000, render_ns / 1000);
+            render_ns = 0;
             t0 = t1;
         }
         if (fr >= dump_from && (fr - dump_from) % dump_every == 0) {

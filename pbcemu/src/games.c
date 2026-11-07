@@ -64,6 +64,13 @@ static bool belongs(const device_t *d, const char *name, int *kind)
     return device_is_coleco(d) == (*kind == K_COLECO);
 }
 
+/* the Vectrex lists Mine Storm (built in) unless the drive has that file */
+static bool builtin_listed(int device)
+{
+    static FILINFO fi;
+    return strcmp(devices[device].exts, ".vec") == 0 && f_stat("/" PBC_VECTREX_BUILTIN, &fi) != FR_OK;
+}
+
 void games_count(int *counts)
 {
     static DIR dir;
@@ -81,6 +88,9 @@ void games_count(int *counts)
                 counts[d]++;
     }
     f_closedir(&dir);
+    for (int d = 0; d < device_count; d++)
+        if (builtin_listed(d))
+            counts[d]++;
 }
 
 static int by_name(const void *a, const void *b)
@@ -106,6 +116,8 @@ int games_list(int device, char (**out)[GAME_NAME_MAX])
             strcpy(names[n++], fi.fname);
     }
     f_closedir(&dir);
+    if (n < GAMES_MAX && builtin_listed(device))
+        strcpy(names[n++], PBC_VECTREX_BUILTIN);
     qsort(names, (size_t)n, sizeof *names, by_name);
     return n;
 }
@@ -125,8 +137,9 @@ int games_favorites(char (**out)[GAME_NAME_MAX], int **devs)
         int d = favs_device(i), kind = K_UNKNOWN;
         char path[GAME_NAME_MAX + 2];
         snprintf(path, sizeof path, "/%s", favs_name(i));
-        /* still on the drive and still that system's game */
-        if (d < 0 || f_stat(path, &fi) != FR_OK || !belongs(&devices[d], favs_name(i), &kind))
+        /* still on the drive (or built in) and still that system's game */
+        bool builtin = d >= 0 && strcmp(favs_name(i), PBC_VECTREX_BUILTIN) == 0 && builtin_listed(d);
+        if (d < 0 || (!builtin && f_stat(path, &fi) != FR_OK) || !belongs(&devices[d], favs_name(i), &kind))
             continue;
         dev[n] = d;
         strcpy(names[n++], favs_name(i));

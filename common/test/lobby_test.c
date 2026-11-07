@@ -11,7 +11,9 @@
     void x##lobby_begin(uint32_t); void x##lobby_end(void); void x##lobby_tick(void); \
     bool x##lobby_partner(void); void x##lobby_offer(const lobby_offer_t *); \
     int x##lobby_offer_state(void); void x##lobby_offer_cancel(void); \
-    bool x##lobby_incoming(lobby_offer_t *); void x##lobby_answer(bool); int x##lobby_went(void);
+    bool x##lobby_incoming(lobby_offer_t *); void x##lobby_answer(bool); int x##lobby_went(void); \
+    void x##lobby_send(const lobby_file_t *); int x##lobby_send_state(void); \
+    bool x##lobby_incoming_send(lobby_file_t *);
 DECL(a_)
 DECL(b_)
 
@@ -19,12 +21,14 @@ typedef struct {
     void (*begin)(uint32_t); void (*tick)(void); bool (*partner)(void);
     void (*offer)(const lobby_offer_t *); int (*state)(void); void (*cancel)(void);
     bool (*incoming)(lobby_offer_t *); void (*answer)(bool); int (*went)(void);
+    void (*send)(const lobby_file_t *); int (*send_state)(void); bool (*incoming_send)(lobby_file_t *);
 } api_t;
 #define API(x) { x##lobby_begin, x##lobby_tick, x##lobby_partner, x##lobby_offer, x##lobby_offer_state, \
-                 x##lobby_offer_cancel, x##lobby_incoming, x##lobby_answer, x##lobby_went }
+                 x##lobby_offer_cancel, x##lobby_incoming, x##lobby_answer, x##lobby_went, \
+                 x##lobby_send, x##lobby_send_state, x##lobby_incoming_send }
 static const api_t api[2] = { API(a_), API(b_) };
 
-enum { DO_NOTHING, DO_OFFER, DO_JOIN, DO_REFUSE };
+enum { DO_NOTHING, DO_OFFER, DO_JOIN, DO_REFUSE, DO_SEND, DO_TAKE };
 
 typedef struct {
     int who;                        /* 0, 1 */
@@ -33,6 +37,7 @@ typedef struct {
     int found;
     int result;                     /* offer: LOBBY_*; join: lobby_went() */
     lobby_offer_t got;
+    lobby_file_t file;
     volatile int off;
 } peer_t;
 
@@ -64,6 +69,19 @@ static void *run(void *arg)
             if (d->result != LOBBY_LOST)
                 break;
         }
+        if (d->plan == DO_SEND && dev[0].found && dev[1].found && !offered) {
+            lobby_file_t f = { .size = 123456, .hash = 0xC0FFEE };
+            snprintf(f.name, sizeof f.name, "file of %d", d->who);
+            a->send(&f);
+            offered = true;
+        } else if (d->plan == DO_SEND && offered && a->send_state() != LOBBY_ASKING) {
+            d->result = a->send_state();
+            break;
+        }
+        if (d->plan == DO_TAKE && d->result < 0 && a->incoming_send(&d->file)) {
+            d->result = 200;
+            break;
+        }
         /* a device whose offer lost joins the other's */
         if (d->plan == DO_JOIN || d->result == LOBBY_LOST || d->plan == DO_REFUSE) {
             if (!answered && a->incoming(&d->got)) {
@@ -83,6 +101,8 @@ static void *run(void *arg)
     }
     if (offered && d->result >= 0 && d->result != LOBBY_LOST)
         stop = 1;                       /* the scenario is over */
+    if (d->plan == DO_TAKE && d->result == 200 && dev[!d->who].result >= 0)
+        stop = 1;
     return NULL;
 }
 
@@ -124,6 +144,13 @@ int main(void)
         check("offer: starts on both", dev[0].result == LOBBY_ACCEPTED && dev[1].result == 100);
         check("offer: game and player arrive",
               !strcmp(dev[1].got.game, "game of 0") && dev[1].got.player == 2 && dev[1].got.device == 1);
+    }
+
+    for (int i = 0; i < 5; i++) {
+        go(10, DO_SEND, 20, DO_TAKE, 0);
+        check("send: announced and taken", dev[0].result == LOBBY_ACCEPTED && dev[1].result == 200);
+        check("send: name, size, hash arrive", !strcmp(dev[1].file.name, "file of 0") &&
+              dev[1].file.size == 123456 && dev[1].file.hash == 0xC0FFEE);
     }
 
     go(10, DO_OFFER, 20, DO_REFUSE, 0);

@@ -357,6 +357,7 @@ int main(void)
         usb_mode();
     if (!fs_mount())
         usb_mode();                     /* fresh device: nothing on the drive yet */
+    f_unlink("/PBCXFER.TMP");           /* a game being received when the power went */
     /* switched on or RES pressed (not the restart after the USB drive) */
     ui_intro_pending = (reset & (POWMAN_CHIP_RESET_HAD_POR_BITS | POWMAN_CHIP_RESET_HAD_RUN_LOW_BITS)) != 0;
 

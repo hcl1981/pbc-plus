@@ -96,6 +96,10 @@ static void display_clock(void)
     pll_init(pll_usb, 1, 1500 * MHZ, 5, 2);          /* 12 MHz x 125 / 10 */
     clock_configure(clk_peri, 0, CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLKSRC_PLL_USB,
                     150 * MHZ, 150 * MHZ);
+    /* the USB block clocked again: the link cable (usblink) drives its PHY
+     * and hangs without it */
+    clock_configure(clk_usb, 0, CLOCKS_CLK_USB_CTRL_AUXSRC_VALUE_CLKSRC_PLL_USB,
+                    150 * MHZ, 50 * MHZ);
     spi_set_baudrate(PBC_SPI, PBC_SPI_HZ);
 }
 
@@ -395,7 +399,16 @@ int main(void)
         fixed_switches = (uint8_t)(((launch->key & 1) ? A26_DIFF0 : 0) | ((launch->key & 2) ? A26_DIFF1 : 0) |
                                    ((launch->key & 4) ? A26_BW : 0));
 
-    if (!rom_store_matches(game)) {
+    /* Mine Storm (pbc_launch.h): no file, the cartridge slot empty */
+    static const uint8_t no_cart[2048];
+    bool builtin = false;
+    {
+        static FILINFO fi;
+        char path[ROM_NAME_MAX + 2];
+        snprintf(path, sizeof path, "/%s", game);
+        builtin = strcmp(game, PBC_VECTREX_BUILTIN) == 0 && f_stat(path, &fi) != FR_OK;
+    }
+    if (!builtin && !rom_store_matches(game)) {
         uint8_t *scratch = malloc(0x4000);
         if (!scratch)
             fatal("Out of memory", "for loading");
@@ -418,8 +431,8 @@ int main(void)
         fixed_switches &= (uint8_t)~A26_BW;     /* there it is PAUSE */
     /* 2600 and 7800: the cartridge into the Vectrex's idle buffers if it
      * fits (192 KB); from flash, every read that misses the cache is slow */
-    const uint8_t *rom = rom_store_data();
-    uint32_t rom_n = rom_store_size();
+    const uint8_t *rom = builtin ? no_cart : rom_store_data();
+    uint32_t rom_n = builtin ? sizeof no_cart : rom_store_size();
     if (!isvec) {
         uint32_t room;
         uint8_t *buf = vectrex_arena(&room);
@@ -429,7 +442,7 @@ int main(void)
         }
     }
     if (isvec) {
-        if (!vectrex_insert(rom_store_data(), rom_store_size()))
+        if (!vectrex_insert(rom, rom_n))
             fatal("Not a Vectrex cartridge", game);
         vectrex_reset();
     } else if (is7800) {
@@ -444,7 +457,8 @@ int main(void)
         a2600_reset();
     }
 
-    pbc_link_start(pbc_link_hash(PBC_LINK_HASH_START ^ (isvec ? 12 : is7800 ? 9 : 8), rom_store_data(), rom_store_size()));
+    pbc_link_start(pbc_link_hash(PBC_LINK_HASH_START ^ (isvec ? 12 : is7800 ? 9 : 8),
+                                 builtin ? no_cart : rom_store_data(), builtin ? sizeof no_cart : rom_store_size()));
     pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
     if (isvec)
         a26_video_vectrex();

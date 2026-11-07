@@ -165,6 +165,13 @@ Fast alles betrifft die Geschwindigkeit. Der Flash hat nur 16 KB Cache, und
 aus ihm kommen Spiel-ROM und Emulatorcode zugleich; alles, was pro Befehl
 oder pro Sample gebraucht wird, liegt deshalb im RAM.
 
+- **Interlace-Modus 2** (doppelte Zeilenzahl, Kacheln 8 × 16; Sonic 2 zu
+  zweit, auch im Link-Spiel): fehlte in Gwenesis ganz, das Bild blieb
+  leer. Gezeichnet wird das gerade Halbbild (224 der 448 Zeilen); eine
+  16-Zeilen-Kachel wird als zwei 8-Zeilen-Kacheln gelesen, so dass die
+  Musterroutinen unverändert dienen (`draw_lines_im2`, `draw_sprites_im2`
+  in `core/vdp/gwenesis_vdp_gfx.c`). Am PC mit `tools/host` geprüft
+  (`-k` mit Tastenfolge bis ins Zweispieler-Spiel).
 - **68000 seit November 2026:** Musashi 4.10 (MIT) statt Eke-Ekes Fassung
   von Musashi 3.32, siehe Lizenzen und `core/cpus/musashi/README.md`. Die
   Optimierungen unten für den alten Kern gelten genauso: Befehlstabelle
@@ -382,11 +389,10 @@ schaltet ein Spiel dort um, wird das ignoriert. SSF2 tut das nicht.
 
 ## Offene Punkte
 
-* **Kein Ton.** Ein Versuch (PWM per DMA, 53 kHz) lief langsamer und instabil.
 * **Kein EEPROM.** Spiele, die mit einem seriellen EEPROM speichern (z. B.
   NBA Jam, Wonder Boy in Monster World, Evander Holyfield's Boxing),
   verlieren ihren Stand; nur Batterie-SRAM wird gespeichert (siehe oben).
-* Kein 6-Button-Pad, kein zweiter Spieler.
+* Kein 6-Button-Pad; ein zweiter Spieler nur im Link-Spiel (zweites Gerät).
 
 ## Lizenzen
 
