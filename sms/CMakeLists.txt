@@ -67,7 +67,6 @@ add_executable(pbc_sms
 
     # Z80: redcode/Z80 (LGPL-3.0-or-later), see core/redcode/README.md
     ${REDCODE}/Z80.c
-    ${SMSP}/emu2413/emu2413.c
 )
 
 target_include_directories(pbc_sms PRIVATE
@@ -92,7 +91,7 @@ target_compile_definitions(pbc_sms PRIVATE
     MB_SMS
     LSB_FIRST=0
     NDEBUG
-    SMS_AUD_RATE=22222
+    SMS_AUD_RATE=45454
 )
 
 # redcode/Z80 with the PicoBoy switches (tools/redcode_patch.py): reads

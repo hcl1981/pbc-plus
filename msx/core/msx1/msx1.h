@@ -60,13 +60,17 @@ void msx1_init(const uint8_t *const bios_main[4], const uint8_t *bios_logo);
 /* MSX2: main ROM 32 KB (slot 0; `bios_logo` at 8000h may be NULL), sub-ROM
  * 16 KB (2 pages, slots 3-0 and 3-1), disk ROM 16 KB (slot 3-3 at 4000h,
  * patched by msx2_patch_disk_rom first; NULL: no disk), 128 KB RAM mapper
- * in slot 3-2, V9938 with 128 KB VRAM, RP5C01 clock. Lines go to
- * msx_line565. */
+ * in slot 3-2, V9938 with 128 KB VRAM, RP5C01 clock. Lines go through
+ * msx_line565_begin/commit: begin(y, lines) says where line y of `lines`
+ * goes (256 RGB565 pixels, word-aligned; NULL: not wanted), the core draws
+ * it there, commit(y, lines) hands it on. */
 void msx2_init(const uint8_t *const bios_main[4], const uint8_t *bios_logo,
                const uint8_t *const sub_rom[2], const uint8_t *disk_rom);
 bool msx_is_msx2(void);
-typedef void (*msx_line565_fn)(int y, int lines, const uint16_t *pixels);
-extern msx_line565_fn msx_line565;
+typedef uint16_t *(*msx_line565_begin_fn)(int y, int lines);
+typedef void (*msx_line565_commit_fn)(int y, int lines);
+extern msx_line565_begin_fn msx_line565_begin;
+extern msx_line565_commit_fn msx_line565_commit;
 
 /* The disk ROM's driver entries become traps (opcode 64h); the whole
  * 16 KB image, which C-DISK (C-BIOS) needs patched in its body too */
@@ -80,11 +84,13 @@ void msx2_insert_disk(msx_disk_io_fn io, uint32_t sectors);
 int msx1_insert(const uint8_t *rom, uint32_t size);
 void msx1_reset(void);
 
-/* One frame (262 lines, 60 Hz): `line` gets each of the 192 visible lines
- * as colour indices 0..15 (256 pixels, TMS9918 palette); `audio` gets
- * `samples` samples. */
-typedef void (*msx_line_fn)(int y, const uint8_t *pixels, int backdrop);
-void msx1_frame(msx_line_fn line, int16_t *audio, int samples);
+/* One frame (262 lines, 60 Hz): each of the 192 visible lines y goes
+ * where begin(y) says (NULL: not wanted) as colour indices 0..15 (256
+ * pixels, TMS9918 palette, word-aligned), commit(y, backdrop) hands it on;
+ * begin NULL: not drawn. `audio` gets `samples` samples. */
+typedef uint8_t *(*msx_line_begin_fn)(int y);
+typedef void (*msx_line_commit_fn)(int y, int backdrop);
+void msx1_frame(msx_line_begin_fn begin, msx_line_commit_fn commit, int16_t *audio, int samples);
 
 /* the RAM (MSX1 64 KB in slot 3, MSX2 128 KB), for the link's comparison */
 uint8_t *msx1_ram(void);

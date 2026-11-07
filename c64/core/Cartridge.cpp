@@ -87,7 +87,7 @@ Cartridge8K::Cartridge8K() : ROMCartridge(1, 0x2000)
 	notEXROM = false;
 }
 
-uint8_t Cartridge8K::ReadROML(uint16_t adr, uint8_t ram_byte, bool notLoram)
+C64_HOT(Cartridge8K_ReadROML) uint8_t Cartridge8K::ReadROML(uint16_t adr, uint8_t ram_byte, bool notLoram)
 {
 	return notLoram ? rom[adr] : ram_byte;
 }
@@ -100,12 +100,12 @@ Cartridge16K::Cartridge16K() : ROMCartridge(1, 0x4000)
 	notGAME = false;
 }
 
-uint8_t Cartridge16K::ReadROML(uint16_t adr, uint8_t ram_byte, bool notLoram)
+C64_HOT(Cartridge16K_ReadROML) uint8_t Cartridge16K::ReadROML(uint16_t adr, uint8_t ram_byte, bool notLoram)
 {
 	return notLoram ? rom[adr] : ram_byte;
 }
 
-uint8_t Cartridge16K::ReadROMH(uint16_t adr, uint8_t ram_byte, uint8_t basic_byte, bool notLoram, bool notHiram)
+C64_HOT(Cartridge16K_ReadROMH) uint8_t Cartridge16K::ReadROMH(uint16_t adr, uint8_t ram_byte, uint8_t basic_byte, bool notLoram, bool notHiram)
 {
 	return notHiram ? rom[adr + 0x2000] : ram_byte;
 }
@@ -123,12 +123,12 @@ void CartridgeSimonsBasic::Reset()
 	notGAME = true;
 }
 
-uint8_t CartridgeSimonsBasic::ReadROML(uint16_t adr, uint8_t ram_byte, bool notLoram)
+C64_HOT(CartridgeSimonsBasic_ReadROML) uint8_t CartridgeSimonsBasic::ReadROML(uint16_t adr, uint8_t ram_byte, bool notLoram)
 {
 	return notLoram ? rom[adr] : ram_byte;
 }
 
-uint8_t CartridgeSimonsBasic::ReadROMH(uint16_t adr, uint8_t ram_byte, uint8_t basic_byte, bool notLoram, bool notHiram)
+C64_HOT(CartridgeSimonsBasic_ReadROMH) uint8_t CartridgeSimonsBasic::ReadROMH(uint16_t adr, uint8_t ram_byte, uint8_t basic_byte, bool notLoram, bool notHiram)
 {
 	return notHiram ? rom[adr + 0x2000] : ram_byte;
 }
@@ -157,12 +157,12 @@ void CartridgeOcean::Reset()
 	bank = 0;
 }
 
-uint8_t CartridgeOcean::ReadROML(uint16_t adr, uint8_t ram_byte, bool notLoram)
+C64_HOT(CartridgeOcean_ReadROML) uint8_t CartridgeOcean::ReadROML(uint16_t adr, uint8_t ram_byte, bool notLoram)
 {
 	return notLoram ? rom[adr + bank * bankSize] : ram_byte;
 }
 
-uint8_t CartridgeOcean::ReadROMH(uint16_t adr, uint8_t ram_byte, uint8_t basic_byte, bool notLoram, bool notHiram)
+C64_HOT(CartridgeOcean_ReadROMH) uint8_t CartridgeOcean::ReadROMH(uint16_t adr, uint8_t ram_byte, uint8_t basic_byte, bool notLoram, bool notHiram)
 {
 	return notHiram ? rom[adr + bank * bankSize] : ram_byte;
 }
@@ -186,7 +186,7 @@ void CartridgeFunPlay::Reset()
 	bank = 0;
 }
 
-uint8_t CartridgeFunPlay::ReadROML(uint16_t adr, uint8_t ram_byte, bool notLoram)
+C64_HOT(CartridgeFunPlay_ReadROML) uint8_t CartridgeFunPlay::ReadROML(uint16_t adr, uint8_t ram_byte, bool notLoram)
 {
 	return notLoram ? rom[adr + bank * bankSize] : ram_byte;
 }
@@ -214,12 +214,12 @@ void CartridgeSuperGames::Reset()
 	disableIO2 = false;
 }
 
-uint8_t CartridgeSuperGames::ReadROML(uint16_t adr, uint8_t ram_byte, bool notLoram)
+C64_HOT(CartridgeSuperGames_ReadROML) uint8_t CartridgeSuperGames::ReadROML(uint16_t adr, uint8_t ram_byte, bool notLoram)
 {
 	return notLoram ? rom[adr + bank * bankSize] : ram_byte;
 }
 
-uint8_t CartridgeSuperGames::ReadROMH(uint16_t adr, uint8_t ram_byte, uint8_t basic_byte, bool notLoram, bool notHiram)
+C64_HOT(CartridgeSuperGames_ReadROMH) uint8_t CartridgeSuperGames::ReadROMH(uint16_t adr, uint8_t ram_byte, uint8_t basic_byte, bool notLoram, bool notHiram)
 {
 	return notHiram ? rom[adr + bank * bankSize + 0x2000] : ram_byte;
 }
@@ -245,7 +245,7 @@ void CartridgeC64GS::Reset()
 	bank = 0;
 }
 
-uint8_t CartridgeC64GS::ReadROML(uint16_t adr, uint8_t ram_byte, bool notLoram)
+C64_HOT(CartridgeC64GS_ReadROML) uint8_t CartridgeC64GS::ReadROML(uint16_t adr, uint8_t ram_byte, bool notLoram)
 {
 	return notLoram ? rom[adr + bank * bankSize] : ram_byte;
 }
@@ -273,7 +273,7 @@ void CartridgeDinamic::Reset()
 	bank = 0;
 }
 
-uint8_t CartridgeDinamic::ReadROML(uint16_t adr, uint8_t ram_byte, bool notLoram)
+C64_HOT(CartridgeDinamic_ReadROML) uint8_t CartridgeDinamic::ReadROML(uint16_t adr, uint8_t ram_byte, bool notLoram)
 {
 	return notLoram ? rom[adr + bank * bankSize] : ram_byte;
 }
@@ -297,7 +297,7 @@ void CartridgeZaxxon::Reset()
 	bank = 0;
 }
 
-uint8_t CartridgeZaxxon::ReadROML(uint16_t adr, uint8_t ram_byte, bool notLoram)
+C64_HOT(CartridgeZaxxon_ReadROML) uint8_t CartridgeZaxxon::ReadROML(uint16_t adr, uint8_t ram_byte, bool notLoram)
 {
 	if (notLoram) {
 		if (adr < 0x1000) {
@@ -312,7 +312,7 @@ uint8_t CartridgeZaxxon::ReadROML(uint16_t adr, uint8_t ram_byte, bool notLoram)
 	}
 }
 
-uint8_t CartridgeZaxxon::ReadROMH(uint16_t adr, uint8_t ram_byte, uint8_t basic_byte, bool notLoram, bool notHiram)
+C64_HOT(CartridgeZaxxon_ReadROMH) uint8_t CartridgeZaxxon::ReadROMH(uint16_t adr, uint8_t ram_byte, uint8_t basic_byte, bool notLoram, bool notHiram)
 {
 	return notHiram ? rom[adr + bank * bankSize + 0x2000] : ram_byte;
 }
@@ -331,7 +331,7 @@ void CartridgeMagicDesk::Reset()
 	bank = 0;
 }
 
-uint8_t CartridgeMagicDesk::ReadROML(uint16_t adr, uint8_t ram_byte, bool notLoram)
+C64_HOT(CartridgeMagicDesk_ReadROML) uint8_t CartridgeMagicDesk::ReadROML(uint16_t adr, uint8_t ram_byte, bool notLoram)
 {
 	return notLoram ? rom[adr + bank * bankSize] : ram_byte;
 }
@@ -355,12 +355,12 @@ void CartridgeComal80::Reset()
 	bank = 0;
 }
 
-uint8_t CartridgeComal80::ReadROML(uint16_t adr, uint8_t ram_byte, bool notLoram)
+C64_HOT(CartridgeComal80_ReadROML) uint8_t CartridgeComal80::ReadROML(uint16_t adr, uint8_t ram_byte, bool notLoram)
 {
 	return notLoram ? rom[adr + bank * bankSize] : ram_byte;
 }
 
-uint8_t CartridgeComal80::ReadROMH(uint16_t adr, uint8_t ram_byte, uint8_t basic_byte, bool notLoram, bool notHiram)
+C64_HOT(CartridgeComal80_ReadROMH) uint8_t CartridgeComal80::ReadROMH(uint16_t adr, uint8_t ram_byte, uint8_t basic_byte, bool notLoram, bool notHiram)
 {
 	return notHiram ? rom[adr + bank * bankSize + 0x2000] : ram_byte;
 }
@@ -495,7 +495,7 @@ void CartridgeEasyFlash::UpdateMemConfig()
 	}
 }
 
-uint8_t CartridgeEasyFlash::ReadROML(uint16_t adr, uint8_t ram_byte, bool notLoram)
+C64_HOT(CartridgeEasyFlash_ReadROML) uint8_t CartridgeEasyFlash::ReadROML(uint16_t adr, uint8_t ram_byte, bool notLoram)
 {
 	// ROML is visible at $8000-$9FFF in these modes:
 	// - 8K mode:    /GAME=1, /EXROM=0 -> ROML when LORAM high
@@ -514,7 +514,7 @@ uint8_t CartridgeEasyFlash::ReadROML(uint16_t adr, uint8_t ram_byte, bool notLor
 	return ram_byte;
 }
 
-uint8_t CartridgeEasyFlash::ReadROMH(uint16_t adr, uint8_t ram_byte, uint8_t basic_byte, bool notLoram, bool notHiram)
+C64_HOT(CartridgeEasyFlash_ReadROMH) uint8_t CartridgeEasyFlash::ReadROMH(uint16_t adr, uint8_t ram_byte, uint8_t basic_byte, bool notLoram, bool notHiram)
 {
 	// ROMH visibility:
 	// - 16K mode:   /GAME=0, /EXROM=0 -> ROMH at $A000 when HIRAM high

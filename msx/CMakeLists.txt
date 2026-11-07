@@ -115,6 +115,7 @@ target_compile_definitions(pbc_msx PRIVATE
     PBC_SPI_HZ=${PBC_SPI_HZ}u
     # the core's busiest functions in RAM
     PBC_ON_DEVICE
+    AY_IO_RAM                           # core/msx1/ay8910.c: its port access too
     NDEBUG
 )
 

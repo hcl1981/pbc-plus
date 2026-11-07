@@ -47,6 +47,15 @@
 #include "ym_core1.h"
 #endif
 
+/* PBC: with sound on core 1 (src/ym_core1.c), core 0's copy only keeps
+ * what the game reads back: timers A and B and the status. Only registers
+ * 24-27 reach it; core 1 gets every write through the log. */
+#if defined(PBC_YM_CORE1) && !defined(PBC_YM_SYNTH)
+#define YM_TIMERS_ONLY 1
+#else
+#define YM_TIMERS_ONLY 0
+#endif
+
 /* PBC: synthesis and its tables in RAM */
 #define YM_CODE __attribute__((section(".time_critical.ym2612")))
 #define YM_DATA __attribute__((section(".data.ym2612")))
@@ -65,6 +74,8 @@ typedef struct {
     uint8_t  rate[4];       /* per EG state, with key scaling */
     uint16_t sl_att;        /* sustain level as attenuation */
     uint16_t tl_att;        /* total level as attenuation */
+    uint16_t att_tl;        /* envelope as heard (SSG inversion) + total level,
+                               kept up to date by op_att_set() */
 } ym_op;
 
 typedef struct {
@@ -99,8 +110,9 @@ static struct {
 
 /* ---- tables -------------------------------------------------------------- */
 
-/* -log2(sin((i + 0.5) / 256 * pi / 2)) * 256: a quarter sine wave */
-static const uint16_t YM_DATA logsin[256] = {
+/* -log2(sin((i + 0.5) / 256 * pi / 2)) * 256: a quarter sine wave
+ * (PBC: in flash, YM2612Init() makes the tables op_out() uses from it) */
+static const uint16_t logsin[256] = {
     2137, 1731, 1543, 1419, 1326, 1252, 1190, 1137, 1091, 1050, 1013,  979,  949,  920,  894,  869,
      846,  825,  804,  785,  767,  749,  732,  717,  701,  687,  672,  659,  646,  633,  621,  609,
      598,  587,  576,  566,  556,  546,  536,  527,  518,  509,  501,  492,  484,  476,  468,  461,
@@ -120,7 +132,7 @@ static const uint16_t YM_DATA logsin[256] = {
 };
 
 /* 2^((255 - i) / 256) * 1024: the fraction of the exponent */
-static const uint16_t YM_DATA exptab[256] = {
+static const uint16_t exptab[256] = {
     2042, 2037, 2031, 2026, 2020, 2015, 2010, 2004, 1999, 1993, 1988, 1983, 1977, 1972, 1966, 1961,
     1956, 1951, 1945, 1940, 1935, 1930, 1924, 1919, 1914, 1909, 1904, 1898, 1893, 1888, 1883, 1878,
     1873, 1868, 1863, 1858, 1853, 1848, 1843, 1838, 1833, 1828, 1823, 1818, 1813, 1808, 1803, 1798,
@@ -168,6 +180,15 @@ static const uint8_t YM_DATA eg_inc[17][8] = {
     { 8, 8, 8, 8, 8, 8, 8, 8 }
 };
 
+/* PBC: per EG rate, the eg_inc row (high bits) and the shift of the
+ * update counter (low 4 bits) */
+#define EG_RT(r) (((r) < 48 ? ((r) & 3) : (r) < 60 ? 4 + (r) - 48 : 16) << 4 | ((r) < 48 ? 11 - ((r) >> 2) : 0))
+#define EG_RT4(r) EG_RT(r), EG_RT((r) + 1), EG_RT((r) + 2), EG_RT((r) + 3)
+static const uint16_t YM_DATA eg_rate[64] = {
+    EG_RT4(0),  EG_RT4(4),  EG_RT4(8),  EG_RT4(12), EG_RT4(16), EG_RT4(20), EG_RT4(24), EG_RT4(28),
+    EG_RT4(32), EG_RT4(36), EG_RT4(40), EG_RT4(44), EG_RT4(48), EG_RT4(52), EG_RT4(56), EG_RT4(60)
+};
+
 /* LFO: samples per step, 128 steps per period (3.98 .. 72.2 Hz) */
 static const uint8_t YM_DATA lfo_period[8] = { 108, 77, 71, 67, 62, 44, 8, 5 };
 
@@ -198,7 +219,9 @@ static inline int keycode(int block, int fnum)
     return (block << 2) | kc_note[fnum >> 7];
 }
 
-static void op_freq(ym_op *o, int fnum, int block, int kc)
+/* PBC: these three on core 1 in RAM (register writes, LFO pitch changes);
+ * op_freq and op_rates once each rather than inlined four times */
+static YM_CODE __attribute__((noinline)) void op_freq(ym_op *o, int fnum, int block, int kc)
 {
     uint32_t base = ((uint32_t)fnum << block) >> 1;
     int d = dt_tab[o->dt & 3][kc];
@@ -207,7 +230,7 @@ static void op_freq(ym_op *o, int fnum, int block, int kc)
     o->inc = (o->mul ? base * o->mul : base >> 1) & 0xfffff;
 }
 
-static void op_rates(ym_op *o, int kc)
+static YM_CODE __attribute__((noinline)) void op_rates(ym_op *o, int kc)
 {
     int ksr = kc >> (3 - o->ks);
     int r;
@@ -224,7 +247,7 @@ static inline int pm_delta(int fnum, int pms, int pm)
 }
 
 /* phase steps and key-scaled rates of a channel's operators */
-static void ch_freq(int c)
+static YM_CODE void ch_freq(int c)
 {
     ym_ch *ch = &ym.ch[c];
     bool special = c == 2 && (ym.mode & 0xc0);
@@ -246,6 +269,16 @@ static void ch_freq(int c)
 
 /* ---- envelope ------------------------------------------------------------ */
 
+/* attenuation heard without AM: envelope (SSG inversion) and total level.
+ * PBC: computed whenever one of them changes rather than per sample */
+static inline void op_att_set(ym_op *o)
+{
+    int a = o->att;
+    if ((o->ssg & 8) && o->state != EG_RELEASE && (o->ssg_inv ^ ((o->ssg >> 2) & 1)))
+        a = (0x200 - a) & 0x3ff;
+    o->att_tl = (uint16_t)(a + o->tl_att);
+}
+
 static void key_on(ym_ch *ch, ym_op *o)
 {
     if (o->key || o->csm)
@@ -258,6 +291,7 @@ static void key_on(ym_ch *ch, ym_op *o)
     } else {
         o->state = EG_ATTACK;
     }
+    op_att_set(o);
     ch->active = 1;
 }
 
@@ -272,6 +306,7 @@ static void key_off(ym_op *o)
         o->att = (0x200 - o->att) & 0x3ff;
     o->ssg_inv = 0;
     o->state = EG_RELEASE;
+    op_att_set(o);
 }
 
 static inline void eg_update(ym_op *o, uint32_t cnt)
@@ -282,9 +317,9 @@ static inline void eg_update(ym_op *o, uint32_t cnt)
         o->state = EG_SUSTAIN;
     int r = o->rate[o->state];
     if (r >= 2) {
-        int sh = r < 48 ? 11 - (r >> 2) : 0;
+        int sh = eg_rate[r] & 15;
         if (!(cnt & ((1u << sh) - 1))) {
-            int inc = eg_inc[r < 48 ? (r & 3) : r < 60 ? 4 + (r - 48) : 16][(cnt >> sh) & 7];
+            int inc = eg_inc[eg_rate[r] >> 4][(cnt >> sh) & 7];
             if (o->state == EG_ATTACK) {
                 o->att = r >= 62 ? 0 : o->att + ((~o->att * inc) >> 4);
                 if (o->att <= 0) {
@@ -303,6 +338,7 @@ static inline void eg_update(ym_op *o, uint32_t cnt)
                 if (o->state == EG_DECAY && o->att >= o->sl_att)
                     o->state = EG_SUSTAIN;
             }
+            op_att_set(o);
         }
     }
     /* SSG-EG at the end of a cycle */
@@ -326,45 +362,56 @@ static inline void eg_update(ym_op *o, uint32_t cnt)
                 }
             }
         }
+        op_att_set(o);
     }
+    /* (op_att_set() only where the envelope or the inversion changed: of
+     * the state it only needs "released", which this never makes) */
 }
 
 /* attenuation heard: envelope (SSG inversion), total level, AM */
 static inline int op_att(const ym_op *o, int am)
 {
-    int a = o->att;
-    if ((o->ssg & 8) && o->state != EG_RELEASE && (o->ssg_inv ^ ((o->ssg >> 2) & 1)))
-        a = (0x200 - a) & 0x3ff;
-    a += o->tl_att + (o->am ? am : 0);
-    return a;
+    return o->att_tl + (o->am ? am : 0);
 }
 
 /* ---- operators and channels ---------------------------------------------- */
 
 /* one operator: phase (10 bits) plus modulation, attenuation 0..1023+ */
+/* PBC: logsin over the half wave (the second quarter mirrored) and
+ * exptab << 2, made by YM2612Init(): two steps less per operator */
+/* (in .data rather than .bss: there they use the room the 4 KB aligned
+ * start of .bss leaves free anyway) */
+static uint16_t __attribute__((section(".data.ym2612_tab"))) logsin2[512];
+static uint16_t __attribute__((section(".data.ym2612_tab"))) exptab4[256];
+
+static void make_tables(void)
+{
+#if !YM_TIMERS_ONLY
+    for (int p = 0; p < 512; p++)
+        logsin2[p] = logsin[(p & 256) ? (p & 255) ^ 255 : p];
+    for (int i = 0; i < 256; i++)
+        exptab4[i] = (uint16_t)(exptab[i] << 2);
+#endif
+}
+
 static inline int op_out(uint32_t phase, int mod, int att)
 {
     if (att >= 832)                     /* below the exponent's range */
         return 0;
     uint32_t p = ((phase >> 10) + (uint32_t)mod) & 1023;
-    uint32_t q = p & 255;
-    if (p & 256)
-        q ^= 255;
-    uint32_t lv = logsin[q] + ((uint32_t)att << 2);
-    uint32_t sh = lv >> 8;
-    if (sh >= 13)
-        return 0;
-    int v = (int)((exptab[lv & 255] << 2) >> sh);
+    uint32_t lv = logsin2[p & 511] + ((uint32_t)att << 2);
+    /* lv < 2137 + 832 * 4: shifts up to 21; from 13 on that leaves 0, as
+     * exptab4 is below 8192 (no test needed) */
+    int v = (int)(exptab4[lv & 255] >> (lv >> 8));
     return (p & 512) ? -v : v;
 }
 
 #define OUT9(x) ((x) & ~0x1f)           /* the DAC's 9 bits */
 
-static inline int ch_out(ym_ch *ch, int am)
+/* one sample of a channel; a1..a4: its operators' attenuation (op_att) */
+static inline int ch_out(ym_ch *ch, int a1, int a2, int a3, int a4)
 {
     ym_op *o = ch->op;
-    int a1 = op_att(&o[0], am), a2 = op_att(&o[1], am);
-    int a3 = op_att(&o[2], am), a4 = op_att(&o[3], am);
 
     /* operator 1, with feedback from its last two outputs */
     int fbm = ch->fb ? (ch->op1_out[0] + ch->op1_out[1]) >> (10 - ch->fb) : 0;
@@ -506,6 +553,14 @@ static void lfo_set(int cnt)
 
 static YM_CODE void render(int16_t *buf, int n)
 {
+    /* PBC: timers per sample only in CSM mode, where timer A keys channel 3
+     * on; else nothing here depends on them (the status is core 0's), and
+     * they run all n samples at the end. A CSM key on left from before is
+     * taken back after the first sample, as the per-sample loop did. */
+    const bool csm = (ym.mode & 0xc0) == 0x80;
+    bool csm_left = false;
+    for (int i = 0; i < 4; i++)
+        csm_left |= ym.ch[2].op[i].csm;
     for (int s = 0; s < n; s++) {
         int am = ym.lfo_am;
         int mix = 0;
@@ -519,7 +574,10 @@ static YM_CODE void render(int16_t *buf, int n)
                     for (int i = 0; i < 4; i++)
                         ch->op[i].phase += ch->op[i].inc;
             } else if (ch->active) {
-                out = ch_out(ch, am >> ams_shift[ch->ams]);
+                int cam = am >> ams_shift[ch->ams];
+                ym_op *o = ch->op;
+                out = ch_out(ch, op_att(&o[0], cam), op_att(&o[1], cam),
+                             op_att(&o[2], cam), op_att(&o[3], cam));
             }
             if (ch->pan & 0xc0)
                 mix += out + (out < 0 ? -ladder : ladder);
@@ -556,9 +614,16 @@ static YM_CODE void render(int16_t *buf, int n)
         }
 
         /* timers; a CSM key on lasts one sample unless timer A overflows again */
-        csm_key_off();
-        timers_run(1, true);
+        if (csm) {
+            csm_key_off();
+            timers_run(1, true);
+        } else if (csm_left) {
+            csm_key_off();
+            csm_left = false;
+        }
     }
+    if (!csm)
+        timers_run(n, false);
 }
 
 /* ---- registers ----------------------------------------------------------- */
@@ -580,6 +645,7 @@ static void write_op(int r, int v)
         break;
     case 0x40:
         o->tl_att = (uint16_t)((v & 0x7f) << 3);
+        op_att_set(o);
         break;
     case 0x50:
         o->ks = (v >> 6) & 3;
@@ -604,6 +670,7 @@ static void write_op(int r, int v)
     }
     case 0x90:
         o->ssg = v & 15;
+        op_att_set(o);
         break;
     }
 }
@@ -648,6 +715,33 @@ static void write_ch(int r, int v)
     }
 }
 
+/* timer registers 24-27 (port 0): all that core 0's copy keeps */
+static void timer_reg(int r, int v)
+{
+    switch (r) {
+    case 0x24:
+        ym.ta = (uint16_t)((ym.ta & 3) | (v << 2));
+        break;
+    case 0x25:
+        ym.ta = (uint16_t)((ym.ta & 0x3fc) | (v & 3));
+        break;
+    case 0x26:
+        ym.tb = (uint16_t)v;
+        break;
+    case 0x27:
+        if ((v & 1) && !(ym.mode & 1))
+            ym.ta_cnt = 1024 - ym.ta;
+        if ((v & 2) && !(ym.mode & 2))
+            ym.tb_cnt = (256 - ym.tb) << 4;
+        if (v & 0x10)
+            ym.status &= ~1;
+        if (v & 0x20)
+            ym.status &= ~2;
+        ym.mode = (uint8_t)v;
+        break;
+    }
+}
+
 static void write_reg(int r, int v)
 {
     if (r < 0x30) {
@@ -663,25 +757,13 @@ static void write_reg(int r, int v)
             }
             break;
         case 0x24:
-            ym.ta = (uint16_t)((ym.ta & 3) | (v << 2));
-            break;
         case 0x25:
-            ym.ta = (uint16_t)((ym.ta & 0x3fc) | (v & 3));
-            break;
         case 0x26:
-            ym.tb = (uint16_t)v;
+            timer_reg(r, v);
             break;
         case 0x27: {
-            if ((v & 1) && !(ym.mode & 1))
-                ym.ta_cnt = 1024 - ym.ta;
-            if ((v & 2) && !(ym.mode & 2))
-                ym.tb_cnt = (256 - ym.tb) << 4;
-            if (v & 0x10)
-                ym.status &= ~1;
-            if (v & 0x20)
-                ym.status &= ~2;
             bool special = (ym.mode ^ v) & 0xc0;
-            ym.mode = (uint8_t)v;
+            timer_reg(r, v);
             if (special)
                 ch_freq(2);
             break;
@@ -725,6 +807,7 @@ static void write_reg(int r, int v)
 void YM2612Init(void)
 {
     memset(&ym, 0, sizeof ym);
+    make_tables();
 }
 
 void YM2612Config(unsigned char type)
@@ -737,10 +820,14 @@ void YM2612ResetChip(void)
     uint8_t type = ym.chip_type;
     memset(&ym, 0, sizeof ym);
     ym.chip_type = type;
+#if YM_TIMERS_ONLY
+    return;                     /* the rest only concerns the synthesis */
+#endif
     for (int c = 0; c < 6; c++)
         for (int i = 0; i < 4; i++) {
             ym.ch[c].op[i].att = 0x3ff;
             ym.ch[c].op[i].state = EG_RELEASE;
+            op_att_set(&ym.ch[c].op[i]);
         }
     lfo_set(0);
     for (int r = 0xb6; r >= 0xb4; r--) {
@@ -810,12 +897,18 @@ YM_CODE void YM2612Write(unsigned int a, unsigned int v, int target)
         ym.addr = (uint16_t)(v | 0x100);
         break;
     default:                            /* either data port writes the latched address */
+#if YM_TIMERS_ONLY
+        if (ym.addr >= 0x24 && ym.addr <= 0x27)
+            timer_reg(ym.addr, (int)v);
+#else
         write_reg(ym.addr, (int)v);
+#endif
         break;
     }
 }
 
-YM_CODE unsigned int YM2612Read(int target)
+/* own section: core 1's copy is never read and drops out */
+__attribute__((section(".time_critical.ym2612_read"))) unsigned int YM2612Read(int target)
 {
     if (GWENESIS_AUDIO_ACCURATE == 1)
         ym2612_run(target);

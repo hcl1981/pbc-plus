@@ -18,6 +18,10 @@ compile-time switches; without them the file is the original.
                    function table in z80_execute and z80_run, the instruction
                    functions and the ALU/INC/DEC helpers inlined into it: with
                    the opcode a constant, the registers it names fold away
+  Z80_PBC_ROUND4   z80_run rounds the cycles up to a multiple of 4 before
+                   each instruction or interrupt response (the CPC, whose
+                   Z80 takes whole microseconds): long runs instead of one
+                   call per instruction, the same timing
 
     pbc_patch.py <redcode sources/Z80.c> <output>
 """
@@ -118,6 +122,17 @@ s = s[:k] + ('#ifdef Z80_PBC_SWITCH_XY\n\tstatic zuint8 pbc_xy(Z80 *self, zuint8
 old = 'self->cycles += insn_table[DATA[0] = FETCH_OPCODE(PC)](self);'
 assert s.count(old) == 2, s.count(old)          # z80_execute and z80_run main loops
 s = s.replace(old, 'self->cycles += PBC_INSN(FETCH_OPCODE(PC));')
+
+# whole microseconds per instruction (CPC): rounded in z80_run's loop
+old = '\twhile (self->cycles < self->cycle_limit) /* main execution loop */\n'
+assert s.count(old) == 1, 'z80_run loop'
+s = s.replace(old, '#\tifdef Z80_PBC_ROUND4\n'
+    '\t\t/* PicoBoy (CPC): each instruction or interrupt response takes whole\n'
+    '\t\t   microseconds; rounded up to 4 T-states before the next one */\n'
+    '\t\twhile ((self->cycles = (self->cycles + 3) & ~(zusize)3) < self->cycle_limit)\n'
+    '#\telse\n'
+    '\t\twhile (self->cycles < self->cycle_limit) /* main execution loop */\n'
+    '#\tendif\n')
 
 s = ('/* PicoBoy Color Plus: changed by pbc_patch.py (page-map reads, direct\n'
      ' * writes, switch dispatch), all behind Z80_PBC_* switches. */\n') + s

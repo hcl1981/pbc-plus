@@ -6,6 +6,7 @@
 #include "pico.h"
 #include "pce-go.h"
 #include "pce.h"
+#include "cd.h"                 /* PBC: CD.cd_attached for the TIA fast path */
 
 #define OPCODE(n, f) case n: f; break;
 #define Cycles PCE.Cycles
@@ -323,10 +324,18 @@ void __not_in_flash_func(h6280_run)(int max_cycles)
 			OPCODE(0xFE, inc_absx());			// INC $hhll,X
 			OPCODE(0xFF, bbs(7));				// BBS7 $ZZ,$rr
 
-			default:
+			/* PBC: the illegal opcodes listed, so that the switch needs no
+			 * range check before its jump table */
+			case 0x0B: case 0x1B: case 0x2B: case 0x33: case 0x3B: case 0x4B:
+			case 0x5B: case 0x5C: case 0x63: case 0x6B: case 0x7B: case 0x8B:
+			case 0x9B: case 0xAB: case 0xBB: case 0xCB: case 0xDB: case 0xDC:
+			case 0xE2: case 0xEB: case 0xFB: case 0xFC:
 				// Illegal opcodes are treated as NOP
 				MESSAGE_DEBUG("Illegal opcode 0x%02X at pc=0x%04X!\n", opcode, CPU.PC);
 				nop();
+				break;
+			default:
+				__builtin_unreachable();
 		}
 	}
 }

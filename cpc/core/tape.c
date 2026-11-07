@@ -8,6 +8,12 @@
 #include <string.h>
 #include "tape.h"
 
+#ifdef PBC_ON_DEVICE
+#define TAPE_RAM __attribute__((section(".time_critical.tape")))  /* polled by IN */
+#else
+#define TAPE_RAM
+#endif
+
 bool tape_is_48k;
 
 enum { S_IDLE, S_PULSES, S_DIRECT, S_PAUSE1, S_PAUSE2 };
@@ -102,9 +108,9 @@ void tape_rewind(void)
 }
 
 bool tape_present(void) { return t.d != NULL; }
-bool tape_playing(void) { return t.playing; }
+TAPE_RAM bool tape_playing(void) { return t.playing; }
 bool tape_at_end(void) { return t.at_end; }
-int tape_level(void) { return t.level; }
+TAPE_RAM int tape_level(void) { return t.level; }
 
 static bool info_block(uint8_t id)
 {

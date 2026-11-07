@@ -8,19 +8,23 @@
 #include "board.h"
 #include "color565.h"
 #include "display.h"
+#define FONT8X8_EXTERN
 #include "font8x8.h"
 #include "cpc_video.h"
 #include "cpc.h"
 
 static uint16_t pal565[32];
-/* the colours split up, for averaging three of them */
-static uint8_t pal_r[32], pal_g[32], pal_b[32];
+/* the colours packed for averaging: red in bits 0-10, green 11-21, blue
+ * halved in 22-31, so eight weights' worth adds up without carries. The
+ * CPC's levels are 0, 128 and 255: halving blue gives the same five bits
+ * after averaging as the full value (checked for every four colours). */
+static uint32_t pal_w[32];
 
 /* ---- ring of finished lines: core 0 -> core 1 --------------------------------- */
 
 #define RING_N 16
 
-static uint8_t __aligned(4) ring[RING_N][CPC_WIDTH];
+static uint8_t __aligned(8) ring[RING_N][CPC_WIDTH];
 static int16_t ring_y[RING_N];
 static volatile uint32_t ring_head, ring_tail;
 static bool lines_this_frame;
@@ -35,23 +39,25 @@ void cpc_video_init(unsigned mode)
         mode = CPC_MODE_FIT;
     crop = mode == CPC_MODE_CROP;
     for (int i = 0; i < 32; i++) {
-        uint32_t c = cpc_palette(i);
-        pal_r[i] = (uint8_t)(c >> 16);
-        pal_g[i] = (uint8_t)(c >> 8);
-        pal_b[i] = (uint8_t)c;
-        pal565[i] = PBC_RGB(pal_r[i], pal_g[i], pal_b[i]);
+        uint32_t c = cpc_palette(i), r = (c >> 16) & 0xff, g = (c >> 8) & 0xff, b = c & 0xff;
+        pal565[i] = PBC_RGB(r, g, b);
+        pal_w[i] = r | g << 11 | (b >> 1) << 22;
     }
 }
 
-void __not_in_flash_func(cpc_video_line)(int y, const uint8_t *px)
+/* the core draws each line straight into its slot: no copy */
+uint8_t *__not_in_flash_func(cpc_video_line_begin)(int y)
 {
     if (y >= CPC_SHOWN || !core1_running || pause_req)
-        return;
+        return NULL;
     while (ring_head - ring_tail >= RING_N)
         __wfe();                        /* core 1 frees a slot and signals */
-    int slot = (int)(ring_head % RING_N);
-    memcpy(ring[slot], px, CPC_WIDTH);
-    ring_y[slot] = (int16_t)y;
+    return ring[ring_head % RING_N];
+}
+
+void __not_in_flash_func(cpc_video_line_commit)(int y)
+{
+    ring_y[ring_head % RING_N] = (int16_t)y;
     __dmb();
     ring_head++;
     __sev();
@@ -136,26 +142,27 @@ static void __not_in_flash_func(convert)(uint16_t *dst, const uint8_t *px)
             dst[i] = s[0] == s[1] ? pal565[s[0]] : pbc_avg565(pal565[s[0]], pal565[s[1]]);
         return;
     }
-    /* three panel pixels cover eight source pixels: weights 3 3 2 | 1 3 3 1 | 2 3 3 */
-    static const uint8_t w[3][4] = { { 3, 3, 2, 0 }, { 1, 3, 3, 1 }, { 2, 3, 3, 0 } };
-    static const uint8_t first[3] = { 0, 2, 5 };
+    /* three panel pixels cover eight source pixels: weights 3 3 2 | 1 3 3 1 | 2 3 3,
+     * summed in pal_w's fields; >> 6 (green >> 5) is PBC_RGB(sum >> 3) */
+    const uint32_t *pw = pal_w;
     for (int g = 0; g < PBC_LCD_W / 3; g++) {
         const uint8_t *s = px + g * 8;
+        uint16_t *d = dst + g * 3;
         uint32_t lo, hi;                /* eight equal pixels: no averaging */
         memcpy(&lo, s, 4);
         memcpy(&hi, s + 4, 4);
         if (lo == hi && lo == s[0] * 0x01010101u) {
-            dst[g * 3] = dst[g * 3 + 1] = dst[g * 3 + 2] = pal565[s[0]];
+            d[0] = d[1] = d[2] = pal565[s[0]];
             continue;
         }
-        for (int k = 0; k < 3; k++) {
-            int r = 0, gr = 0, b = 0;
-            for (int j = 0; j < 4; j++) {
-                int c = s[first[k] + j < 8 ? first[k] + j : 7], wt = w[k][j];
-                r += pal_r[c] * wt; gr += pal_g[c] * wt; b += pal_b[c] * wt;
-            }
-            dst[g * 3 + k] = PBC_RGB(r >> 3, gr >> 3, b >> 3);
-        }
+        uint32_t w2 = pw[s[2]], w5 = pw[s[5]];
+        uint32_t a[3] = {
+            3 * (pw[s[0]] + pw[s[1]]) + 2 * w2,
+            w2 + 3 * (pw[s[3]] + pw[s[4]]) + w5,
+            2 * w5 + 3 * (pw[s[6]] + pw[s[7]]),
+        };
+        for (int k = 0; k < 3; k++)
+            d[k] = (uint16_t)((a[k] >> 27) << 11 | ((a[k] >> 16) & 0x3f) << 5 | ((a[k] >> 6) & 0x1f));
     }
 }
 

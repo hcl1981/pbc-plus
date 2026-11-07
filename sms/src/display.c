@@ -116,7 +116,10 @@ void pbc_display_window(int x, int y, int w, int h)
     cmd(0x2B, d, 4);                                   /* RASET */
 }
 
-void pbc_display_begin(void)
+/* PBC: begin, send, busy, wait and end in RAM. Core 1 spends most of a
+ * frame in the waits; from flash, its instruction fetches there competed
+ * with core 0, which reads the game ROM through the same XIP cache. */
+void __not_in_flash_func(pbc_display_begin)(void)
 {
     cs(true);
     wr_cmd(0x2C);                                      /* RAMWR */
@@ -124,7 +127,7 @@ void pbc_display_begin(void)
     spi_bits(16);                                      /* half the FIFO accesses */
 }
 
-void pbc_display_send(const uint16_t *px, int n)
+void __not_in_flash_func(pbc_display_send)(const uint16_t *px, int n)
 {
     dma_channel_config c = dma_channel_get_default_config((uint)dma_ch);
     channel_config_set_transfer_data_size(&c, DMA_SIZE_16);
@@ -135,7 +138,7 @@ void pbc_display_send(const uint16_t *px, int n)
     dma_running = true;
 }
 
-bool pbc_display_busy(void)
+bool __not_in_flash_func(pbc_display_busy)(void)
 {
     if (!dma_running)
         return false;
@@ -145,7 +148,7 @@ bool pbc_display_busy(void)
     return false;
 }
 
-void pbc_display_wait(void)
+void __not_in_flash_func(pbc_display_wait)(void)
 {
     if (!dma_running)
         return;
@@ -153,7 +156,7 @@ void pbc_display_wait(void)
     dma_running = false;
 }
 
-void pbc_display_end(void)
+void __not_in_flash_func(pbc_display_end)(void)
 {
     pbc_display_wait();
     while (spi_is_busy(PBC_SPI))

@@ -294,7 +294,8 @@ extern uint8_t *PageW[8];
 
 #define IO_VDC_REG           PCE.VDC.regs
 #define IO_VDC_REG_ACTIVE    PCE.VDC.regs[PCE.VDC.reg]
-#define IO_VDC_REG_INC(reg)  {unsigned _i[] = {1,32,64,128}; PCE.VDC.regs[(reg)].W += _i[(PCE.VDC.regs[CR].W >> 11) & 3];}
+/* PBC: 1, 32, 64, 128 computed, not copied from a table in flash each time */
+#define IO_VDC_REG_INC(reg)  {unsigned _x = (PCE.VDC.regs[CR].W >> 11) & 3; PCE.VDC.regs[(reg)].W += _x ? 16u << _x : 1u;}
 #define IO_VDC_STATUS(bit)   ((PCE.VDC.status >> bit) & 1)
 #define IO_VDC_MINLINE       (IO_VDC_REG[VPR].B.h + IO_VDC_REG[VPR].B.l)
 #define IO_VDC_MAXLINE       (IO_VDC_MINLINE + IO_VDC_REG[VDW].W)

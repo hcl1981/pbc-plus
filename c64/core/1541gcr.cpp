@@ -715,7 +715,7 @@ void GCRDisk::SetState(const GCRDiskState * s)
  *  Advance disk change sequence state
  */
 
-void GCRDisk::advance_disk_change_seq(uint32_t cycle_counter)
+C64_HOT(GCRDisk_advance_disk_change_seq) void GCRDisk::advance_disk_change_seq(uint32_t cycle_counter)
 {
 	if (disk_change_seq > 0) {
 
@@ -734,7 +734,7 @@ void GCRDisk::advance_disk_change_seq(uint32_t cycle_counter)
  *  file when the head arrives on it (a D64 sector by sector, a G64 read).
  */
 
-const uint8_t * GCRDisk::track_data(unsigned halftrack)
+__attribute__((noinline)) const uint8_t * GCRDisk::load_track_data(unsigned halftrack)
 {
 	if (halftrack >= MAX_NUM_HALFTRACKS || gcr_track_length[halftrack] == 0 || cache == nullptr)
 		return nullptr;
@@ -754,11 +754,22 @@ const uint8_t * GCRDisk::track_data(unsigned halftrack)
 }
 
 
+// PBC: the usual case (head on the half-track in the cache) inline, in RAM
+// with rotate_disk(); filling the cache stays in flash.
+inline const uint8_t * GCRDisk::track_data(unsigned halftrack)
+{
+	if ((int)halftrack == cache_halftrack && halftrack < MAX_NUM_HALFTRACKS
+	    && gcr_track_length[halftrack] != 0 && cache != nullptr)
+		return cache;
+	return load_track_data(halftrack);
+}
+
+
 /*
  *  Rotate disk (virtually)
  */
 
-void GCRDisk::rotate_disk(uint32_t cycle_counter)
+C64_HOT(GCRDisk_rotate_disk) void GCRDisk::rotate_disk(uint32_t cycle_counter)
 {
 	advance_disk_change_seq(cycle_counter);
 
@@ -769,7 +780,7 @@ void GCRDisk::rotate_disk(uint32_t cycle_counter)
 	if (data != nullptr) {
 
 		uint32_t elapsed = cycle_counter - last_byte_cycle;
-		uint32_t advance = elapsed / cycles_per_byte;
+		uint32_t advance = elapsed < cycles_per_byte ? 0 : elapsed / cycles_per_byte;
 
 		if (advance > 0) {
 			size_t track_length = gcr_track_length[current_halftrack];
@@ -814,7 +825,7 @@ void GCRDisk::rotate_disk(uint32_t cycle_counter)
  *  Check if R/W head is over SYNC
  */
 
-bool GCRDisk::SyncFound(uint32_t cycle_counter)
+C64_HOT(GCRDisk_SyncFound) bool GCRDisk::SyncFound(uint32_t cycle_counter)
 {
 	rotate_disk(cycle_counter);
 
@@ -826,7 +837,7 @@ bool GCRDisk::SyncFound(uint32_t cycle_counter)
  *  Check if GCR byte is available for reading
  */
 
-bool GCRDisk::ByteReady(uint32_t cycle_counter)
+C64_HOT(GCRDisk_ByteReady) bool GCRDisk::ByteReady(uint32_t cycle_counter)
 {
 	rotate_disk(cycle_counter);
 
@@ -838,7 +849,7 @@ bool GCRDisk::ByteReady(uint32_t cycle_counter)
  *  Read one GCR byte from disk
  */
 
-uint8_t GCRDisk::ReadGCRByte(uint32_t cycle_counter)
+C64_HOT(GCRDisk_ReadGCRByte) uint8_t GCRDisk::ReadGCRByte(uint32_t cycle_counter)
 {
 	rotate_disk(cycle_counter);
 
@@ -851,7 +862,7 @@ uint8_t GCRDisk::ReadGCRByte(uint32_t cycle_counter)
  *  Return state of write protect sensor
  */
 
-bool GCRDisk::WPSensorClosed(uint32_t cycle_counter)
+C64_HOT(GCRDisk_WPSensorClosed) bool GCRDisk::WPSensorClosed(uint32_t cycle_counter)
 {
 	advance_disk_change_seq(cycle_counter);
 

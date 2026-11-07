@@ -47,20 +47,15 @@ public:
 	static const int16_t EGDivTable[16];	// Clock divisors for A/D/R settings
 	static const uint8_t EGDRShift[256];	// For exponential approximation of D/R
 
-	const uint16_t * TriSawTable = nullptr;
-	const uint16_t * TriRectTable = nullptr;
-	const uint16_t * SawRectTable = nullptr;
-	const uint16_t * TriSawRectTable = nullptr;
+	const uint8_t * TriSawTable = nullptr;	// PBC: bytes, see SID_wave_tables.h
+	const uint8_t * TriRectTable = nullptr;
+	const uint8_t * SawRectTable = nullptr;
+	const uint8_t * TriSawRectTable = nullptr;
 
-	static const uint16_t TriSawTable_6581[0x1000];
-	static const uint16_t TriRectTable_6581[0x1000];
-	static const uint16_t SawRectTable_6581[0x1000];
-	static const uint16_t TriSawRectTable_6581[0x1000];
-
-	static const uint16_t TriSawTable_8580[0x1000];
-	static const uint16_t TriRectTable_8580[0x1000];
-	static const uint16_t SawRectTable_8580[0x1000];
-	static const uint16_t TriSawRectTable_8580[0x1000];
+	static const uint8_t TriSawTable_6581[0x1000];
+	static const uint8_t TriRectTable_6581[0x1000];
+	static const uint8_t SawRectTable_6581[0x1000];
+	static const uint8_t TriSawRectTable_6581[0x1000];
 
 private:
 	void open_close_renderer(int old_type, int new_type);

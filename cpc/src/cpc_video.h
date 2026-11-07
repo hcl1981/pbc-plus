@@ -2,7 +2,7 @@
  *
  * There is no frame buffer. The core hands over each of the 280 lines (40
  * of border, the 200 of the standard screen, 40 of border) as hardware
- * colours, 640 wide (mode 2 pixels); core 0 only copies them into a small
+ * colours, 640 wide (mode 2 pixels); core 0 draws them straight into a small
  * ring, core 1 turns them into 240 panel pixels while the line before goes
  * out, and lays the status text over the lower border.
  *
@@ -22,8 +22,10 @@ enum { CPC_MODE_FIT, CPC_MODE_CROP, CPC_MODES };
 /* Core 0, before core 1 starts. */
 void cpc_video_init(unsigned mode);
 
-/* Core 0: a finished line (cpc_frame's callback). */
-void cpc_video_line(int y, const uint8_t *pixels);
+/* Core 0, cpc_frame's callbacks: where line y goes (a ring slot, NULL if
+ * not shown now), and that it is drawn there. */
+uint8_t *cpc_video_line_begin(int y);
+void cpc_video_line_commit(int y);
 
 /* Core 1 entry point. */
 void cpc_video_core1_main(void);

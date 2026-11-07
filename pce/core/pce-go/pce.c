@@ -234,7 +234,7 @@ void __not_in_flash_func(pce_run)(void)
 		osd_psg_scanline();
 		// Subcode IRQ cadence: every other scanline ≈ 7.9 kHz, near the
 		// 7350 Hz byte rate of the real subchannel stream.
-		if (PCE.Scanline & 1)
+		if ((PCE.Scanline & 1) && CD.cd_attached)   /* PBC: no call into flash for HuCards */
 			cd_subcode_tick();
 	}
 }
@@ -299,7 +299,9 @@ cart_write(uint16_t A, uint8_t V)
 
 #define VR(R)        (vdc->regs[R])
 #define VR_ACTIVE    (vdc->regs[vdc->reg])
-#define VR_INC(reg)  do { unsigned _i[] = {1,32,64,128}; vdc->regs[(reg)].W += _i[(vdc->regs[CR].W >> 11) & 3]; } while (0)
+/* PBC: 1, 32, 64, 128 computed (the table went from flash to the stack on
+ * every VRAM access) */
+#define VR_INC(reg)  do { unsigned _x = (vdc->regs[CR].W >> 11) & 3; vdc->regs[(reg)].W += _x ? 16u << _x : 1u; } while (0)
 #define VR_MINLINE   (VR(VPR).B.h + VR(VPR).B.l)
 
 static inline uint8_t __not_in_flash_func(vdc_io_read)(vdc_t *vdc, uint16_t *vram, uint8_t port)
@@ -783,7 +785,12 @@ void __not_in_flash_func(pce_writeIO)(uint16_t A, uint8_t V)
 		// state is rendered for exactly the cycles it was active (mirrors
 		// Mesen2's PcePsg::Run() before each write). frame_cycle is monotonic
 		// within a frame: Scanline * cycles_per_line + cycles consumed so far.
-		osd_psg_sync(PCE.Scanline * PCE.Timer.cycles_per_line + PCE.Cycles);
+		// PBC: not for writes that leave the sound as it is: the channel
+		// select, the LFO (not emulated), 10-15, and data for a channel
+		// that is off (it renders nothing, before or after the write).
+		if (!((A & 15) == 0 || (A & 15) >= 8 ||
+		      ((A & 15) == 6 && !(PCE.PSG.chan[PCE.PSG.ch].control & PSG_CHAN_ENABLE))))
+			osd_psg_sync(PCE.Scanline * PCE.Timer.cycles_per_line + PCE.Cycles);
 		switch (A & 15) {
 		case 0:                                 // Select PSG channel
 			PCE.PSG.ch = MIN(V & 7, 5);

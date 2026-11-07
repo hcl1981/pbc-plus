@@ -33,6 +33,7 @@ static uint32_t p4, p5, p9;         /* positions in the short polynomials */
 static uint32_t lfsr17 = 1;
 static uint32_t poly4_bits, poly5_bits;
 static uint8_t poly9_bits[64];
+static int per_c[4];                /* period(c), worked out when a register changes */
 
 static void make_polys(void)
 {
@@ -57,7 +58,7 @@ static void make_polys(void)
     }
 }
 
-static inline uint32_t step17(void)
+static inline POKEY_RAM uint32_t step17(void)
 {
     /* x^17 + x^12 + 1 */
     lfsr17 = (lfsr17 >> 1) | ((((lfsr17 >> 0) ^ (lfsr17 >> 5)) & 1) << 16);
@@ -66,7 +67,7 @@ static inline uint32_t step17(void)
 
 /* the divider of channel c in machine clocks; 0: the channel has no
  * events of its own (low half of a joined pair) */
-static int period(int c)
+static POKEY_RAM int period(int c)
 {
     int base = (audctl & 0x01) ? 114 : 28;
     switch (c) {
@@ -102,10 +103,10 @@ void pokey_reset(void)
     p4 = p5 = p9 = 0;
     lfsr17 = 1;
     for (int c = 0; c < 4; c++)
-        cnt[c] = period(c);
+        cnt[c] = per_c[c] = period(c);
 }
 
-void pokey_write(uint8_t reg, uint8_t v)
+POKEY_RAM void pokey_write(uint8_t reg, uint8_t v)
 {
     reg &= 0x0f;
     if (reg < 8) {
@@ -121,7 +122,7 @@ void pokey_write(uint8_t reg, uint8_t v)
     }
     /* a new divider takes effect when the old one runs out */
     for (int c = 0; c < 4; c++) {
-        int p = period(c);
+        int p = per_c[c] = period(c);
         if (p && cnt[c] > p)
             cnt[c] = p;
         if (!p)
@@ -131,7 +132,7 @@ void pokey_write(uint8_t reg, uint8_t v)
     }
 }
 
-uint8_t pokey_read(uint8_t reg)
+POKEY_RAM uint8_t pokey_read(uint8_t reg)
 {
     switch (reg & 0x0f) {
     case 0x0a: {                        /* RANDOM */
@@ -148,7 +149,7 @@ uint8_t pokey_read(uint8_t reg)
     }
 }
 
-static inline int level(int c)
+static inline POKEY_RAM int level(int c)
 {
     int vol = audc[c] & 15;
     if (audc[c] & 0x10)
@@ -184,7 +185,7 @@ POKEY_RAM int pokey_run(int n)
     int per[4];
     bool live[4];
     for (int c = 0; c < 4; c++) {
-        per[c] = period(c);
+        per[c] = per_c[c];
         bool needed = (audc[c] & 15) && !(audc[c] & 0x10);
         if (c == 2 && (audctl & 0x04) && (audc[0] & 15)) needed = true;
         if (c == 3 && (audctl & 0x02) && (audc[1] & 15)) needed = true;

@@ -165,20 +165,28 @@ static void __not_in_flash_func(update_len)(struct chan *c)
 	}
 }
 
-static bool __not_in_flash_func(update_freq)(struct chan *c, uint32_t *pos)
-{
-	uint32_t inc = c->freq_inc - *pos;
-	c->freq_counter += inc;
-
-	if (c->freq_counter > FREQ_INC_REF) {
-		*pos		= c->freq_inc - (c->freq_counter - FREQ_INC_REF);
-		c->freq_counter = 0;
-		return true;
-	} else {
-		*pos = c->freq_inc;
-		return false;
-	}
-}
+/* PBC: the waveform steps of one output sample used to be found with
+ *
+ *	pos = prev_pos = 0;
+ *	while (update_freq(c, &pos)) {	// counter += freq_inc - pos; past
+ *		step;			// FREQ_INC_REF: pos = freq_inc -
+ *		sample += ((pos - prev_pos) / c->freq_inc) * ...;  // overshoot,
+ *		prev_pos = pos;		// counter = 0
+ *	}
+ *
+ * As freq_counter never exceeds FREQ_INC_REF between calls, prev_pos <=
+ * pos < freq_inc in that loop: the division was always 0 and the loop
+ * comes down to counting the counter past FREQ_INC_REF, as done now with
+ * FREQ_STEPS (same steps, same final freq_counter). */
+#define FREQ_STEPS(c, ...)					\
+	do {							\
+		uint32_t x_ = (c)->freq_counter + (c)->freq_inc;	\
+		while (x_ > FREQ_INC_REF) {			\
+			__VA_ARGS__;				\
+			x_ -= FREQ_INC_REF;			\
+		}						\
+		(c)->freq_counter = x_;				\
+	} while (0)
 
 static void __not_in_flash_func(update_sweep)(struct chan *c)
 {
@@ -227,18 +235,14 @@ static void __not_in_flash_func(update_square)(int16_t* samples, const bool ch2)
 		if (!ch2)
 			update_sweep(c);
 
-		uint32_t pos = 0;
-		uint32_t prev_pos = 0;
 		int32_t sample = 0;
 
-		while (update_freq(c, &pos)) {
+		FREQ_STEPS(c, {
 			c->square.duty_counter = (c->square.duty_counter + 1) & 7;
-			sample += ((pos - prev_pos) / c->freq_inc) * c->val;
 			c->val = (c->square.duty & (1 << c->square.duty_counter)) ?
 				VOL_INIT_MAX / MAX_CHAN_VOLUME :
 				VOL_INIT_MIN / MAX_CHAN_VOLUME;
-			prev_pos = pos;
-		}
+		});
 
 		if (c->muted)
 			continue;
@@ -284,19 +288,12 @@ static void __not_in_flash_func(update_wave)(int16_t *samples)
 		if (!c->enabled)
 			continue;
 
-		uint32_t pos      = 0;
-		uint32_t prev_pos = 0;
 		int32_t sample   = 0;
 
+		/* the sample of the position reached (wave RAM does not
+		 * change in here) */
+		FREQ_STEPS(c, c->val = (c->val + 1) & 31);
 		c->wave.sample = wave_sample(c->val, c->volume);
-
-		while (update_freq(c, &pos)) {
-			c->val = (c->val + 1) & 31;
-			sample += ((pos - prev_pos) / c->freq_inc) *
-				((int)c->wave.sample - 8) * (INT16_MAX/64);
-			c->wave.sample = wave_sample(c->val, c->volume);
-			prev_pos  = pos;
-		}
 
 		sample += ((int)c->wave.sample - 8) * (int)(INT16_MAX/64);
 
@@ -347,11 +344,9 @@ static void __not_in_flash_func(update_noise)(int16_t *samples)
 
 		update_env(c);
 
-		uint32_t pos      = 0;
-		uint32_t prev_pos = 0;
 		int32_t sample    = 0;
 
-		while (update_freq(c, &pos)) {
+		FREQ_STEPS(c, {
 			c->noise.lfsr_reg = (c->noise.lfsr_reg << 1) |
 				(c->val >= VOL_INIT_MAX/MAX_CHAN_VOLUME);
 
@@ -366,10 +361,7 @@ static void __not_in_flash_func(update_noise)(int16_t *samples)
 					VOL_INIT_MAX / MAX_CHAN_VOLUME :
 					VOL_INIT_MIN / MAX_CHAN_VOLUME;
 			}
-
-			sample += ((pos - prev_pos) / c->freq_inc) * c->val;
-			prev_pos = pos;
-		}
+		});
 
 		if (c->muted)
 			continue;

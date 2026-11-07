@@ -35,6 +35,10 @@ public:
 
 	// Load iNES from memory. PRG copied to SRAM; CHR stays in-place.
 	const char * load_ines_data( const void* data, long size );
+	
+	// PBC: after load_ines_data, read the PRG from a copy at ram (which
+	// takes prg_size() + 2 bytes and is not freed) instead of in place
+	void move_prg( void* ram );
 
 	// Set sample rate for sound generation
 	const char * set_sample_rate( long );

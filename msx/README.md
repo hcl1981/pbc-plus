@@ -66,10 +66,10 @@ Füllen, Linien) sind sofort fertig statt nach ihrer echten Laufzeit.
 | B | Feuer 1 und SPACE |
 | A | Feuer 2 und M |
 | Center + B | F1 |
-| Center + A | Menü: Diskette wechseln (bei Diskettenspielen), jede andere Taste einmal drücken |
+| Center + A | Menü: „Swap disk“ (bei Diskettenspielen), „Press a key“ (jede Taste einmal drücken), „Back to game“ |
 | RESET | zurück zum Starter |
 
-**Diskettenwechsel:** Bei einem Diskettenspiel steht oben im Menü „Insert
+**Diskettenwechsel:** Bei einem Diskettenspiel steht oben im Menü „Swap
 disk“: alle MSX-Disketten des Laufwerks (CPC-Disketten mit derselben Endung
 bleiben draußen). Die gewählte kommt sofort in Laufwerk A:, DSKCHG meldet den
 Wechsel. Im Link-Spiel wechseln beide nur, wenn der ganze Inhalt der Datei auf
@@ -89,7 +89,7 @@ gewählte Taste kommt auf beiden Geräten im selben Bild an.
 | `core/msx1/ay8910.c` | PSG: 3 Töne, Rauschen, Hüllkurve; jedes Sample mittelt über seine Dauer, Strecken ohne hörbare Änderung in einem Schritt |
 | `core/msx1/scc.c` | Konami-SCC: 5 Wellenformkanäle |
 | `src/main.c` | Start, Spielschleife, Menü, Link; MSX2: C-BIOS oder System-ROMs vom Laufwerk, Diskette |
-| `src/msx_video.c` | jede fertige Zeile geht roh (Farbindizes bzw. RGB565) über einen kleinen Ring an Kern 1, der sie umrechnet und ans Display schickt; kein Bildpuffer. Modi *Fit width* (256 → 240) und *Crop 1:1* |
+| `src/msx_video.c` | der Kern zeichnet jede Zeile roh (Farbindizes bzw. RGB565) direkt in einen kleinen Ring, Kern 1 rechnet sie um und schickt sie ans Display; kein Bildpuffer. Modi *Fit width* (256 → 240) und *Crop 1:1* |
 | `src/msx_input.c` | Tasten → Joysticks und Tastaturmatrix |
 | `src/rom_store.c` | Modul in den Flash, MegaROMs auf 2ⁿ Seiten gespiegelt |
 
@@ -98,6 +98,13 @@ behalten Samples, die Spiele über die Lautstärkeregister abspielen, ihr
 Timing. Das Display bekommt wie bei Mega Drive und PC Engine 75 MHz SPI aus
 der USB-PLL. Der Speicher startet fest mit Nullen, nichts hängt von der Zeit
 ab: Beide Geräte rechnen im Link-Spiel dasselbe.
+
+Für die Geschwindigkeit: Beim MSX1 laufen das Haupt-ROM und einfache
+Module bis 32 KB aus Kopien in den sonst freien oberen 64 KB des RAM
+(MegaROMs bleiben im Flash). Die Port-Zugriffe (VDP, PSG, SCC, Slots), die
+Befehle des V9938 und die Tabellen des PSG liegen im RAM; Schreiben ins RAM
+geht über eine Seitentabelle direkt. Die Sprites des TMS9918 löschen nur die
+Spalten, die sie bedecken.
 
 ## Lizenz
 

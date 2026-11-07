@@ -29,6 +29,8 @@
 #include <stdio.h>
 #include <string.h>
 #include "hardware/regs/addressmap.h"
+#include "hardware/structs/watchdog.h"
+#include "hardware/clocks.h"
 
 #define PBC_LAUNCH_OFFSET   0xFF6000u
 #define PBC_LAUNCH_MAGIC    0x484E4C50u     /* "PLNH" */
@@ -73,14 +75,16 @@ typedef struct {
     uint8_t  key;                           /* the game's own options, per system:
                                                CPC: bits 0-5 the key on Center + B (cpc_keys_menu
                                                index, 0 = RETURN), 6-7 the joystick kind;
-                                               ZX: the key on Center + B (zx_keys_menu, 0 = ENTER);
+                                               ZX: bits 0-5 the key on Center + B (zx_keys_menu,
+                                               0 = ENTER), 6-7 the joystick (zx_joy_names);
                                                Mega Drive: button layout 0..5 (megadrive/src/input.h);
                                                NES, SMS/GG/SG: bit 0 buttons swapped;
                                                Game Boy: bits 0-2 palette of an old game
                                                (gbc/src/main.c), bit 3 A/B swapped,
                                                bit 4 link cable (pbc_cable.h);
                                                Atari: bit 0/1 left/right difficulty A, bit 2 b/w */
-    uint8_t  reserved[1];
+    uint8_t  opt2;                          /* more of the game's options: ZX bit 0 a tape game
+                                               starts as a 48K (else 128K); 0 elsewhere */
     char     game[PBC_LAUNCH_NAME_MAX];     /* file in the FatFs root */
     uint32_t check;                         /* FNV-1a over everything above */
 } pbc_launch_t;
@@ -115,6 +119,23 @@ static inline bool pbc_launch_stats(void)
 {
     const pbc_launch_t *l = pbc_launch_get();
     return l && (l->flags & PBC_LAUNCH_STATS);
+}
+
+/* Launcher test mode (pbcemu built with PBC_AUTOTEST sets scratch[3]): the
+ * emulators' stats line also into watchdog scratch[5..7], which the launcher
+ * keeps in flash after the watchdog reset (picotool reads it): fps | MHz
+ * << 16, speed in %, core 0 load in % | the highest so far << 16. */
+#define PBC_TEST_MAGIC 0xB007B007u
+static inline void pbc_test_stats(uint32_t fps, uint32_t speed, uint32_t cpu)
+{
+    if (watchdog_hw->scratch[3] != PBC_TEST_MAGIC)
+        return;
+    static uint32_t top;
+    if (cpu > top)
+        top = cpu;
+    watchdog_hw->scratch[5] = fps | (clock_get_hz(clk_sys) / 1000000u) << 16;
+    watchdog_hw->scratch[6] = speed;
+    watchdog_hw->scratch[7] = cpu | top << 16;
 }
 
 /* "Sonic_2 (World).md" -> title "Sonic 2", tags "(World)": the launcher's

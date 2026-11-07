@@ -229,7 +229,7 @@ void MOS6502_1541::SetState(const MOS6502State *s)
  *  Return physical state of IEC lines
  */
 
-uint8_t MOS6502_1541::CalcIECLines() const
+C64_HOT(MOS6502_1541_CalcIECLines) uint8_t MOS6502_1541::CalcIECLines() const
 {
 	uint8_t iec = IECLines & TheCIA2->IECLines;
 	iec &= ((iec ^ atn_ack) << 2) | 0xdf;	// ATN acknowledge pulls DATA low
@@ -241,7 +241,7 @@ uint8_t MOS6502_1541::CalcIECLines() const
  *  Trigger VIA interrupt
  */
 
-void MOS6502_1541::TriggerInterrupt(unsigned which)
+C64_HOT(MOS6502_1541_TriggerInterrupt) void MOS6502_1541::TriggerInterrupt(unsigned which)
 {
 	int_line[which] = true;
 
@@ -250,7 +250,7 @@ void MOS6502_1541::TriggerInterrupt(unsigned which)
 }
 
 // Interrupt by negative edge of ATN on IEC bus
-void MOS6502_1541::TriggerIECInterrupt()
+C64_HOT(MOS6502_1541_TriggerIECInterrupt) void MOS6502_1541::TriggerIECInterrupt()
 {
 	via1->TriggerCA1Interrupt();
 }
@@ -260,7 +260,7 @@ void MOS6502_1541::TriggerIECInterrupt()
  *  Count VIA timers
  */
 
-void MOS6502_1541::CountVIATimers(int cycles)
+C64_HOT(MOS6502_1541_CountVIATimers) void MOS6502_1541::CountVIATimers(int cycles)
 {
 	via1->CountTimers(cycles);
 	via2->CountTimers(cycles);
@@ -271,7 +271,8 @@ void MOS6502_1541::CountVIATimers(int cycles)
  *  Read a byte from the CPU's address space
  */
 
-uint8_t MOS6502_1541::read_byte(uint16_t adr)
+// PBC: ROM and RAM inline, the rest (VIAs) out of line, all in RAM
+inline uint8_t MOS6502_1541::read_byte(uint16_t adr)
 {
 	if (adr >= 0x8000) {
 
@@ -283,7 +284,14 @@ uint8_t MOS6502_1541::read_byte(uint16_t adr)
 		// RAM
 		return ram[adr & 0x07ff];
 
-	} else if ((adr & 0x1c00) == 0x1800) {
+	} else {
+		return read_byte_io(adr);
+	}
+}
+
+C64_HOT(MOS6502_1541_read_byte_io) uint8_t MOS6502_1541::read_byte_io(uint16_t adr)
+{
+	if ((adr & 0x1c00) == 0x1800) {
 
 		// VIA 1
 		switch (adr & 0xf) {
@@ -335,9 +343,10 @@ uint8_t MOS6502_1541::read_byte(uint16_t adr)
  *  Read a word (little-endian) from the CPU's address space
  */
 
-inline uint16_t MOS6502_1541::read_word(uint16_t adr)
+__attribute__((noinline)) C64_HOT(MOS6502_1541_read_word) uint16_t MOS6502_1541::read_word(uint16_t adr)
 {
-	return read_byte(adr) | (read_byte(adr + 1) << 8);
+	uint8_t lo = read_byte(adr);		// low byte first, as before
+	return lo | (read_byte(adr + 1) << 8);
 }
 
 
@@ -359,7 +368,8 @@ void MOS6502_1541::set_iec_lines(uint8_t inv_out)
  *  Write a byte to the CPU's address space
  */
 
-inline void MOS6502_1541::write_byte(uint16_t adr, uint8_t byte)
+// PBC: RAM (and ignored ROM) inline, the VIAs out of line, all in RAM
+__attribute__((noinline)) C64_HOT(MOS6502_1541_write_byte) void MOS6502_1541::write_byte(uint16_t adr, uint8_t byte)
 {
 	if (adr >= 0x8000) {
 
@@ -370,7 +380,14 @@ inline void MOS6502_1541::write_byte(uint16_t adr, uint8_t byte)
 		// RAM
 		ram[adr & 0x07ff] = byte;
 
-	} else if ((adr & 0x1c00) == 0x1800) {
+	} else {
+		write_byte_io(adr, byte);
+	}
+}
+
+C64_HOT(MOS6502_1541_write_byte_io) void MOS6502_1541::write_byte_io(uint16_t adr, uint8_t byte)
+{
+	if ((adr & 0x1c00) == 0x1800) {
 
 		// VIA 1
 		via1->WriteRegister(adr, byte);
@@ -485,7 +502,7 @@ void MOS6502_1541::ExtWriteByte(uint16_t adr, uint8_t byte)
  *  ADC instruction
  */
 
-void MOS6502_1541::do_adc(uint8_t byte)
+C64_HOT(MOS6502_1541_do_adc) void MOS6502_1541::do_adc(uint8_t byte)
 {
 	if (!d_flag) {
 		uint16_t tmp;
@@ -521,7 +538,7 @@ void MOS6502_1541::do_adc(uint8_t byte)
  *  SBC instruction
  */
 
-void MOS6502_1541::do_sbc(uint8_t byte)
+C64_HOT(MOS6502_1541_do_sbc) void MOS6502_1541::do_sbc(uint8_t byte)
 {
 	uint16_t tmp = a - byte - (c_flag ? 0 : 1);
 

@@ -111,7 +111,7 @@ int load_rom(uintptr_t addr, int size, int cartType)
         size -= 512;
         start += 512;
     }
-    sms.use_fm = 0;
+    sms.use_fm = 0;                     /* no FM unit (YM2413 removed, system.c) */
     sms.country = TYPE_OVERSEAS;
     /* sms.dummy marks the pages where writes are discarded. It is compared by
        pointer and never written through - cpu_writemem16() and sg_writemem()

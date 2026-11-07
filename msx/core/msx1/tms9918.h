@@ -37,7 +37,7 @@ void tms_write_data(uint8_t v);
 void tms_write_ctrl(uint8_t v);
 
 /* Draws active line y (0..191) into out[256]; sprites included. */
-void tms_line(int y, uint8_t *out);
+void tms_line(int y, uint8_t *out);     /* out word-aligned (TMS_WIDTH bytes) */
 
 /* End of the active picture (after line 191): sets the frame flag. */
 void tms_vblank(void);

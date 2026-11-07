@@ -1317,5 +1317,7 @@ const KernalTrap BuiltinKernalTraps[6] = {
     { 0x1281, { 0x8a, 0x48, 0x98 } },
 };
 /* Drive ROM: not free; the processor-level 1541 takes 1541.rom from the
- * drive (c64_roms.c), else drive 8 is emulated at DOS level. */
-const uint8_t BuiltinDriveROM[DRIVE_ROM_SIZE] __aligned(4) = { 0 };
+ * drive (c64_roms.c), else drive 8 is emulated at DOS level. Zeros in .bss
+ * (RAM): as a const array they took 16 KB of flash. */
+const uint8_t BuiltinDriveROM[DRIVE_ROM_SIZE] __aligned(4)
+    __attribute__((section(".bss.pbc_drive_rom"))) = { 0 };

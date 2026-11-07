@@ -18,15 +18,27 @@
 #else
 #define AY_RAM
 #endif
+/* the register access in RAM too, if the build asks for it (the MSX does;
+ * the Vectrex in ../../../a2600 compiles this file without), and the
+ * tables */
+#if defined(AY_IO_RAM) && defined(PBC_ON_DEVICE)
+#define AY_IO AY_RAM
+#define AY_TAB(n) __attribute__((section(".data.ay_" n)))    /* tables in RAM: read per sample */
+#define AY_CONST
+#else
+#define AY_IO
+#define AY_TAB(n)
+#define AY_CONST const
+#endif
 
 /* 16 levels, 3 dB per two steps (the chip's logarithmic DAC) */
-static const uint16_t vol_tab[16] = {
+static AY_CONST uint16_t vol_tab[16] AY_TAB("vol") = {
     0, AY_MAX / 128, AY_MAX / 90, AY_MAX / 64, AY_MAX / 45, AY_MAX / 32, AY_MAX / 23, AY_MAX / 16,
     AY_MAX / 11, AY_MAX / 8, (AY_MAX * 10) / 57, AY_MAX / 4, (AY_MAX * 10) / 28, AY_MAX / 2,
     (AY_MAX * 10) / 14, AY_MAX,
 };
 
-static const uint8_t reg_mask[16] = {
+static AY_CONST uint8_t reg_mask[16] AY_TAB("mask") = {
     0xff, 0x0f, 0xff, 0x0f, 0xff, 0x0f, 0x1f, 0xff,
     0x1f, 0x1f, 0x1f, 0xff, 0xff, 0x0f, 0xff, 0xff,
 };
@@ -58,12 +70,12 @@ void ay_reset(ay8910_t *ay)
     env_start(ay);
 }
 
-void ay_write_addr(ay8910_t *ay, uint8_t v)
+AY_IO void ay_write_addr(ay8910_t *ay, uint8_t v)
 {
     ay->addr = v & 15;
 }
 
-void ay_write_data(ay8910_t *ay, uint8_t v)
+AY_IO void ay_write_data(ay8910_t *ay, uint8_t v)
 {
     int r = ay->addr;
     ay->reg[r] = v & reg_mask[r];
@@ -71,7 +83,7 @@ void ay_write_data(ay8910_t *ay, uint8_t v)
         env_start(ay);
 }
 
-uint8_t ay_read_data(ay8910_t *ay, ay_port_read_t port_a)
+AY_IO uint8_t ay_read_data(ay8910_t *ay, ay_port_read_t port_a)
 {
     int r = ay->addr;
     if (r == 14)

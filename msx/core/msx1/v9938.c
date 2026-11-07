@@ -43,14 +43,14 @@ static const uint8_t spr7_grb[16][3] = {        /* G, R, B (0..7) */
     {4,7,2}, {0,0,7}, {0,7,0}, {0,7,7}, {7,0,0}, {7,0,7}, {7,7,0}, {7,7,7},
 };
 
-static uint16_t rgb(int r, int g, int b)
+static V99_RAM uint16_t rgb(int r, int g, int b)
 {
     return v99_rgb565 ? v99_rgb565(r * 255 / 7, g * 255 / 7, b * 255 / 7) : 0;
 }
 
 static bool tab_dirty = true;           /* the drawing tables are stale */
 
-static void set_pal(int i, int r, int g, int b)
+static V99_RAM void set_pal(int i, int r, int g, int b)
 {
     pal565[i & 15] = rgb(r, g, b);
     tab_dirty = true;
@@ -58,7 +58,7 @@ static void set_pal(int i, int r, int g, int b)
 
 /* ---- modes -------------------------------------------------------------------- */
 
-static void update_mode(void)
+static V99_RAM void update_mode(void)
 {
     int m = ((reg[0] >> 3) & 1) << 4 | ((reg[0] >> 2) & 1) << 3 | ((reg[0] >> 1) & 1) << 2 |
             ((reg[1] >> 3) & 1) << 1 | ((reg[1] >> 4) & 1);
@@ -86,7 +86,7 @@ int v99_lines(void)
     return (reg[9] & 0x80) ? 212 : 192;
 }
 
-bool v99_irq(void)
+V99_RAM bool v99_irq(void)
 {
     return ((stat[0] & 0x80) && (reg[1] & 0x20)) || ((stat[1] & 1) && (reg[0] & 0x10));
 }
@@ -109,19 +109,37 @@ static inline int cmd_ymask(void) { return (mode == M_G6 || mode == M_G7) ? 511 
 static inline int ppb(void) { return mode == M_G5 ? 4 : mode == M_G7 ? 1 : 2; }       /* pixels per byte */
 static inline int bpl(void) { return (mode == M_G6 || mode == M_G7) ? 256 : 128; }    /* bytes per line */
 
-static uint8_t pget(int x, int y)
+/* what the mode means for the dots, taken once per command instead of
+ * per dot (the loops below run from RAM, with these in registers) */
+enum { K_NIB, K_2BIT, K_BYTE };         /* graphics 4/6, graphics 5, else bytes */
+typedef struct {
+    int wmask, ymask, bpl, kind;
+    uint8_t cmask;                      /* the colour bits of a dot */
+} cmd_mode_t;
+
+static inline cmd_mode_t cmd_mode(void)
 {
-    x &= cmd_w() - 1;
-    y &= cmd_ymask();
-    switch (mode) {
-    case M_G4: { uint8_t b = vram[(y * 128 + (x >> 1)) & 0x1ffff]; return (x & 1) ? b & 15 : b >> 4; }
-    case M_G5: { uint8_t b = vram[(y * 128 + (x >> 2)) & 0x1ffff]; return (b >> ((3 - (x & 3)) * 2)) & 3; }
-    case M_G6: { uint8_t b = vram[(y * 256 + (x >> 1)) & 0x1ffff]; return (x & 1) ? b & 15 : b >> 4; }
-    default:   return vram[(y * 256 + x) & 0x1ffff];
+    cmd_mode_t m;
+    m.wmask = cmd_w() - 1;
+    m.ymask = cmd_ymask();
+    m.bpl = bpl();
+    m.kind = (mode == M_G4 || mode == M_G6) ? K_NIB : mode == M_G5 ? K_2BIT : K_BYTE;
+    m.cmask = mode == M_G5 ? 3 : mode == M_G7 ? 0xff : 15;
+    return m;
+}
+
+static inline uint8_t pget_m(const cmd_mode_t *m, int x, int y)
+{
+    x &= m->wmask;
+    y &= m->ymask;
+    switch (m->kind) {
+    case K_NIB:  { uint8_t b = vram[(y * m->bpl + (x >> 1)) & 0x1ffff]; return (x & 1) ? b & 15 : b >> 4; }
+    case K_2BIT: { uint8_t b = vram[(y * 128 + (x >> 2)) & 0x1ffff]; return (b >> ((3 - (x & 3)) * 2)) & 3; }
+    default:     return vram[(y * 256 + x) & 0x1ffff];
     }
 }
 
-static uint8_t logop(uint8_t dst, uint8_t src, int op, uint8_t mask)
+static inline uint8_t logop(uint8_t dst, uint8_t src, int op, uint8_t mask)
 {
     switch (op & 7) {
     case 0:  return src;
@@ -133,23 +151,23 @@ static uint8_t logop(uint8_t dst, uint8_t src, int op, uint8_t mask)
     }
 }
 
-static void pset(int x, int y, uint8_t col, int op)
+static inline void pset_m(const cmd_mode_t *m, int x, int y, uint8_t col, int op)
 {
-    x &= cmd_w() - 1;
-    y &= cmd_ymask();
-    uint8_t mask = mode == M_G5 ? 3 : mode == M_G7 ? 0xff : 15;
+    x &= m->wmask;
+    y &= m->ymask;
+    uint8_t mask = m->cmask;
     col &= mask;
     if ((op & 8) && !col)
         return;                         /* T: colour 0 leaves the dot */
-    switch (mode) {
-    case M_G4: case M_G6: {
-        uint8_t *b = &vram[(y * bpl() + (x >> 1)) & 0x1ffff];
+    switch (m->kind) {
+    case K_NIB: {
+        uint8_t *b = &vram[(y * m->bpl + (x >> 1)) & 0x1ffff];
         int sh = (x & 1) ? 0 : 4;
         uint8_t v = logop((uint8_t)((*b >> sh) & 15), col, op, mask);
         *b = (uint8_t)((*b & ~(15 << sh)) | (v << sh));
         break;
     }
-    case M_G5: {
+    case K_2BIT: {
         uint8_t *b = &vram[(y * 128 + (x >> 2)) & 0x1ffff];
         int sh = (3 - (x & 3)) * 2;
         uint8_t v = logop((uint8_t)((*b >> sh) & 3), col, op, mask);
@@ -162,6 +180,24 @@ static void pset(int x, int y, uint8_t col, int op)
         break;
     }
     }
+}
+
+/* one dot, in the mode of this moment (transfers through the CPU) */
+static V99_RAM uint8_t pget(int x, int y)
+{
+    cmd_mode_t m = cmd_mode();
+    return pget_m(&m, x, y);
+}
+
+static V99_RAM void pset(int x, int y, uint8_t col, int op)
+{
+    cmd_mode_t m = cmd_mode();
+    pset_m(&m, x, y, col, op);
+}
+
+static inline uint8_t *byte_at_m(const cmd_mode_t *m, int bx, int y)
+{
+    return &vram[((y & m->ymask) * m->bpl + (bx & (m->bpl - 1))) & 0x1ffff];
 }
 
 static inline uint8_t *byte_at(int bx, int y)
@@ -184,7 +220,7 @@ static void cmd_end(void)
 }
 
 /* the next dot (or byte) of a transfer through the CPU */
-static void transfer_step(void)
+static V99_RAM void transfer_step(void)
 {
     c.x += c.dix;
     if (++c.i >= c.nx) {
@@ -199,7 +235,7 @@ static void transfer_step(void)
     }
 }
 
-static void transfer_in(uint8_t v)      /* HMMC, LMMC: a byte from the CPU */
+static V99_RAM void transfer_in(uint8_t v)      /* HMMC, LMMC: a byte from the CPU */
 {
     if (!c.ce)
         return;
@@ -212,7 +248,7 @@ static void transfer_in(uint8_t v)      /* HMMC, LMMC: a byte from the CPU */
         c.tr = true;
 }
 
-static void cmd_start(uint8_t v)
+static V99_RAM void cmd_start(uint8_t v)
 {
     int arg = reg[45];
     c.cmd = v >> 4;
@@ -234,29 +270,36 @@ static void cmd_start(uint8_t v)
     c.tr = false;
     stat[2] &= (uint8_t)~0x10;          /* BD */
 
+    /* the loops work on copies: VRAM stores (bytes) would make the
+     * compiler reload c and the mode after each dot */
+    const cmd_mode_t m = cmd_mode();
+    const int sx = c.sx, sy = c.sy, dx = c.dx, dy = c.dy, nx = c.nx, ny = c.ny;
+    const int dix = c.dix, diy = c.diy, op = c.op;
+
     switch (c.cmd) {
     case C_STOP:
         cmd_end();
         break;
     case C_POINT:
-        stat[7] = pget(c.sx, c.sy);
+        stat[7] = pget_m(&m, sx, sy);
         cmd_end();
         break;
     case C_PSET:
-        pset(c.dx, c.dy, clr, c.op);
+        pset_m(&m, dx, dy, clr, op);
         cmd_end();
         break;
     case C_SRCH: {
         bool want_diff = (arg & 2) != 0;
-        int x = c.sx;
+        uint8_t want = clr & m.cmask;
+        int x = sx;
         for (int n = 0; n < w; n++) {
-            if ((pget(x, c.sy) == (clr & (mode == M_G5 ? 3 : mode == M_G7 ? 0xff : 15))) != want_diff) {
+            if ((pget_m(&m, x, sy) == want) != want_diff) {
                 stat[2] |= 0x10;
                 stat[8] = (uint8_t)x;
                 stat[9] = (uint8_t)(0xfe | ((x >> 8) & 1));
                 break;
             }
-            x += c.dix;
+            x += dix;
             if (x < 0 || x >= w)
                 break;
         }
@@ -264,18 +307,18 @@ static void cmd_start(uint8_t v)
         break;
     }
     case C_LINE: {
-        int x = c.dx, y = c.dy, major = c.nx, minor = reg16(42, 1023);
+        int x = dx, y = dy, major = nx, minor = reg16(42, 1023);
         int err = major / 2;
         for (int n = 0; n <= major; n++) {
-            pset(x, y, clr, c.op);
+            pset_m(&m, x, y, clr, op);
             if (arg & 1) {              /* MAJ: long side along y */
-                y += c.diy;
+                y += diy;
                 err -= minor;
-                if (err < 0) { err += major; x += c.dix; }
+                if (err < 0) { err += major; x += dix; }
             } else {
-                x += c.dix;
+                x += dix;
                 err -= minor;
-                if (err < 0) { err += major; y += c.diy; }
+                if (err < 0) { err += major; y += diy; }
             }
         }
         set_reg16(38, y & 1023);
@@ -283,46 +326,46 @@ static void cmd_start(uint8_t v)
         break;
     }
     case C_LMMV:
-        for (int j = 0; j < c.ny; j++)
-            for (int i = 0; i < c.nx; i++)
-                pset(c.dx + i * c.dix, c.dy + j * c.diy, clr, c.op);
-        set_reg16(38, (c.dy + c.ny * c.diy) & 1023);
+        for (int j = 0; j < ny; j++)
+            for (int i = 0; i < nx; i++)
+                pset_m(&m, dx + i * dix, dy + j * diy, clr, op);
+        set_reg16(38, (dy + ny * diy) & 1023);
         cmd_end();
         break;
     case C_LMMM:
-        for (int j = 0; j < c.ny; j++)
-            for (int i = 0; i < c.nx; i++)
-                pset(c.dx + i * c.dix, c.dy + j * c.diy, pget(c.sx + i * c.dix, c.sy + j * c.diy), c.op);
-        set_reg16(34, (c.sy + c.ny * c.diy) & 1023);
-        set_reg16(38, (c.dy + c.ny * c.diy) & 1023);
+        for (int j = 0; j < ny; j++)
+            for (int i = 0; i < nx; i++)
+                pset_m(&m, dx + i * dix, dy + j * diy, pget_m(&m, sx + i * dix, sy + j * diy), op);
+        set_reg16(34, (sy + ny * diy) & 1023);
+        set_reg16(38, (dy + ny * diy) & 1023);
         cmd_end();
         break;
     case C_HMMV: {
-        int p = ppb(), bx = c.dx / p, bn = (c.nx + p - 1) / p;
-        for (int j = 0; j < c.ny; j++)
+        int p = ppb(), bx = dx / p, bn = (nx + p - 1) / p;
+        for (int j = 0; j < ny; j++)
             for (int i = 0; i < bn; i++)
-                *byte_at(bx + i * c.dix, c.dy + j * c.diy) = clr;
-        set_reg16(38, (c.dy + c.ny * c.diy) & 1023);
+                *byte_at_m(&m, bx + i * dix, dy + j * diy) = clr;
+        set_reg16(38, (dy + ny * diy) & 1023);
         cmd_end();
         break;
     }
     case C_HMMM: {
-        int p = ppb(), sbx = c.sx / p, dbx = c.dx / p, bn = (c.nx + p - 1) / p;
-        for (int j = 0; j < c.ny; j++)
+        int p = ppb(), sbx = sx / p, dbx = dx / p, bn = (nx + p - 1) / p;
+        for (int j = 0; j < ny; j++)
             for (int i = 0; i < bn; i++)
-                *byte_at(dbx + i * c.dix, c.dy + j * c.diy) = *byte_at(sbx + i * c.dix, c.sy + j * c.diy);
-        set_reg16(34, (c.sy + c.ny * c.diy) & 1023);
-        set_reg16(38, (c.dy + c.ny * c.diy) & 1023);
+                *byte_at_m(&m, dbx + i * dix, dy + j * diy) = *byte_at_m(&m, sbx + i * dix, sy + j * diy);
+        set_reg16(34, (sy + ny * diy) & 1023);
+        set_reg16(38, (dy + ny * diy) & 1023);
         cmd_end();
         break;
     }
     case C_YMMM: {
-        int p = ppb(), bx = c.dx / p, n = c.dix > 0 ? bpl() - bx : bx + 1;
-        for (int j = 0; j < c.ny; j++)
+        int p = ppb(), bx = dx / p, n = dix > 0 ? m.bpl - bx : bx + 1;
+        for (int j = 0; j < ny; j++)
             for (int i = 0; i < n; i++)
-                *byte_at(bx + i * c.dix, c.dy + j * c.diy) = *byte_at(bx + i * c.dix, c.sy + j * c.diy);
-        set_reg16(34, (c.sy + c.ny * c.diy) & 1023);
-        set_reg16(38, (c.dy + c.ny * c.diy) & 1023);
+                *byte_at_m(&m, bx + i * dix, dy + j * diy) = *byte_at_m(&m, bx + i * dix, sy + j * diy);
+        set_reg16(34, (sy + ny * diy) & 1023);
+        set_reg16(38, (dy + ny * diy) & 1023);
         cmd_end();
         break;
     }
@@ -354,7 +397,7 @@ static void cmd_start(uint8_t v)
 
 /* ---- ports ------------------------------------------------------------------- */
 
-static void write_reg(int r, uint8_t v)
+static V99_RAM void write_reg(int r, uint8_t v)
 {
     if (r >= 47)
         return;
@@ -394,7 +437,7 @@ V99_RAM void v99_write_data(uint8_t v)
     latched = false;
 }
 
-uint8_t v99_read_status(void)
+V99_RAM uint8_t v99_read_status(void)
 {
     uint8_t v;
     latched = false;
@@ -428,7 +471,7 @@ uint8_t v99_read_status(void)
     return v;
 }
 
-void v99_write_ctrl(uint8_t v)
+V99_RAM void v99_write_ctrl(uint8_t v)
 {
     if (!latched) {
         latch = v;
@@ -447,7 +490,7 @@ void v99_write_ctrl(uint8_t v)
     }
 }
 
-void v99_write_palette(uint8_t v)
+V99_RAM void v99_write_palette(uint8_t v)
 {
     if (!pal_latched) {
         pal_latch = v;
@@ -459,7 +502,7 @@ void v99_write_palette(uint8_t v)
     reg[16] = (uint8_t)((reg[16] + 1) & 15);
 }
 
-void v99_write_indirect(uint8_t v)
+V99_RAM void v99_write_indirect(uint8_t v)
 {
     int r = reg[17] & 0x3f;
     if (r != 17)

@@ -33,7 +33,10 @@ lösen wie beim 68000 die Illegal- bzw. Line-F-Ausnahme aus.
 **Zeit in Master-Takten.** Das Mega Drive misst alles in Takten des 53-MHz-
 Quarzes, sieben pro 68000-Takt. `m68k_run(t)` rechnet, bis `m68k.cycles`
 mindestens `t` ist; die Tabelle enthält die Takte schon mal 7. STOP und ein
-Sprung auf sich selbst (Warteschleife) beenden den Zeitabschnitt.
+Sprung auf sich selbst (Warteschleife) beenden den Zeitabschnitt. Ebenso,
+aber auf den Takt genau, Warteschleifen, die nur eine RAM-Adresse testen
+(`tst`/`btst`/`cmpi` und `Bcc.s` zurück), und `DBF Dn,*`
+(`m68ki_poll_skip`, `m68ki_dbf_skip` in `m68kcpu.c`).
 
 **Speicher.** ROM (unter $800000) und Arbeits-RAM ($FF0000 aufwärts) liest
 der Kern direkt, alles andere über `gwenesis_bus.c`. Befehle und

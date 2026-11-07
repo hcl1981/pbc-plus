@@ -53,6 +53,7 @@
 #include "zx_video.h"
 #include "zx_input.h"
 #include "zx.h"
+#include "pbc_game_opts.h"
 
 #if !PBC_MULTI
 #error "PBC ZX exists only as part of the combined firmware (pbcemu/build.sh)"
@@ -153,7 +154,8 @@ static bool start(int model)
 
 /* ---- the in-game menu (Center + A) ------------------------------------------------ */
 
-enum { M_JOY = 0, M_48K = ZX_JOYS, M_128K, M_REWIND, M_CENTER_B, M_KEYS,
+/* What a menu choice does, as a number: so it can go over the link. */
+enum { M_JOY = 0, M_REWIND = ZX_JOYS, M_KEYS,       /* M_JOY + kind, M_KEYS + key: press it once */
        M_SET_CENTER_B = M_KEYS + 64 };   /* + key index: the choice for Center + B */
 
 #define LINK_DONE 0x8000u               /* with the choice + 1 in bits 0..6 */
@@ -170,75 +172,105 @@ static void link_idle(void)
     link_swap(0);
 }
 
+/* The game's settings into the launcher's table: the next start and the
+ * game's options show them too. Not in link play (fixed options there). */
+static void settings_keep(void)
+{
+    if (!pbc_link_active())
+        pbc_game_opts_set_key(game, (uint8_t)(zx_center_b | zx_joy_mode << 6));
+}
+
 static const char *menu_do(int sel)
 {
-    bool tape = game_kind == G_TAP || game_kind == G_TZX;
     if (sel < 0)
         return NULL;
     if (sel < ZX_JOYS) {
         zx_joy_mode = sel;
+        settings_keep();
         return zx_joy_names[sel];
     }
-    switch (sel) {
-    case M_48K:
-    case M_128K:
-        if (game_kind == G_Z80 || game_kind == G_SNA)
-            start(zx_model());          /* a snapshot sets its machine */
-        else
-            start(sel == M_48K ? ZX_48K : ZX_128K);
-        return zx_model() == ZX_48K ? "48K" : "128K";
-    case M_REWIND:
-        if (tape) {
-            zx_tape_rewind();
-            return "Tape rewound";
-        }
-        start(zx_model());
-        return "Reset";
-    case M_CENTER_B:                    /* became M_SET_CENTER_B + key in menu() */
+    if (sel == M_REWIND) {
+        zx_tape_rewind();
+        return "Tape rewound";
+    }
+    if (sel >= M_SET_CENTER_B) {
+        static char s[28];
+        if (sel - M_SET_CENTER_B >= zx_key_count)
+            return NULL;
+        zx_center_b = sel - M_SET_CENTER_B;
+        settings_keep();
+        snprintf(s, sizeof s, "Center + B: %s", zx_keys_menu[zx_center_b].name);
+        return s;
+    }
+    if (sel - M_KEYS >= zx_key_count)
         return NULL;
-    default:
-        if (sel >= M_SET_CENTER_B) {
-            static char s[28];
-            if (sel - M_SET_CENTER_B >= zx_key_count)
-                return NULL;
-            zx_center_b = sel - M_SET_CENTER_B;
-            snprintf(s, sizeof s, "Center + B: %s", zx_keys_menu[zx_center_b].name);
-            return s;
+    zx_input_press(sel - M_KEYS);
+    return zx_keys_menu[sel - M_KEYS].name;
+}
+
+/* Settings: the joystick and the key on Center + B; a choice, or -1 */
+static int settings_menu(void (*idle)(void))
+{
+    static const char *plain[64];
+    static char joy_row[28], key_row[28];
+    for (;;) {
+        snprintf(joy_row, sizeof joy_row, "Joystick: %s", zx_joy_names[zx_joy_mode]);
+        snprintf(key_row, sizeof key_row, "Center + B: %s", zx_keys_menu[zx_center_b].name);
+        const char *rows[] = { joy_row, key_row, "Back" };
+        int r = menu_pick("Settings", rows, 3, 0, -1, NULL, idle);
+        if (r == 0) {
+            int j = menu_pick("Joystick", zx_joy_names, ZX_JOYS, zx_joy_mode, zx_joy_mode, "in use", idle);
+            if (j >= 0)
+                return M_JOY + j;
+        } else if (r == 1) {
+            for (int i = 0; i < zx_key_count && i < 64; i++)
+                plain[i] = zx_keys_menu[i].name;
+            int k = menu_pick("Center + B", plain, zx_key_count, zx_center_b, zx_center_b, "in use", idle);
+            if (k >= 0)
+                return M_SET_CENTER_B + k;
+        } else {
+            return -1;
         }
-        zx_input_press(sel - M_KEYS);
-        return zx_keys_menu[sel - M_KEYS].name;
     }
 }
 
+/* Center + A: rewind the tape (tape games), settings, press a key once,
+ * back to the game (also A). In link play the chooser's choice goes to the
+ * partner as one number. */
 static const char *menu(void)
 {
-    static const char *rows[M_KEYS + 64];
     static const char *plain[64];
-    static char names[64][20];
-    static char joy[ZX_JOYS][24];
-    static char center_b[28];
-    int n = 0;
-    for (int j = 0; j < ZX_JOYS; j++) {
-        snprintf(joy[j], sizeof joy[j], "Joystick: %s", zx_joy_names[j]);
-        rows[n++] = joy[j];
-    }
-    rows[n++] = "Restart as 48K";
-    rows[n++] = "Restart as 128K";
-    bool tape = game_kind == G_TAP || game_kind == G_TZX;
-    rows[n++] = tape ? "Rewind tape" : "Reset";
-    snprintf(center_b, sizeof center_b, "Center + B: %s", zx_keys_menu[zx_center_b].name);
-    rows[n++] = center_b;
-    for (int i = 0; i < zx_key_count && i < 64; i++) {
-        snprintf(names[i], sizeof names[i], "Key %s", zx_keys_menu[i].name);
-        rows[n++] = names[i];
-        plain[i] = zx_keys_menu[i].name;
-    }
     void (*idle)(void) = pbc_link_active() ? link_idle : NULL;
-    int sel = menu_pick("ZX Spectrum", rows, n, zx_joy_mode, zx_joy_mode, NULL, idle);
-    if (sel == M_CENTER_B) {
-        /* which key Center + B gives from now on: in link play for both */
-        int k = menu_pick("Center + B", plain, zx_key_count, zx_center_b, zx_center_b, "in use", idle);
-        sel = k >= 0 ? M_SET_CENTER_B + k : -1;
+    bool tape = game_kind == G_TAP || game_kind == G_TZX;
+    enum { R_REWIND, R_SETTINGS, R_KEY, R_BACK };
+    int sel = -1;
+    for (;;) {
+        const char *rows[4];
+        int what[4], n = 0;
+        if (tape) { rows[n] = "Rewind tape"; what[n++] = R_REWIND; }
+        rows[n] = "Settings";     what[n++] = R_SETTINGS;
+        rows[n] = "Press a key";  what[n++] = R_KEY;
+        rows[n] = "Back to game"; what[n++] = R_BACK;
+        int r = menu_pick("ZX Spectrum", rows, n, 0, -1, NULL, idle);
+        if (r < 0 || what[r] == R_BACK)
+            break;
+        if (what[r] == R_REWIND) {
+            sel = M_REWIND;
+            break;
+        }
+        if (what[r] == R_SETTINGS) {
+            sel = settings_menu(idle);
+            if (sel >= 0)
+                break;
+            continue;
+        }
+        for (int i = 0; i < zx_key_count && i < 64; i++)
+            plain[i] = zx_keys_menu[i].name;
+        int k = menu_pick("Press a key", plain, zx_key_count, 0, -1, NULL, idle);
+        if (k >= 0) {
+            sel = M_KEYS + k;
+            break;
+        }
     }
     if (pbc_link_active())
         link_swap((uint16_t)(LINK_DONE | (sel + 1)));
@@ -295,7 +327,7 @@ static void __attribute__((noreturn)) emulation_loop(bool show_stats)
             next_frame = time_us_64();
         }
         bool draw = !fast || (++fast_n % FAST_DRAW_EVERY) == 0;
-        zx_frame(draw ? zx_video_line : NULL, samples, (int)n);
+        zx_frame(draw ? zx_video_line_begin : NULL, zx_video_line_commit, samples, (int)n);
         if (!fast)
             audio_pwm_push(samples, (int)n);
 
@@ -347,6 +379,7 @@ static void __attribute__((noreturn)) emulation_loop(bool show_stats)
                      (unsigned long)stat_drawn,
                      (unsigned long)(stat_emulated * 100 / 50),
                      (unsigned long)(stat_busy_us * 100 / (now - stat_t0)));
+            pbc_test_stats((unsigned long)stat_drawn, (unsigned long)(stat_emulated * 100 / 50), (unsigned long)(stat_busy_us * 100 / (now - stat_t0)));
             zx_video_set_status(s);
             stat_t0 = now;
             stat_drawn = stat_emulated = 0;
@@ -422,9 +455,14 @@ int main(void)
     if (!launch || !fs_mount())
         reboot_to_menu();
     strncpy(game, launch->game, sizeof game - 1);
-    /* the key on Center + B from the game's options (link play: ENTER) */
-    if (!(launch->flags & (PBC_LAUNCH_LINK1 | PBC_LAUNCH_LINK2)) && launch->key < zx_key_count)
-        zx_center_b = launch->key;
+    /* the key on Center + B and the joystick from the game's options (link
+     * play: ENTER, Kempston) */
+    bool linked = (launch->flags & (PBC_LAUNCH_LINK1 | PBC_LAUNCH_LINK2)) != 0;
+    if (!linked && (launch->key & 0x3f) < zx_key_count)
+        zx_center_b = launch->key & 0x3f;
+    if (!linked)
+        zx_joy_mode = (launch->key >> 6) % ZX_JOYS;
+    bool start_48k = !linked && (launch->opt2 & 1);
     game_kind = ends_ci(game, ".tzx") ? G_TZX : ends_ci(game, ".z80") ? G_Z80 :
                 ends_ci(game, ".sna") ? G_SNA : G_TAP;
 
@@ -444,8 +482,9 @@ int main(void)
     audio_pwm_init();
     zx_video_init(pbc_launch_video());
 
-    /* tapes on the 128K (its music; the menu restarts as 48K) */
-    if (!start(ZX_128K))
+    /* tapes on the 128K (its music), or on the 48K if the game's options
+     * say so; a snapshot sets its machine itself */
+    if (!start(start_48k ? ZX_48K : ZX_128K))
         fatal(game_kind == G_TZX ? "Not a TZX tape" : "Not a Spectrum file", game);
 
     pbc_link_start(link_config());

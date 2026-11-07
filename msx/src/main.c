@@ -225,7 +225,7 @@ static bool disk_io(bool write, uint32_t sector, uint8_t *buf)
     return f_read(&disk_file, buf, 512, &n) == FR_OK && n == 512;
 }
 
-static uint16_t rgb565(int r, int g, int b)
+static uint16_t __not_in_flash_func(rgb565)(int r, int g, int b)
 {
     return PBC_RGB(r, g, b);
 }
@@ -377,32 +377,43 @@ static const char *disk_menu(void)
     return k >= 0 && k != cur ? files[k] : NULL;
 }
 
+/* Center + A: swap the disk (disk games), press a key once, back to the
+ * game (also A). */
 static const char *menu(void)
 {
-    static const char *rows[65];
-    static char names[64][16];
-    int n = 0, first = 0;
-    if (is_disk_game) {
-        rows[n++] = "Insert disk";
-        first = 1;
+    static const char *plain[64];
+    void (*idle)(void) = pbc_link_active() ? link_idle : NULL;
+    enum { R_DISK, R_KEY, R_BACK };
+    for (;;) {
+        const char *rows[3];
+        int what[3], n = 0;
+        if (is_disk_game) { rows[n] = "Swap disk"; what[n++] = R_DISK; }
+        rows[n] = "Press a key";  what[n++] = R_KEY;
+        rows[n] = "Back to game"; what[n++] = R_BACK;
+        int r = menu_pick("MSX", rows, n, 0, -1, NULL, idle);
+        if (r < 0 || what[r] == R_BACK)
+            break;
+        if (what[r] == R_DISK) {
+            const char *disk = disk_menu();
+            if (!disk)
+                continue;
+            if (pbc_link_active())
+                link_swap((uint16_t)(LINK_DONE | LINK_DISK));
+            return disk_change(disk);
+        }
+        for (int i = 0; i < msx_key_count && i < 64; i++)
+            plain[i] = msx_keys_menu[i].name;
+        int k = menu_pick("Press a key", plain, msx_key_count, 0, -1, NULL, idle);
+        if (k >= 0) {
+            msx_input_press(k);         /* goes out with the next words */
+            if (pbc_link_active())
+                link_swap(LINK_DONE);
+            return msx_keys_menu[k].name;
+        }
     }
-    for (int i = 0; i < msx_key_count && i < 64; i++) {
-        snprintf(names[i], sizeof names[i], "Key %s", msx_keys_menu[i].name);
-        rows[n++] = names[i];
-    }
-    int sel = menu_pick("MSX", rows, n, 0, -1, NULL, pbc_link_active() ? link_idle : NULL);
-    if (first && sel == 0) {
-        const char *disk = disk_menu();
-        if (pbc_link_active())
-            link_swap((uint16_t)(LINK_DONE | (disk ? LINK_DISK : 0)));
-        return disk ? disk_change(disk) : NULL;
-    }
-    sel -= first;
-    if (sel >= 0)
-        msx_input_press(sel);           /* goes out with the next words */
     if (pbc_link_active())
         link_swap(LINK_DONE);
-    return sel >= 0 ? msx_keys_menu[sel].name : NULL;
+    return NULL;
 }
 
 /* The player who is not choosing. */
@@ -421,7 +432,7 @@ static const char *menu_wait(void)
 
 static void __attribute__((noreturn)) emulation_loop(bool show_stats, const char *start_status)
 {
-    static int16_t samples[512];
+    static int16_t samples[1024];
     uint64_t next_frame = time_us_64();
     uint64_t stat_t0 = next_frame, stat_busy_us = 0;
     uint32_t stat_drawn = 0, stat_emulated = 0;
@@ -448,7 +459,7 @@ static void __attribute__((noreturn)) emulation_loop(bool show_stats, const char
         sample_acc += AUDIO_RATE;
         unsigned n = sample_acc / 60;
         sample_acc -= n * 60;
-        msx1_frame(msx_video_line, samples, (int)n);
+        msx1_frame(msx_video_line_begin, msx_video_line_commit, samples, (int)n);
         audio_pwm_push(samples, (int)n);
 
         if (msx_video_frame_drawn())
@@ -498,6 +509,7 @@ static void __attribute__((noreturn)) emulation_loop(bool show_stats, const char
                      (unsigned long)stat_drawn,
                      (unsigned long)(stat_emulated * 100 / 60),
                      (unsigned long)(stat_busy_us * 100 / (now - stat_t0)));
+            pbc_test_stats((unsigned long)stat_drawn, (unsigned long)(stat_emulated * 100 / 60), (unsigned long)(stat_busy_us * 100 / (now - stat_t0)));
             msx_video_set_status(s);
             stat_t0 = now;
             stat_drawn = stat_emulated = 0;
@@ -678,7 +690,8 @@ int main(void)
     if (msx2) {
         v99_rgb565 = rgb565;
         msx2_init(main_rom, logo_rom, sub_rom, disk_rom);
-        msx_line565 = msx_video_line565;
+        msx_line565_begin = msx_video_line565_begin;
+        msx_line565_commit = msx_video_line565_commit;
     } else {
         msx1_init(cbios1_pages, cbios_logo);
     }

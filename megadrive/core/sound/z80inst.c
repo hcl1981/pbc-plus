@@ -151,7 +151,11 @@ uint32_t z80_cycles_req, z80_cycles_exec, z80_run_calls;
 
 volatile uint32_t z80_live[4];
 
-void z80_run(int target) {
+/* PBC: z80_run and the 68000's Z80 bus accesses in RAM: games request
+ * the bus and poll it every frame, the sound driver switches banks. */
+#define Z80_RAM_FN __attribute__((section(".time_critical.z80inst")))
+
+Z80_RAM_FN __attribute__((noinline)) void z80_run(int target) {
     Z80_COUNT(z80_run_calls++);
 
   // Skip Z80 execution if disabled (for performance)
@@ -256,7 +260,7 @@ void z80_set_memory(unsigned char *buffer)
 
 uint32_t z80_ctrl_busreq, z80_ctrl_busrel, z80_ctrl_reset_assert, z80_ctrl_reset_release;
 
-void z80_write_ctrl(unsigned int address, unsigned int value) {
+Z80_RAM_FN void z80_write_ctrl(unsigned int address, unsigned int value) {
   z80_sync();
 
   if (address == 0x1100) { if (value) z80_ctrl_busreq++; else z80_ctrl_busrel++; }
@@ -299,7 +303,7 @@ void z80_write_ctrl(unsigned int address, unsigned int value) {
   }
 }
 
-unsigned int z80_read_ctrl(unsigned int address) {
+Z80_RAM_FN unsigned int z80_read_ctrl(unsigned int address) {
 
   z80_sync();
 
@@ -360,7 +364,7 @@ unsigned int zbankreg_mem_r8(unsigned int address)
 }
 
 /* Make this function non-inline and non-static so assembly can call it */
-void zbankreg_mem_w8(unsigned int value) {
+Z80_RAM_FN void zbankreg_mem_w8(unsigned int value) {
   Z80_BANK >>= 1;
   Z80_BANK |= (value & 1) << 8;
   z80_log(__FUNCTION__,"Z80 bank points to: %06x", Z80_BANK << 15);

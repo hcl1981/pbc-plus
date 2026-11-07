@@ -121,6 +121,7 @@ target_compile_options(pbc_c64 PRIVATE
 )
 
 target_link_libraries(pbc_c64
+    pico_flash          # settings.c: flash_safe_execute
     pico_stdlib
     pico_multicore
     pico_unique_id

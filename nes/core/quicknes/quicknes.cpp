@@ -14,6 +14,7 @@
 #include "ff.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 extern "C" void ppu_set_region(int region);
 
@@ -263,6 +264,24 @@ int qnes_load_rom_inplace(const void *data, long size)
     apply_region_settings();
     rom_loaded = true;
     return 0;
+}
+
+long qnes_prg_to_ram(long margin)
+{
+    if (!rom_loaded)
+        return 0;
+    long size = emu->cart()->prg_size();
+    void *ram = malloc(size + 2);
+    if (!ram)
+        return 0;
+    void *probe = malloc(margin);       /* something must be left */
+    if (!probe) {
+        free(ram);
+        return 0;
+    }
+    free(probe);
+    emu->move_prg(ram);
+    return size;
 }
 
 int __attribute__((section(".time_critical.qnes_emulate_frame"))) qnes_emulate_frame(int joypad1, int joypad2)

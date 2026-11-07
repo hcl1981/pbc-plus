@@ -10,8 +10,10 @@
 
 #ifdef PBC_ON_DEVICE
 #define TMS_RAM __attribute__((section(".time_critical.tms")))
+#define TMS_TAB(n) __attribute__((section(".data.tms_" n)))  /* a table read by RAM code */
 #else
 #define TMS_RAM
+#define TMS_TAB(n)
 #endif
 
 tms9918_t tms;
@@ -26,7 +28,7 @@ void tms_reset(void)
     memset(&tms, 0, sizeof tms);
 }
 
-uint8_t tms_read_data(void)
+TMS_RAM uint8_t tms_read_data(void)
 {
     uint8_t v = tms.readahead;
     tms.readahead = tms.vram[tms.addr];
@@ -35,7 +37,7 @@ uint8_t tms_read_data(void)
     return v;
 }
 
-uint8_t tms_read_status(void)
+TMS_RAM uint8_t tms_read_status(void)
 {
     uint8_t v = tms.status;
     tms.status &= 0x1f;
@@ -43,7 +45,7 @@ uint8_t tms_read_status(void)
     return v;
 }
 
-void tms_write_data(uint8_t v)
+TMS_RAM void tms_write_data(uint8_t v)
 {
     tms.vram[tms.addr] = v;
     tms.readahead = v;
@@ -51,7 +53,7 @@ void tms_write_data(uint8_t v)
     tms.latched = 0;
 }
 
-void tms_write_ctrl(uint8_t v)
+TMS_RAM void tms_write_ctrl(uint8_t v)
 {
     if (!tms.latched) {
         tms.latch = v;
@@ -102,8 +104,22 @@ static TMS_RAM void sprites(int y, uint8_t *out)
         found[n++] = i;
     }
 
-    uint8_t cover[TMS_WIDTH + 32];
-    memset(cover, 0, sizeof cover);
+    if (!n)
+        return;
+    /* clear only the columns the line's sprites cover (as v9938.c) */
+    int lo = TMS_WIDTH, hi = 0;
+    for (int k = 0; k < n; k++) {
+        const uint8_t *a = sat + found[k] * 4;
+        int x0 = a[1] - ((a[3] & 0x80) ? 32 : 0);
+        if (x0 < lo) lo = x0;
+        if (x0 + h > hi) hi = x0 + h;   /* h: the width too */
+    }
+    if (lo < 0) lo = 0;
+    if (hi > TMS_WIDTH) hi = TMS_WIDTH;
+    if (lo >= hi)
+        return;
+    uint8_t cover[TMS_WIDTH];
+    memset(cover + lo, 0, (size_t)(hi - lo));
     /* highest priority (lowest number) last: it ends up on top */
     for (int k = n - 1; k >= 0; k--) {
         const uint8_t *a = sat + found[k] * 4;
@@ -133,7 +149,13 @@ static TMS_RAM void sprites(int y, uint8_t *out)
     }
 }
 
-TMS_RAM void tms_line(int y, uint8_t *out)
+/* 4 pixels of a pattern nibble (bit 3 the left one) as byte masks */
+static uint32_t nib_mask[16] TMS_TAB("nib") = {
+    0x00000000, 0xff000000, 0x00ff0000, 0xffff0000, 0x0000ff00, 0xff00ff00, 0x00ffff00, 0xffffff00,
+    0x000000ff, 0xff0000ff, 0x00ff00ff, 0xffff00ff, 0x0000ffff, 0xff00ffff, 0x00ffffff, 0xffffffff,
+};
+
+TMS_RAM void tms_line(int y, uint8_t *out)      /* out word-aligned */
 {
     const uint8_t *v = tms.vram;
     int back = tms.reg[7] & 15;
@@ -202,9 +224,11 @@ TMS_RAM void tms_line(int y, uint8_t *out)
             int fg = col >> 4, bg = col & 15;
             if (!fg) fg = back;
             if (!bg) bg = back;
-            uint8_t *o = out + c * 8;
-            for (int i = 0; i < 8; i++)
-                o[i] = (uint8_t)((bits & (0x80 >> i)) ? fg : bg);
+            /* 8 pixels in two words: bg, fg where the bit is set */
+            uint32_t p = (uint32_t)bg * 0x01010101u, x = (uint32_t)(fg ^ bg) * 0x01010101u;
+            uint32_t *o = (uint32_t *)(out + c * 8);
+            o[0] = p ^ (x & nib_mask[bits >> 4]);
+            o[1] = p ^ (x & nib_mask[bits & 15]);
         }
     }
     sprites(y, out);

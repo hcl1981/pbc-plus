@@ -97,7 +97,7 @@ void MOS6522::SetState(const MOS6522State * s)
  */
 
 // Clear VIA interrupt flag, deassert IRQ line if no interrupts are pending
-void MOS6522::clear_irq(uint8_t flag)
+C64_HOT(MOS6522_clear_irq) void MOS6522::clear_irq(uint8_t flag)
 {
 	ifr &= ~flag;
 	if ((ifr & ier & 0x7f) == 0) {
@@ -107,14 +107,14 @@ void MOS6522::clear_irq(uint8_t flag)
 }
 
 // Trigger VIA interrupt
-inline void MOS6522::trigger_irq()
+inline C64_HOT(MOS6522_trigger_irq) void MOS6522::trigger_irq()
 {
 	ifr |= 0x80;
 	the_cpu->TriggerInterrupt(irq_type);
 }
 
 // Trigger external CA1 interrupt
-void MOS6522::TriggerCA1Interrupt()
+C64_HOT(MOS6522_TriggerCA1Interrupt) void MOS6522::TriggerCA1Interrupt()
 {
 	if (pcr & 0x01) {		// CA1 positive edge (1541 gets inverted bus signals)
 		ifr |= 0x02;
@@ -129,7 +129,7 @@ void MOS6522::TriggerCA1Interrupt()
  *  Count VIA timers
  */
 
-void MOS6522::CountTimers(int cycles)
+C64_HOT(MOS6522_CountTimers) void MOS6522::CountTimers(int cycles)
 {
 	unsigned long tmp;
 

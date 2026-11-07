@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>                     /* sbrk */
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
 #include "hardware/clocks.h"
@@ -270,6 +271,34 @@ void __attribute__((naked)) isr_hardfault(void)
  * SHOW_FPS on its own. */
 static bool show_stats = SHOW_FPS;
 
+/* The CPU reads every opcode and operand from the card, which lies in
+ * flash behind the 16 KB XIP cache. Banks copied to RAM skip it: as many
+ * 8 KB banks as the heap has room for, keeping 48 KB free, from bank 0
+ * (mapped at MPR7: the vectors and usually the main code) up. Same bytes,
+ * so the emulation is the same. */
+static void rom_banks_to_ram(void)
+{
+    extern char __StackLimit;           /* the end of the heap (SDK linker script) */
+    const uint8_t *base = PCE.ROM_DATA;
+    int copied = 0;
+    for (int b = 0; b < (int)PCE.ROM_SIZE && b < 0x80; b++) {
+        char *brk = sbrk(0);
+        if ((intptr_t)&__StackLimit - (intptr_t)brk < 0x2000 + 48 * 1024)
+            break;
+        uint8_t *r = malloc(0x2000);
+        if (!r)
+            break;
+        memcpy(r, base + b * 0x2000, 0x2000);
+        for (int i = 0; i < 0x80; i++)
+            if (PCE.MemoryMapR[i] == base + b * 0x2000)
+                PCE.MemoryMapR[i] = r;
+        copied++;
+    }
+    for (int p = 0; p < 8; p++)         /* the pages mapped now */
+        pce_bank_set((uint8_t)p, PCE.MMR[p]);
+    (void)copied;
+}
+
 static void __attribute__((noreturn)) emulation_loop(void)
 {
     uint64_t next_frame = time_us_64();
@@ -314,6 +343,7 @@ static void __attribute__((noreturn)) emulation_loop(void)
                      (unsigned long)stat_drawn,
                      (unsigned long)(stat_emulated * (uint64_t)PCE_FRAME_US * 100 / (now - stat_t0)),
                      (unsigned long)(stat_busy_us * 100 / (now - stat_t0)));
+            pbc_test_stats((unsigned long)stat_drawn, (unsigned long)(stat_emulated * (uint64_t)PCE_FRAME_US * 100 / (now - stat_t0)), (unsigned long)(stat_busy_us * 100 / (now - stat_t0)));
             video_set_status(s);
             stat_t0 = now;
             stat_drawn = stat_emulated = 0;
@@ -438,6 +468,7 @@ int main(void)
         fatal("Emulator start", "out of memory");
     if (LoadCard((uint8_t *)rom_store_data(), rom_store_size()) != 0)
         fatal("Cannot load game:", "not a HuCard");
+    rom_banks_to_ram();
 
     /* after overclock(): the link's timing goes by the clock */
     pbc_link_start(pbc_link_hash(PBC_LINK_HASH_START ^ 4, rom_store_data(), rom_store_size()));

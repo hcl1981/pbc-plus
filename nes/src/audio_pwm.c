@@ -1,6 +1,6 @@
 /* audio_pwm.c -- see audio_pwm.h
  *
- * A DMA channel paced by a DMA timer copies one sample every 45 us from a
+ * A DMA channel paced by a DMA timer copies one sample every 22 us from a
  * ring buffer into the PWM compare register: no interrupt per sample (the
  * repeating timer before fired 22222 times a second and ran the SDK's
  * alarm code from flash). The DMA reads the ring endlessly. How far it
@@ -20,15 +20,16 @@
 #define PWM_WRAP   1023u                  /* 10 bit; 150-290 kHz carrier */
 #define PWM_MID    (PWM_WRAP / 2)
 
-#define RING_N     2048u                  /* 92 ms at 22 kHz */
+#define RING_N     4096u                  /* 90 ms at 45 kHz */
 #define RING_MASK  (RING_N - 1)
-#define RING_BITS  12                     /* 2048 x 2 bytes, aligned to that */
-#define FILL_TARGET 740                   /* two frames */
-#define FILL_LOW    400
-#define FILL_HIGH   1100
+#define RING_BITS  13                     /* 4096 x 2 bytes, aligned to that */
+#define FILL_TARGET 1480                  /* two frames */
+#define FILL_LOW    800
+#define FILL_HIGH   2200
 
 static uint16_t ring[RING_N] __attribute__((aligned(RING_N * 2)));
 static uint32_t head;                     /* samples written, total */
+static uint32_t silent_end;               /* [head, silent_end) holds silence */
 static uint64_t start_us;                 /* when the DMA took sample 0 */
 static uint slice;
 static int  dma_ch = -1, dma_timer = -1;
@@ -67,10 +68,11 @@ void audio_pwm_set_volume(int vol)
         for (uint32_t i = 0; i < RING_N; i++)
             ring[i] = PWM_MID;
         head = 0;
+        silent_end = RING_N;
         pwm_set_chan_level(slice, PWM_CHAN_B, PWM_MID);
         gpio_set_function(AUDIO_PIN, GPIO_FUNC_PWM);
 
-        /* one sample per AUDIO_TICK_US: clk_sys / (MHz * 45), exact for
+        /* one sample per AUDIO_TICK_US: clk_sys / (MHz * 22), exact for
          * every whole-MHz clock */
         dma_timer_set_fraction((uint)dma_timer, 1,
                                (uint16_t)(clock_get_hz(clk_sys) / 1000000u * AUDIO_TICK_US));
@@ -115,6 +117,7 @@ void audio_pwm_push(const int16_t *s, int n)
 
     uint32_t t = tail();
     uint32_t h = head;
+    uint32_t old_h = h;
     int32_t fill = (int32_t)(h - t);
     if (fill > (int32_t)(RING_N - 64) || fill < FILL_LOW / 2) {
         /* far off (start, stall, emulator below full speed; the DMA has
@@ -137,8 +140,18 @@ void audio_pwm_push(const int16_t *s, int n)
     }
     head = h;
 
-    /* silence up to just before the DMA's position */
+    /* silence up to just before the DMA's position. The positions from
+     * the old head to the old end got it last time, and those this push
+     * did not write still have it: only the rest is written (about 750
+     * instead of 2600 entries per frame), giving the same ring. */
     uint32_t end = t + RING_N - 16;
-    for (uint32_t i = h; (int32_t)(end - i) > 0; i++)
+    uint32_t keep_from = (int32_t)(old_h - h) > 0 ? old_h : h;
+    uint32_t keep_to = (int32_t)(silent_end - end) < 0 ? silent_end : end;
+    if ((int32_t)(keep_to - keep_from) <= 0)
+        keep_from = keep_to = end;        /* nothing known: write it all */
+    for (uint32_t i = h; (int32_t)(keep_from - i) > 0; i++)
         ring[i & RING_MASK] = PWM_MID;
+    for (uint32_t i = keep_to; (int32_t)(end - i) > 0; i++)
+        ring[i & RING_MASK] = PWM_MID;
+    silent_end = end;
 }

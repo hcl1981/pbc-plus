@@ -4,8 +4,6 @@
 /* SMS context */
 t_sms sms;
 
-extern void ym2413_write(int chip, int offset, int data);
-
 /* Run the virtual console emulation for one frame */
 /* The Super Game Module's AY on top of the PSG (both unipolar; main.c
    takes the offset out) */
@@ -23,6 +21,34 @@ static void in_ram(coleco_mix_ay)(signed short *left, signed short *right, int n
         right += k;
         n -= k;
     }
+}
+
+/* This frame's samples in snd.buffer so far. PBC: rendered lazily, up to
+   the line being run whenever the Z80 writes to a sound chip (the PSG, the
+   Game Gear stereo port, the FM or AY chip; sms_sound_sync()), and the rest
+   at the end of the frame. Same samples as rendering after every line: a
+   line's samples got the registers as they were at its end, which they
+   still are at the first write in a later line. */
+static int samples_rendered;
+
+static void in_ram(render_audio_to)(int target) {
+    int n = target - samples_rendered;
+    if (n > 0) {
+        INT16 *part[2] = {
+            snd.buffer[0] + samples_rendered,
+            snd.buffer[1] + samples_rendered
+        };
+        SN76496Update(0, part, n, sms.psg_mask);
+        if (coleco_ay_on) coleco_mix_ay(part[0], part[1], n);
+        samples_rendered = target;
+    }
+}
+
+/* Before a write that changes the sound: the samples of the lines before
+   this one, with the registers as they are */
+void in_ram(sms_sound_sync)(void) {
+    if (snd.enabled && vdp.line < 262)
+        render_audio_to(vdp.line * snd.bufsize / 262);
 }
 
 void in_ram(sms_frame)(int skip_render) {
@@ -45,11 +71,11 @@ void in_ram(sms_frame)(int skip_render) {
 
     if (snd.log) snd.callback(0x00);
 
-    /* Render audio per-scanline so that Z80 writes to PSG registers
-       (e.g. Game Gear PCM speech streaming) modulate the output stream
+    /* Audio follows the PSG writes line by line, so that Z80 writes to its
+       registers (e.g. Game Gear PCM speech streaming) modulate the output
        within a frame instead of being collapsed to a single end-of-frame
-       sample-and-hold. 262 lines × 60 fps = 15.72 kHz update rate. */
-    int samples_rendered = 0;
+       sample-and-hold: 262 lines x 60 fps = 15.72 kHz update rate. */
+    samples_rendered = 0;
 
     for (vdp.line = 0; vdp.line < 262; vdp.line += 1) {
         /* Handle VDP line events */
@@ -60,26 +86,17 @@ void in_ram(sms_frame)(int skip_render) {
 
         /* Run the Z80 for a line */
         z80_execute(227);
-
-        /* Render the audio samples that correspond to this scanline.
-           Accumulator math guarantees Σ samples_this_line == snd.bufsize. */
-        if (snd.enabled) {
-            int target = (vdp.line + 1) * snd.bufsize / 262;
-            int n = target - samples_rendered;
-            if (n > 0) {
-                INT16 *part[2] = {
-                    snd.buffer[0] + samples_rendered,
-                    snd.buffer[1] + samples_rendered
-                };
-                SN76496Update(0, part, n, sms.psg_mask);
-                system_mix_fm(part[0], part[1], n);
-                if (coleco_ay_on) coleco_mix_ay(part[0], part[1], n);
-                samples_rendered = target;
-            }
-        }
     }
+
+    /* The samples since the last sound write */
+    if (snd.enabled)
+        render_audio_to(snd.bufsize);
 }
 
+
+/* Unmapped ROM space (SG-1000, ColecoVision) reads as open bus: 0xFF, set
+ * in sms_reset (as a const table it took 8 KB of flash). */
+static uint8 sg_open_bus[0x2000];
 
 void sms_init(void) {
     cpu_reset();
@@ -89,6 +106,8 @@ void sms_init(void) {
 
 void sms_reset(void) {
     /* Clear SMS context */
+
+    __builtin_memset(sg_open_bus, 0xFF, sizeof sg_open_bus);
 
     __builtin_memset(sms.sram, 0, SRAM_BYTES);
     __builtin_memset(sms.ram, 0, RAMSIZEBYTES);
@@ -176,8 +195,6 @@ void cpu_reset(void) {
 /* SG-1000                                                                  */
 /*--------------------------------------------------------------------------*/
 
-/* Unmapped ROM space reads as open bus. Kept in flash. */
-static const uint8 sg_open_bus[0x2000] = {[0 ... 0x1FFF] = 0xFF};
 
 /* Pages ($2000 and/or $8000) where a Taiwanese RAM adaptor may sit: bit n
    set = page n. Derived from the ROM image, so not part of the save state. */
@@ -318,10 +335,40 @@ static void coleco_writemem(int address, int data) {
         return;
     }
     if ((address & 0xE000) == 0x6000) {
-        int o = address & 0x3FF, m;
-        for (m = 0; m < 0x2000; m += 0x400)
-            sms.sram[m + o] = data;
+        /* PBC: the eight mirrors in a row, the pointer loaded once */
+        uint8 *p = sms.sram + (address & 0x3FF);
+        p[0x0000] = data; p[0x0400] = data; p[0x0800] = data; p[0x0C00] = data;
+        p[0x1000] = data; p[0x1400] = data; p[0x1800] = data; p[0x1C00] = data;
     }
+}
+
+/* PBC: SG-1000 (up to 48 KB, no mapper) and ColecoVision cartridges into
+   the heap, if `margin` bytes stay free; after system_reset(). Their whole
+   8 KB pages are mapped, so the copy takes as many bytes past the end of
+   the image as the page holds: the same bytes as read from flash before.
+   The game then reads no ROM through the XIP cache, which the emulator's
+   flash code needs. Returns the bytes copied, 0 if it stays in flash. */
+int sms_cart_to_ram(int margin) {
+    if (!(IS_COLECO || IS_SG) || cart.size > (IS_COLECO ? 0x8000 : 0xC000))
+        return 0;
+    uint32 n = ((uint32)cart.size + 0x1FFF) & ~0x1FFFu;
+    uint8 *ram = (uint8 *)malloc(n);
+    if (!ram)
+        return 0;
+    void *probe = malloc(margin);
+    if (!probe) {
+        free(ram);
+        return 0;
+    }
+    free(probe);
+    memcpy(ram, cart.rom, n);
+    for (int page = 0; page < 8; page++) {
+        uintptr_t off = (uintptr_t)cpu_readmap[page] - (uintptr_t)cart.rom;
+        if (off < n)
+            cpu_readmap[page] = ram + off;
+    }
+    cart.rom = ram;
+    return (int)n;
 }
 
 /* The controller in its current mode: joystick (directions, left fire) or
@@ -349,6 +396,7 @@ static void coleco_writeport(int port, int data) {
     switch (port) {
         case 0x50: ay_write_addr(&coleco_ay, data); return;
         case 0x51:
+            sms_sound_sync();
             ay_write_data(&coleco_ay, data);
             coleco_ay_on = 1;
             return;
@@ -368,6 +416,7 @@ static void coleco_writeport(int port, int data) {
             else vdp_data_w(data);
             break;
         case 0xE0:
+            sms_sound_sync();
             if (snd.enabled) SN76496Write(0, data);
             break;
     }
@@ -404,6 +453,7 @@ static void sg_writeport(int port, int data) {
                 snd.callback(0x03);
                 snd.callback(data);
             }
+            sms_sound_sync();
             if (snd.enabled) SN76496Write(0, data);
             break;
 
@@ -489,20 +539,19 @@ void in_ram(cpu_writeport)(int port, int data) {
                 snd.callback(0x04);
                 snd.callback(data);
             }
+            sms_sound_sync();
             sms.psg_mask = (data & 0xFF);
             return;
 
-        case 0xF0: /* YM2413 */
+        case 0xF0: /* YM2413: no FM unit here (PBC), writes are ignored */
         case 0xF1:
             if (snd.log) {
                 snd.callback((port & 1) ? 0x06 : 0x05);
                 snd.callback(data);
             }
-            if (snd.enabled && sms.use_fm) ym2413_write(0, port & 1, data);
             return;
 
-        case 0xF2: /* YM2413 DETECT */
-            if (sms.use_fm) sms.port_F2 = (data & 1);
+        case 0xF2: /* YM2413 DETECT: no FM unit */
             return;
     }
 
@@ -518,6 +567,7 @@ void in_ram(cpu_writeport)(int port, int data) {
                 snd.callback(0x03);
                 snd.callback(data);
             }
+            sms_sound_sync();
             if (snd.enabled) SN76496Write(0, data);
             break;
 
@@ -554,8 +604,7 @@ int in_ram(cpu_readport)(int port) {
         case 0x05:
             return (0x00);
 
-        case 0xF2: /* YM2413 DETECT */
-            if (sms.use_fm) return (sms.port_F2);
+        case 0xF2: /* YM2413 DETECT: no FM unit, as with use_fm 0 before */
             break;
     }
 

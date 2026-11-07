@@ -54,7 +54,8 @@ void settings_set_key_raw(const char *game, int key);
 bool settings_true_drive(const char *game);
 void settings_set_true_drive(const char *game, bool on);
 
-/* Writes flash: only from the menu (stock clock, core 1 not running). */
+/* Writes flash: from a menu; core 1, if it runs, must be a lockout victim
+ * (flash_safe_execute parks it), as the C64 video core is. */
 void settings_save(void);
 
 #endif /* PBC_SETTINGS_H */

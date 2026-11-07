@@ -29,6 +29,10 @@ public:
 	enum { page_size = 1L << page_bits };
 	void map_code( nes_addr_t start, unsigned size, void const* code );
 	
+	// PBC: code pages mapped from [from, from + size) now from the same
+	// place in a copy at to
+	void rebase_code( void const* from, long size, void const* to );
+	
 	// Game Genie (PBC): up to gg_max codes on CPU addresses $8000-$FFFF.
 	// A 2 KB page that holds one is read from a patched RAM copy of the
 	// ROM page mapped there, made again on every bank switch (a few

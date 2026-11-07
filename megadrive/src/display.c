@@ -124,7 +124,7 @@ void pbc_display_begin(void)
     spi_bits(16);                                      /* half the FIFO accesses */
 }
 
-void pbc_display_send(const uint16_t *px, int n)
+void __not_in_flash_func(pbc_display_send)(const uint16_t *px, int n)
 {
     dma_channel_config c = dma_channel_get_default_config((uint)dma_ch);
     channel_config_set_transfer_data_size(&c, DMA_SIZE_16);
@@ -135,7 +135,7 @@ void pbc_display_send(const uint16_t *px, int n)
     dma_running = true;
 }
 
-bool pbc_display_busy(void)
+bool __not_in_flash_func(pbc_display_busy)(void)
 {
     if (!dma_running)
         return false;

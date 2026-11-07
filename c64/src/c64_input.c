@@ -13,6 +13,7 @@
 #define C64_KEY_POS(name, row, col) { row, col },
 static const uint8_t key_pos[C64_KEY_COUNT][2] = { C64_KEYS(C64_KEY_POS) };
 static int key;                         /* on Center + B */
+static int tap_row, tap_col, tap_frames;  /* c64_input_tap: a key held for a few frames */
 static bool disk_held;
 static volatile bool disk_change;
 static bool disk_mine = true;
@@ -30,6 +31,16 @@ static uint8_t joy2 = 0xFF;
 void c64_input_set_port(int p)
 {
     port = (p == 1) ? 1 : 2;
+}
+
+/* A key of the C64 keyboard (Frodo's matrix position), pressed once from
+ * the menu: held for 8 frames, long enough for the KERNAL's and the games'
+ * keyboard scans. Not in link play (the menu does not offer it there). */
+void c64_input_tap(int row, int col)
+{
+    tap_row = row;
+    tap_col = col;
+    tap_frames = 8;
 }
 
 void c64_input_set_key(int k)
@@ -130,6 +141,10 @@ void input_rp2350_poll(uint8_t *km, uint8_t *rm, uint8_t *joystick)
     } else {
         uint16_t w = local_word();
         j = player(w, km, rm);
+        if (tap_frames > 0) {
+            tap_frames--;
+            press(km, rm, tap_row, tap_col);
+        }
         bool d = (w & IN_CENTER) && (w & IN_A);
         if (d && !disk_held)
             disk_change = true;

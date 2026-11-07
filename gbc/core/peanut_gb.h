@@ -517,6 +517,21 @@ enum gb_serial_rx_ret_e
  */
 struct gb_s
 {
+	/* PBC: direct pointers for reads (rmap) and writes (wmap), one per
+	 * 4 KB page of the address space; page p, offset o is rmap[p][o].
+	 * NULL where an access needs the full __gb_read / __gb_write logic
+	 * (cartridge RAM, OAM/IO/HRAM, boot ROM, ROM not handed over or past
+	 * its end). Kept up to date by __gb_map_rom / __gb_map_ram; first in
+	 * the struct so the lookup is one load. */
+	const uint8_t *rmap[16];
+	uint8_t *wmap[16];
+	/* PBC: the ROM exactly as gb_rom_read returns it (gb_set_rom_map):
+	 * addr < 0x4000 -> rom_bank0[addr], < rom_size -> rom_data[addr],
+	 * else 0xFF. NULL: ROM reads always go through gb_rom_read. */
+	const uint8_t *rom_bank0;
+	const uint8_t *rom_data;
+	uint_fast32_t rom_size;
+
 	/**
 	 * Return byte from ROM at given address.
 	 *
@@ -601,10 +616,15 @@ struct gb_s
 	struct cpu_registers_s cpu_reg;
 	//struct gb_registers_s gb_reg;
 	struct count_s counter;
+	/* PBC: deferred timing tail (end of __gb_step_cpu): cycles of the
+	 * instructions since the tail last ran, and how many may pass before
+	 * it has anything to do but count (0: run it after the next one). */
+	uint_fast16_t timing_pending;
+	uint_fast16_t timing_budget;
 
-	/* TODO: Allow implementation to allocate WRAM, VRAM and Frame Buffer. */
-	uint8_t wram[WRAM_SIZE];
-	uint8_t vram[VRAM_SIZE];
+	/* PBC: WRAM and VRAM are at the end of the struct, so that everything
+	 * else (hram_io, cgb, display) is within reach of a load's 12-bit
+	 * offset. */
 	uint8_t oam[OAM_SIZE];
 	uint8_t hram_io[HRAM_IO_SIZE];
 
@@ -657,6 +677,8 @@ struct gb_s
 		uint16_t vramBankOffset;
 		uint16_t fixPalette[0x40];  //BG then OAM palettes fixed for the screen
 		uint16_t fixPalette444[0x40];  //BG then OAM palettes fixed for the screen
+		/* PBC: set when fixPalette changes; the front-end clears it */
+		uint8_t palDirty;
 		uint8_t OAMPalette[0x40];
 		uint8_t BGPalette[0x40];
 		uint8_t OAMPaletteID;
@@ -705,6 +727,10 @@ struct gb_s
 		/* Implementation defined data. Set to NULL if not required. */
 		void *priv;
 	} direct;
+
+	/* TODO: Allow implementation to allocate WRAM, VRAM and Frame Buffer. */
+	uint8_t wram[WRAM_SIZE];
+	uint8_t vram[VRAM_SIZE];
 };
 
 #ifndef PEANUT_GB_HEADER_ONLY
@@ -744,10 +770,125 @@ struct gb_s
 #define IO_STAT_MODE_VBLANK_OR_TRANSFER_MASK 0x1
 
 /**
+ * PBC: rebuild the ROM pages (0x0000-0x7FFF) of the read map from the bank
+ * registers. Gives exactly what __gb_read_slow would return via
+ * gb_rom_read; pages it cannot give directly stay NULL.
+ */
+static void __not_in_flash_func(__gb_map_rom)(struct gb_s *gb)
+{
+	const uint8_t *const b0 = gb->rom_bank0;
+	uint_fast32_t base;
+	uint_fast16_t bank;
+	uint_fast8_t i;
+
+	for(i = 0; i < 4; i++)
+		gb->rmap[i] = (b0 != NULL) ? b0 + i * 0x1000 : NULL;
+
+	/* Boot ROM still over 0x0000-0x00FF. */
+	if(gb->hram_io[IO_BANK] == 0)
+		gb->rmap[0] = NULL;
+
+	/* 0x4000-0x7FFF read gb_rom_read(addr + (bank - 1) * ROM_BANK_SIZE),
+	 * so page 4 starts at bank * ROM_BANK_SIZE (bank 0: bank 0). */
+	bank = gb->selected_rom_bank;
+	if(gb->mbc == 1 && gb->cart_mode_select)
+		bank &= 0x1F;
+
+	base = (uint_fast32_t)bank * ROM_BANK_SIZE;
+
+	for(i = 4; i < 8; i++, base += 0x1000)
+	{
+		const uint8_t *p = NULL;
+
+		if(b0 != NULL)
+		{
+			if(base < ROM_BANK_SIZE)
+				p = b0 + base;
+			else if(base + 0x1000 <= gb->rom_size)
+				p = gb->rom_data + base;
+			/* else: (partly) past the end, 0xFF -- slow path */
+		}
+
+		gb->rmap[i] = p;
+	}
+}
+
+/**
+ * PBC: rebuild the RAM pages (0x8000-0xFFFF) of the read and write maps:
+ * VRAM and WRAM (with their CGB banks) and echo RAM 0xE000-0xEFFF. Cart
+ * RAM and 0xF000-0xFFFF always take the slow path.
+ */
+static void __not_in_flash_func(__gb_map_ram)(struct gb_s *gb)
+{
+	uint8_t *v, *d;
+	uint_fast8_t i;
+
+#if PEANUT_FULL_GBC_SUPPORT
+	v = &gb->vram[(uint16_t)(VRAM_ADDR - gb->cgb.vramBankOffset)];
+	d = &gb->wram[(uint16_t)(WRAM_1_ADDR - gb->cgb.wramBankOffset)];
+	/* reads in DMG mode ignore the WRAM bank */
+	gb->rmap[0xD] = gb->cgb.cgbMode ? d : &gb->wram[WRAM_1_ADDR - WRAM_0_ADDR];
+#else
+	v = gb->vram;
+	d = &gb->wram[WRAM_BANK_SIZE];
+	gb->rmap[0xD] = d;
+#endif
+	for(i = 0; i < 8; i++)
+		gb->wmap[i] = NULL;
+
+	gb->rmap[0x8] = gb->wmap[0x8] = v;
+	gb->rmap[0x9] = gb->wmap[0x9] = v + 0x1000;
+	gb->rmap[0xA] = gb->wmap[0xA] = NULL;
+	gb->rmap[0xB] = gb->wmap[0xB] = NULL;
+	gb->rmap[0xC] = gb->wmap[0xC] = gb->wram;
+	gb->wmap[0xD] = d;
+	gb->rmap[0xE] = gb->wmap[0xE] = gb->wram;
+	gb->rmap[0xF] = gb->wmap[0xF] = NULL;
+}
+
+/**
+ * PBC: hand the core the ROM as gb_rom_read sees it, so that ROM reads can
+ * use the map: gb_rom_read(addr) must be bank0[addr] for addr < 0x4000,
+ * rom[addr] for addr < rom_len, 0xFF above. Call after gb_init.
+ */
+void gb_set_rom_map(struct gb_s *gb, const uint8_t *bank0,
+		    const uint8_t *rom, uint_fast32_t rom_len)
+{
+	gb->rom_bank0 = bank0;
+	gb->rom_data = rom;
+	gb->rom_size = rom_len;
+	__gb_map_rom(gb);
+}
+
+static uint8_t __gb_read_slow(struct gb_s *gb, uint16_t addr);
+
+/**
+ * PBC: read through the map, else the full decode. Inlined into the CPU
+ * loop.
+ */
+static inline __attribute__((always_inline))
+uint8_t __gb_read_fast(struct gb_s *gb, const uint16_t addr)
+{
+	const uint8_t *const p = gb->rmap[addr >> 12];
+
+	if(p != NULL)
+		return p[addr & 0x0FFF];
+
+	return __gb_read_slow(gb, addr);
+}
+
+/**
  * Internal function used to read bytes.
  * addr is host platform endian.
  */
 uint8_t __not_in_flash_func(__gb_read)(struct gb_s *gb, uint16_t addr)
+{
+	return __gb_read_fast(gb, addr);
+}
+
+/* The full decode, for what the map does not cover. */
+static uint8_t __attribute__((noinline))
+__not_in_flash_func(__gb_read_slow)(struct gb_s *gb, uint16_t addr)
 {
 	switch(PEANUT_GB_GET_MSN16(addr))
 	{
@@ -786,6 +927,12 @@ uint8_t __not_in_flash_func(__gb_read)(struct gb_s *gb, uint16_t addr)
 	case 0xB:
 		if(gb->mbc == 3 && gb->cart_ram_bank >= 0x08)
 		{
+			/* PBC: only 0x08-0x0C are RTC registers; above, the
+			 * index ran past cart_rtc[] into the rest of the
+			 * struct. */
+			if(gb->cart_ram_bank > 0x0C)
+				return 0xFF;
+
 			return gb->cart_rtc[gb->cart_ram_bank - 0x08];
 		}
 		else if(gb->cart_ram && gb->enable_cart_ram)
@@ -820,6 +967,11 @@ uint8_t __not_in_flash_func(__gb_read)(struct gb_s *gb, uint16_t addr)
 		return gb->wram[addr - ECHO_ADDR];
 
 	case 0xF:
+		/* PBC: HRAM and IE first (the stack often lives there); none of
+		 * the cases below match 0xFF80-0xFFFF. */
+		if(addr >= HRAM_ADDR)
+			return gb->hram_io[addr - IO_ADDR];
+
 		if(addr < OAM_ADDR)
 #if PEANUT_FULL_GBC_SUPPORT
 			return gb->wram[(addr - 0x2000) - gb->cgb.wramBankOffset];
@@ -909,10 +1061,75 @@ uint8_t __not_in_flash_func(__gb_read)(struct gb_s *gb, uint16_t addr)
 	PGB_UNREACHABLE();
 }
 
+#if PEANUT_FULL_GBC_SUPPORT
+static void __gb_dma_block(struct gb_s *gb, const uint16_t src,
+			   const uint_fast16_t dst);
+#endif
+
+/**
+ * PBC: the timing tail of __gb_step_cpu is skipped while it would only
+ * add cycles to its counters. Before anything it reads changes (IO
+ * register writes, HALT, the speed switch), add the cycles still pending
+ * -- exactly what the skipped tails would have done -- and make the tail
+ * run in full after the current instruction.
+ */
+static void __attribute__((noinline))
+__not_in_flash_func(__gb_timing_flush)(struct gb_s *gb)
+{
+	const uint_fast16_t p = gb->timing_pending;
+
+	gb->timing_budget = 0;
+
+	if(p == 0)
+		return;
+
+	gb->timing_pending = 0;
+	gb->counter.div_count += p;
+
+	if(gb->hram_io[IO_SC] & SERIAL_SC_TX_START)
+		gb->counter.serial_count += p;
+
+	if(gb->hram_io[IO_TAC] & IO_TAC_ENABLE_MASK)
+		gb->counter.tima_count += p;
+
+	if(gb->hram_io[IO_LCDC] & LCDC_ENABLE)
+	{
+#if PEANUT_FULL_GBC_SUPPORT
+		if(p > 1)
+			gb->counter.lcd_count += (p >> gb->cgb.doubleSpeed);
+		else
+#endif
+			gb->counter.lcd_count += p;
+	}
+}
+
 /**
  * Internal function used to write bytes.
  */
+static void __gb_write_slow(struct gb_s *gb, uint_fast16_t addr, uint8_t val);
+
 void __not_in_flash_func(__gb_write)(struct gb_s *gb, uint_fast16_t addr, uint8_t val)
+{
+	/* PBC: VRAM and WRAM straight through the map, the rest in
+	 * __gb_write_slow (whose register saving the map writes now skip).
+	 * addr can be 0x10000 (16-bit operand address + 1), which the slow
+	 * path ignores. */
+	if((addr >> 12) < 16)
+	{
+		uint8_t *const p = gb->wmap[addr >> 12];
+
+		if(p != NULL)
+		{
+			p[addr & 0x0FFF] = val;
+			return;
+		}
+	}
+
+	__gb_write_slow(gb, addr, val);
+}
+
+static void __attribute__((noinline))
+__not_in_flash_func(__gb_write_slow)(struct gb_s *gb, uint_fast16_t addr, uint8_t val)
 {
 	switch(PEANUT_GB_GET_MSN16(addr))
 	{
@@ -932,7 +1149,7 @@ void __not_in_flash_func(__gb_write)(struct gb_s *gb, uint_fast16_t addr, uint8_
 			gb->selected_rom_bank = (gb->selected_rom_bank & 0x100) | val;
 			gb->selected_rom_bank =
 				gb->selected_rom_bank & gb->num_rom_banks_mask;
-			return;
+			goto rom_map;
 		}
 
 	/* Intentional fall through. */
@@ -973,7 +1190,7 @@ void __not_in_flash_func(__gb_write)(struct gb_s *gb, uint_fast16_t addr, uint8_
 			gb->selected_rom_bank = (val & 0x01) << 8 | (gb->selected_rom_bank & 0xFF);
 
 		gb->selected_rom_bank = gb->selected_rom_bank & gb->num_rom_banks_mask;
-		return;
+		goto rom_map;
 
 	case 0x4:
 	case 0x5:
@@ -988,11 +1205,14 @@ void __not_in_flash_func(__gb_write)(struct gb_s *gb, uint_fast16_t addr, uint8_
 		else if(gb->mbc == 5)
 			gb->cart_ram_bank = (val & 0x0F);
 
-		return;
+		goto rom_map;
 
 	case 0x6:
 	case 0x7:
 		gb->cart_mode_select = (val & 1);
+rom_map:
+		/* PBC: the ROM bank seen at 0x4000-0x7FFF may have changed */
+		__gb_map_rom(gb);
 		return;
 
 	case 0x8:
@@ -1008,7 +1228,9 @@ void __not_in_flash_func(__gb_write)(struct gb_s *gb, uint_fast16_t addr, uint8_
 	case 0xB:
 		if(gb->mbc == 3 && gb->cart_ram_bank >= 0x08)
 		{
-			gb->cart_rtc[gb->cart_ram_bank - 0x08] = val;
+			/* PBC: see __gb_read_slow */
+			if(gb->cart_ram_bank <= 0x0C)
+				gb->cart_rtc[gb->cart_ram_bank - 0x08] = val;
 		}
 		/* Do not write to RAM if unavailable or disabled. */
 		else if(gb->cart_ram && gb->enable_cart_ram)
@@ -1050,6 +1272,13 @@ void __not_in_flash_func(__gb_write)(struct gb_s *gb, uint_fast16_t addr, uint8_
 		return;
 
 	case 0xF:
+		/* PBC: HRAM first; 0xFFFF (IE) ends up in the same byte below. */
+		if(addr >= HRAM_ADDR)
+		{
+			gb->hram_io[addr - IO_ADDR] = val;
+			return;
+		}
+
 		if(addr < OAM_ADDR)
 		{
 #if PEANUT_FULL_GBC_SUPPORT
@@ -1070,12 +1299,6 @@ void __not_in_flash_func(__gb_write)(struct gb_s *gb, uint_fast16_t addr, uint8_
 		if(addr < IO_ADDR)
 			return;
 
-		if(HRAM_ADDR <= addr && addr < INTR_EN_ADDR)
-		{
-			gb->hram_io[addr - IO_ADDR] = val;
-			return;
-		}
-
 		if((addr >= 0xFF10) && (addr <= 0xFF3F))
 		{
 #if ENABLE_SOUND
@@ -1085,6 +1308,10 @@ void __not_in_flash_func(__gb_write)(struct gb_s *gb, uint_fast16_t addr, uint8_
 #endif
 			return;
 		}
+
+		/* PBC: timer, serial, LCD and CGB registers: bring the
+		 * deferred timing up to date first. */
+		__gb_timing_flush(gb);
 #if PEANUT_FULL_GBC_SUPPORT
 		uint16_t fixPaletteTemp;
 		uint8_t ndx;
@@ -1266,11 +1493,13 @@ void __not_in_flash_func(__gb_write)(struct gb_s *gb, uint_fast16_t addr, uint8_
 		case 0x4F:
 			gb->cgb.vramBank = val & 0x01;
 			if(gb->cgb.cgbMode) gb->cgb.vramBankOffset = VRAM_ADDR - (gb->cgb.vramBank << 13);
+			__gb_map_ram(gb);
 			return;
 #endif
 		/* Turn off boot ROM */
 		case 0x50:
 			gb->hram_io[IO_BANK] = val;
+			__gb_map_rom(gb);
 			return;
 #if PEANUT_FULL_GBC_SUPPORT
 		/* DMA Register */
@@ -1296,9 +1525,9 @@ void __not_in_flash_func(__gb_write)(struct gb_s *gb, uint_fast16_t addr, uint8_
 			{  // Only transfer if dma is not active (=1) otherwise treat it as a termination
 				if(gb->cgb.cgbMode && (!gb->cgb.dmaMode))
 				{
-					for (int i = 0; i < (gb->cgb.dmaSize << 4); i++)
+					for (int i = 0; i < (gb->cgb.dmaSize << 4); i += 0x10)
 					{
-						__gb_write(gb, ((gb->cgb.dmaDest & 0x1FF0) | 0x8000) + i, __gb_read(gb, (gb->cgb.dmaSource & 0xFFF0) + i));
+						__gb_dma_block(gb, (gb->cgb.dmaSource & 0xFFF0) + i, ((gb->cgb.dmaDest & 0x1FF0) | 0x8000) + i);
 					}
 					gb->cgb.dmaSource += (gb->cgb.dmaSize << 4);
 					gb->cgb.dmaDest += (gb->cgb.dmaSize << 4);
@@ -1326,6 +1555,7 @@ void __not_in_flash_func(__gb_write)(struct gb_s *gb, uint_fast16_t addr, uint8_
 			ndx = (gb->cgb.BGPaletteID & 0x3E) >> 1;
 			gb->cgb.fixPalette[ndx] = ((fixPaletteTemp & 0x7C00) >> 10) | (fixPaletteTemp & 0x03E0) | ((fixPaletteTemp & 0x001F) << 10);  // swap Red and Blue
 			gb->cgb.fixPalette444[ndx] = RGB555_TO_RGB444(gb->cgb.fixPalette[ndx]);
+			gb->cgb.palDirty = 1;
 			if(gb->cgb.BGPaletteInc) gb->cgb.BGPaletteID = (++gb->cgb.BGPaletteID) & 0x3F;
 			return;
 
@@ -1342,6 +1572,7 @@ void __not_in_flash_func(__gb_write)(struct gb_s *gb, uint_fast16_t addr, uint8_
 			ndx = 0x20 + ((gb->cgb.OAMPaletteID & 0x3E) >> 1);
 			gb->cgb.fixPalette[ndx] = ((fixPaletteTemp & 0x7C00) >> 10) | (fixPaletteTemp & 0x03E0) | ((fixPaletteTemp & 0x001F) << 10);  // swap Red and Blue
 			gb->cgb.fixPalette444[ndx] = RGB555_TO_RGB444(gb->cgb.fixPalette[ndx]);
+			gb->cgb.palDirty = 1;
 			if(gb->cgb.OAMPaletteInc) gb->cgb.OAMPaletteID = (++gb->cgb.OAMPaletteID) & 0x3F;
 			return;
 
@@ -1350,6 +1581,7 @@ void __not_in_flash_func(__gb_write)(struct gb_s *gb, uint_fast16_t addr, uint8_
 			gb->cgb.wramBank = val;
 			gb->cgb.wramBankOffset = WRAM_1_ADDR - (1 << 12);
 			if(gb->cgb.cgbMode && (gb->cgb.wramBank & 7) > 0) gb->cgb.wramBankOffset = WRAM_1_ADDR - ((gb->cgb.wramBank & 7) << 12);
+			__gb_map_ram(gb);
 			return;
 #endif
 
@@ -1363,6 +1595,36 @@ void __not_in_flash_func(__gb_write)(struct gb_s *gb, uint_fast16_t addr, uint8_
 	/* Invalid writes are ignored. */
 	return;
 }
+
+#if PEANUT_FULL_GBC_SUPPORT
+/**
+ * PBC: one 16-byte block of HDMA/GDMA, write(dst + i, read(src + i)) for
+ * i = 0..15 in this order. Both are 16-byte aligned, so each lies within
+ * one 4 KB page: copy directly when the map has both pages.
+ */
+static void __attribute__((noinline))
+__not_in_flash_func(__gb_dma_block)(struct gb_s *gb, const uint16_t src,
+				    const uint_fast16_t dst)
+{
+	const uint8_t *s = gb->rmap[src >> 12];
+	uint8_t *d = ((dst >> 12) < 16) ? gb->wmap[dst >> 12] : NULL;
+	uint_fast8_t i;
+
+	if(s != NULL && d != NULL)
+	{
+		s += src & 0x0FFF;
+		d += dst & 0x0FFF;
+
+		for(i = 0; i < 0x10; i++)
+			d[i] = s[i];
+
+		return;
+	}
+
+	for(i = 0; i < 0x10; i++)
+		__gb_write(gb, dst + i, __gb_read(gb, (uint16_t)(src + i)));
+}
+#endif
 
 uint8_t __not_in_flash_func(__gb_execute_cb)(struct gb_s *gb)
 {
@@ -1595,9 +1857,119 @@ static inline void __gb_sort_sprites(struct sprite_data *sprites,
 }
 #endif
 
+/* PBC: background and window are drawn a whole tile (8 pixels) at a time.
+ * Four pixels of one bit plane, leftmost first, one byte each:
+ * pgb_px_nrm[n] has bit (3 - k) of n in byte k (normal tile),
+ * pgb_px_flp[n] has bit k of n in byte k (horizontally flipped tile). */
+static const uint32_t __not_in_flash_func(pgb_px_nrm)[16] =
+{
+	0x00000000, 0x01000000, 0x00010000, 0x01010000,
+	0x00000100, 0x01000100, 0x00010100, 0x01010100,
+	0x00000001, 0x01000001, 0x00010001, 0x01010001,
+	0x00000101, 0x01000101, 0x00010101, 0x01010101
+};
+#if PEANUT_FULL_GBC_SUPPORT
+static const uint32_t __not_in_flash_func(pgb_px_flp)[16] =
+{
+	0x00000000, 0x00000001, 0x00000100, 0x00000101,
+	0x00010000, 0x00010001, 0x00010100, 0x00010101,
+	0x01000000, 0x01000001, 0x01000100, 0x01000101,
+	0x01010000, 0x01010001, 0x01010100, 0x01010101
+};
+#endif
+
+/* Store 8 pixels; dst need not be aligned. */
+static inline __attribute__((always_inline))
+void __gb_put8(uint8_t *dst, const uint32_t w0, const uint32_t w1)
+{
+	memcpy(dst, &w0, 4);
+	memcpy(dst + 4, &w1, 4);
+}
+
+/* VRAM offset of the row py of the tile for map entry idx / attribute att,
+ * as the per-pixel code had it (including that a set attribute bit 6
+ * outside CGB mode drops the row offset). */
+static inline __attribute__((always_inline))
+uint_fast16_t __gb_tile_row(const struct gb_s *gb, const uint8_t lcdc,
+			    const uint8_t idx, const uint8_t att,
+			    const uint8_t py)
+{
+	uint_fast16_t tile;
+
+	if(lcdc & LCDC_TILE_SELECT)
+		tile = VRAM_TILES_1 + idx * 0x10;
+	else
+		tile = VRAM_TILES_2 + ((idx + 0x80) % 0x100) * 0x10;
+
+#if PEANUT_FULL_GBC_SUPPORT
+	if(gb->cgb.cgbMode)
+	{
+		if(att & 0x08) tile += 0x2000; //VRAM bank 2
+		if(att & 0x40) tile += 2 * (7 - py);
+	}
+	if(!(att & 0x40))
+		tile += 2 * py;
+#else
+	(void)gb;
+	(void)att;
+	tile += 2 * py;
+#endif
+	return tile;
+}
+
+/* DMG tile: colour c -> bg_palette[c] (| LCD_PALETTE_BG). sel0/sel1 are
+ * 0xFF where bit 0 / bit 1 of bg_palette[c] is set, so the mapping is done
+ * on the bit planes for all 8 pixels at once. */
+static inline __attribute__((always_inline))
+void __gb_tile_dmg(uint8_t *dst, const uint8_t lo, const uint8_t hi,
+		   const uint8_t *sel0, const uint8_t *sel1)
+{
+	const uint8_t m0 = ~(lo | hi), m1 = lo & ~hi, m2 = ~lo & hi, m3 = lo & hi;
+	const uint8_t o0 = (m0 & sel0[0]) | (m1 & sel0[1]) | (m2 & sel0[2]) | (m3 & sel0[3]);
+	const uint8_t o1 = (m0 & sel1[0]) | (m1 & sel1[1]) | (m2 & sel1[2]) | (m3 & sel1[3]);
+#if PEANUT_GB_12_COLOUR
+	const uint32_t bgbit = LCD_PALETTE_BG * 0x01010101u;
+#else
+	const uint32_t bgbit = 0;
+#endif
+	__gb_put8(dst,
+		  pgb_px_nrm[o0 >> 4] | (pgb_px_nrm[o1 >> 4] << 1) | bgbit,
+		  pgb_px_nrm[o0 & 15] | (pgb_px_nrm[o1 & 15] << 1) | bgbit);
+}
+
+#if PEANUT_FULL_GBC_SUPPORT
+/* CGB tile: ((att & 7) << 2) + c, priority att >> 7. */
+static inline __attribute__((always_inline))
+void __gb_tile_cgb(uint8_t *dst, uint8_t *prio, const uint8_t lo,
+		   const uint8_t hi, const uint8_t att, const uint8_t flip)
+{
+	const uint32_t pal = (uint32_t)((att & 0x07) << 2) * 0x01010101u;
+	const uint32_t pr = (uint32_t)(att >> 7) * 0x01010101u;
+	uint32_t w0, w1;
+
+	if(flip)
+	{
+		w0 = pgb_px_flp[lo & 15] | (pgb_px_flp[hi & 15] << 1);
+		w1 = pgb_px_flp[lo >> 4] | (pgb_px_flp[hi >> 4] << 1);
+	}
+	else
+	{
+		w0 = pgb_px_nrm[lo >> 4] | (pgb_px_nrm[hi >> 4] << 1);
+		w1 = pgb_px_nrm[lo & 15] | (pgb_px_nrm[hi & 15] << 1);
+	}
+
+	__gb_put8(dst, w0 | pal, w1 | pal);
+	__gb_put8(prio, pr, pr);
+}
+#endif
+
 void __not_in_flash_func(__gb_draw_line)(struct gb_s *gb)
 {
-	uint8_t pixels[160] = {0};
+	/* PBC: 8 bytes of slack on both sides, as whole tiles are written
+	 * even where they stick out of the screen. */
+	uint8_t pixbuf[8 + LCD_WIDTH + 8];
+	uint8_t *const pixels = pixbuf + 8;
+	uint8_t lcdc, sel0[4], sel1[4];
 
 	/* If LCD not initialised by front-end, don't render anything. */
 	if(gb->display.lcd_draw_line == NULL)
@@ -1607,7 +1979,10 @@ void __not_in_flash_func(__gb_draw_line)(struct gb_s *gb)
 		return;
 
 #if PEANUT_FULL_GBC_SUPPORT
-	uint8_t pixelsPrio[160] = {0};  //do these pixels have priority over OAM?
+	//do these pixels have priority over OAM? Only used in CGB mode, where
+	//the background always fills it.
+	uint8_t priobuf[8 + LCD_WIDTH + 8];
+	uint8_t *const pixelsPrio = priobuf + 8;
 #endif
 	/* If interlaced mode is activated, check if we need to draw the current
 	 * line. */
@@ -1628,301 +2003,101 @@ void __not_in_flash_func(__gb_draw_line)(struct gb_s *gb)
 		}
 	}
 
-	/* If background is enabled, draw it. */
-#if PEANUT_FULL_GBC_SUPPORT
-	if(gb->cgb.cgbMode || gb->hram_io[IO_LCDC] & LCDC_BG_ENABLE)
-#else
-	if(gb->hram_io[IO_LCDC] & LCDC_BG_ENABLE)
-#endif
+	lcdc = gb->hram_io[IO_LCDC];
+
+	for(uint_fast8_t c = 0; c < 4; c++)
 	{
-		uint8_t bg_y, disp_x, bg_x, idx, py, px, t1, t2;
-		uint16_t bg_map, tile;
-
-		/* Calculate current background line to draw. Constant because
-		 * this function draws only this one line each time it is
-		 * called. */
-		bg_y = gb->hram_io[IO_LY] + gb->hram_io[IO_SCY];
-
-		/* Get selected background map address for first tile
-		 * corresponding to current line.
-		 * 0x20 (32) is the width of a background tile, and the bit
-		 * shift is to calculate the address. */
-		bg_map =
-			((gb->hram_io[IO_LCDC] & LCDC_BG_MAP) ?
-			 VRAM_BMAP_2 : VRAM_BMAP_1)
-			+ (bg_y >> 3) * 0x20;
-
-		/* The displays (what the player sees) X coordinate, drawn right
-		 * to left. */
-		disp_x = LCD_WIDTH - 1;
-
-		/* The X coordinate to begin drawing the background at. */
-		bg_x = disp_x + gb->hram_io[IO_SCX];
-
-		/* Get tile index for current background tile. */
-		idx = gb->vram[bg_map + (bg_x >> 3)];
-#if PEANUT_FULL_GBC_SUPPORT
-		uint8_t idxAtt = gb->vram[bg_map + (bg_x >> 3) + 0x2000];
-#endif
-		/* Y coordinate of tile pixel to draw. */
-		py = (bg_y & 0x07);
-		/* X coordinate of tile pixel to draw. */
-		px = 7 - (bg_x & 0x07);
-
-		/* Select addressing mode. */
-		if(gb->hram_io[IO_LCDC] & LCDC_TILE_SELECT)
-			tile = VRAM_TILES_1 + idx * 0x10;
-		else
-			tile = VRAM_TILES_2 + ((idx + 0x80) % 0x100) * 0x10;
-
-#if PEANUT_FULL_GBC_SUPPORT
-		if(gb->cgb.cgbMode)
-		{
-			if(idxAtt & 0x08) tile += 0x2000; //VRAM bank 2
-			if(idxAtt & 0x40) tile += 2 * (7 - py);
-		}
-		if(!(idxAtt & 0x40))
-		{
-			tile += 2 * py;
-		}
-
-		/* fetch first tile */
-		if(gb->cgb.cgbMode && (idxAtt & 0x20))
-		{  //Horizantal Flip
-			t1 = gb->vram[tile] << px;
-			t2 = gb->vram[tile + 1] << px;
-		}
-		else
-		{
-			t1 = gb->vram[tile] >> px;
-			t2 = gb->vram[tile + 1] >> px;
-		}
-#else
-		tile += 2 * py;
-
-		/* fetch first tile */
-		t1 = gb->vram[tile] >> px;
-		t2 = gb->vram[tile + 1] >> px;
-#endif
-		for(; disp_x != 0xFF; disp_x--)
-		{
-			uint8_t c;
-
-			if(px == 8)
-			{
-				/* fetch next tile */
-				px = 0;
-				bg_x = disp_x + gb->hram_io[IO_SCX];
-				idx = gb->vram[bg_map + (bg_x >> 3)];
-#if PEANUT_FULL_GBC_SUPPORT
-				idxAtt = gb->vram[bg_map + (bg_x >> 3) + 0x2000];
-#endif
-				if(gb->hram_io[IO_LCDC] & LCDC_TILE_SELECT)
-					tile = VRAM_TILES_1 + idx * 0x10;
-				else
-					tile = VRAM_TILES_2 + ((idx + 0x80) % 0x100) * 0x10;
-
-#if PEANUT_FULL_GBC_SUPPORT
-				if(gb->cgb.cgbMode)
-				{
-					if(idxAtt & 0x08) tile += 0x2000; //VRAM bank 2
-					if(idxAtt & 0x40) tile += 2 * (7 - py);
-				}
-				if(!(idxAtt & 0x40))
-				{
-					tile += 2 * py;
-				}
-#else
-				tile += 2 * py;
-#endif
-				t1 = gb->vram[tile];
-				t2 = gb->vram[tile + 1];
-			}
-
-			/* copy background */
-#if PEANUT_FULL_GBC_SUPPORT
-			if(gb->cgb.cgbMode && (idxAtt & 0x20))
-			{  //Horizantal Flip
-				c = (((t1 & 0x80) >> 1) | (t2 & 0x80)) >> 6;
-				pixels[disp_x] = ((idxAtt & 0x07) << 2) + c;
-				pixelsPrio[disp_x] = (idxAtt >> 7);
-				t1 = t1 << 1;
-				t2 = t2 << 1;
-			}
-			else
-			{
-				c = (t1 & 0x1) | ((t2 & 0x1) << 1);
-				if(gb->cgb.cgbMode)
-				{
-					pixels[disp_x] = ((idxAtt & 0x07) << 2) + c;
-					pixelsPrio[disp_x] = (idxAtt >> 7);
-				}
-				else
-				{
-					pixels[disp_x] = gb->display.bg_palette[c];
-#if PEANUT_GB_12_COLOUR
-					pixels[disp_x] |= LCD_PALETTE_BG;
-#endif
-				}
-				t1 = t1 >> 1;
-				t2 = t2 >> 1;
-			}
-#else
-			c = (t1 & 0x1) | ((t2 & 0x1) << 1);
-			pixels[disp_x] = gb->display.bg_palette[c];
-#if PEANUT_GB_12_COLOUR
-			pixels[disp_x] |= LCD_PALETTE_BG;
-#endif
-			t1 = t1 >> 1;
-			t2 = t2 >> 1;
-#endif
-			px++;
-		}
+		sel0[c] = (gb->display.bg_palette[c] & 1) ? 0xFF : 0x00;
+		sel1[c] = (gb->display.bg_palette[c] & 2) ? 0xFF : 0x00;
 	}
 
+	/* If background is enabled, draw it. */
+#if PEANUT_FULL_GBC_SUPPORT
+	if(gb->cgb.cgbMode || lcdc & LCDC_BG_ENABLE)
+#else
+	if(lcdc & LCDC_BG_ENABLE)
+#endif
+	{
+		/* Background line and map row of this line. */
+		const uint8_t bg_y = gb->hram_io[IO_LY] + gb->hram_io[IO_SCY];
+		const uint8_t scx = gb->hram_io[IO_SCX];
+		const uint_fast16_t bg_map =
+			((lcdc & LCDC_BG_MAP) ? VRAM_BMAP_2 : VRAM_BMAP_1)
+			+ (bg_y >> 3) * 0x20;
+		const uint8_t py = bg_y & 0x07;
+		/* The first tile starts (scx & 7) pixels left of the screen. */
+		const uint_fast8_t tiles = (scx & 7) ? 21 : 20;
+		uint_fast8_t col = scx >> 3;
+		uint_fast16_t x = 8 - (scx & 7);	/* in pixbuf */
+
+		for(uint_fast8_t k = 0; k < tiles; k++, x += 8, col = (col + 1) & 0x1F)
+		{
+			const uint8_t idx = gb->vram[bg_map + col];
+#if PEANUT_FULL_GBC_SUPPORT
+			const uint8_t att = gb->vram[bg_map + col + 0x2000];
+#else
+			const uint8_t att = 0;
+#endif
+			const uint_fast16_t tile = __gb_tile_row(gb, lcdc, idx, att, py);
+			const uint8_t lo = gb->vram[tile];
+			const uint8_t hi = gb->vram[tile + 1];
+
+#if PEANUT_FULL_GBC_SUPPORT
+			if(gb->cgb.cgbMode)
+				__gb_tile_cgb(&pixbuf[x], &priobuf[x], lo, hi, att, att & 0x20);
+			else
+#endif
+				__gb_tile_dmg(&pixbuf[x], lo, hi, sel0, sel1);
+		}
+	}
+	else
+		memset(pixels, 0, LCD_WIDTH);
+
 	/* draw window */
-	if(gb->hram_io[IO_LCDC] & LCDC_WINDOW_ENABLE
+	if(lcdc & LCDC_WINDOW_ENABLE
 			&& gb->hram_io[IO_LY] >= gb->display.WY
 			&& gb->hram_io[IO_WX] <= 166)
 	{
-		uint16_t win_line, tile;
-		uint8_t disp_x, win_x, py, px, idx, t1, t2, end;
+		/* Window tile j covers screen x 8j + WX - 7 .. 8j + WX; the
+		 * window reaches from max(WX - 7, 0) to the right edge. */
+		const uint8_t wx = gb->hram_io[IO_WX];
+		const uint_fast16_t win_line =
+			((lcdc & LCDC_WINDOW_MAP) ? VRAM_BMAP_2 : VRAM_BMAP_1)
+			+ (gb->display.window_clear >> 3) * 0x20;
+		const uint8_t py = gb->display.window_clear & 0x07;
+		const uint_fast8_t last = (166 - wx) >> 3;
+		uint_fast16_t x = 8 + wx - 7;	/* in pixbuf */
 
-		/* Calculate Window Map Address. */
-		win_line = (gb->hram_io[IO_LCDC] & LCDC_WINDOW_MAP) ?
-				    VRAM_BMAP_2 : VRAM_BMAP_1;
-		win_line += (gb->display.window_clear >> 3) * 0x20;
-
-		disp_x = LCD_WIDTH - 1;
-		win_x = disp_x - gb->hram_io[IO_WX] + 7;
-
-		// look up tile
-		py = gb->display.window_clear & 0x07;
-		px = 7 - (win_x & 0x07);
-		idx = gb->vram[win_line + (win_x >> 3)];
+		for(uint_fast8_t j = 0; j <= last; j++, x += 8)
+		{
+			const uint8_t idx = gb->vram[win_line + j];
 #if PEANUT_FULL_GBC_SUPPORT
-		uint8_t idxAtt = gb->vram[win_line + (win_x >> 3) + 0x2000];
-#endif
-
-		if(gb->hram_io[IO_LCDC] & LCDC_TILE_SELECT)
-			tile = VRAM_TILES_1 + idx * 0x10;
-		else
-			tile = VRAM_TILES_2 + ((idx + 0x80) % 0x100) * 0x10;
-
-#if PEANUT_FULL_GBC_SUPPORT
-		if(gb->cgb.cgbMode)
-		{
-			if(idxAtt & 0x08) tile += 0x2000; //VRAM bank 2
-			if(idxAtt & 0x40) tile += 2 * (7 - py);
-		}
-		if(!(idxAtt & 0x40))
-		{
-			tile += 2 * py;
-		}
-
-		// fetch first tile
-		if(gb->cgb.cgbMode && (idxAtt & 0x20))
-		{  //Horizantal Flip
-			t1 = gb->vram[tile] << px;
-			t2 = gb->vram[tile + 1] << px;
-		}
-		else
-		{
-			t1 = gb->vram[tile] >> px;
-			t2 = gb->vram[tile + 1] >> px;
-		}
+			const uint8_t att = gb->vram[win_line + j + 0x2000];
 #else
-		tile += 2 * py;
-
-		// fetch first tile
-		t1 = gb->vram[tile] >> px;
-		t2 = gb->vram[tile + 1] >> px;
+			const uint8_t att = 0;
 #endif
-		// loop & copy window
-		end = (gb->hram_io[IO_WX] < 7 ? 0 : gb->hram_io[IO_WX] - 7) - 1;
-
-		for(; disp_x != end; disp_x--)
-		{
-			uint8_t c;
-
-			if(px == 8)
-			{
-				// fetch next tile
-				px = 0;
-				win_x = disp_x - gb->hram_io[IO_WX] + 7;
-				idx = gb->vram[win_line + (win_x >> 3)];
-#if PEANUT_FULL_GBC_SUPPORT
-				idxAtt = gb->vram[win_line + (win_x >> 3) + 0x2000];
-#endif
-
-				if(gb->hram_io[IO_LCDC] & LCDC_TILE_SELECT)
-					tile = VRAM_TILES_1 + idx * 0x10;
-				else
-					tile = VRAM_TILES_2 + ((idx + 0x80) % 0x100) * 0x10;
+			const uint_fast16_t tile = __gb_tile_row(gb, lcdc, idx, att, py);
+			const uint8_t lo = gb->vram[tile];
+			const uint8_t hi = gb->vram[tile + 1];
 
 #if PEANUT_FULL_GBC_SUPPORT
-				if(gb->cgb.cgbMode)
-				{
-					if(idxAtt & 0x08) tile += 0x2000; //VRAM bank 2
-					if(idxAtt & 0x40) tile += 2 * (7 - py);
-				}
-				if(!(idxAtt & 0x40))
-				{
-					tile += 2 * py;
-				}
-#else
-				tile += 2 * py;
-#endif
-				t1 = gb->vram[tile];
-				t2 = gb->vram[tile + 1];
-			}
-
-			// copy window
-#if PEANUT_FULL_GBC_SUPPORT
-			if(idxAtt & 0x20)
-			{  //Horizantal Flip
-				c = (((t1 & 0x80) >> 1) | (t2 & 0x80)) >> 6;
-				pixels[disp_x] = ((idxAtt & 0x07) << 2) + c;
-				pixelsPrio[disp_x] = (idxAtt >> 7);
-				t1 = t1 << 1;
-				t2 = t2 << 1;
-			}
+			/* Outside CGB mode the attributes (VRAM bank 1) are
+			 * always 0: bank 1 cannot be written there. */
+			if(gb->cgb.cgbMode)
+				__gb_tile_cgb(&pixbuf[x], &priobuf[x], lo, hi, att, att & 0x20);
 			else
-			{
-				c = (t1 & 0x1) | ((t2 & 0x1) << 1);
-				if(gb->cgb.cgbMode)
-				{
-					pixels[disp_x] = ((idxAtt & 0x07) << 2) + c;
-					pixelsPrio[disp_x] = (idxAtt >> 7);
-				}
-				else
-				{
-					pixels[disp_x] = gb->display.bg_palette[c];
-#if PEANUT_GB_12_COLOUR
-					pixels[disp_x] |= LCD_PALETTE_BG;
 #endif
-				}
-				t1 = t1 >> 1;
-				t2 = t2 >> 1;
-			}
-#else
-			c = (t1 & 0x1) | ((t2 & 0x1) << 1);
-			pixels[disp_x] = gb->display.bg_palette[c];
-#if PEANUT_GB_12_COLOUR
-			pixels[disp_x] |= LCD_PALETTE_BG;
-#endif
-			t1 = t1 >> 1;
-			t2 = t2 >> 1;
-#endif
-			px++;
+				__gb_tile_dmg(&pixbuf[x], lo, hi, sel0, sel1);
 		}
 
 		gb->display.window_clear++; // advance window line
 	}
 
 	// draw sprites
-	if(gb->hram_io[IO_LCDC] & LCDC_OBJ_ENABLE)
+	if(lcdc & LCDC_OBJ_ENABLE)
 	{
+		const uint8_t ly = gb->hram_io[IO_LY];
+		const uint8_t obj_big = lcdc & LCDC_OBJ_SIZE;
 		uint8_t sprite_number;
 #if PEANUT_GB_HIGH_LCD_ACCURACY
 		uint8_t number_of_sprites = 0;
@@ -1942,9 +2117,7 @@ void __not_in_flash_func(__gb_draw_line)(struct gb_s *gb)
 			uint8_t OX = gb->oam[4 * sprite_number + 1];
 
 			/* If sprite isn't on this line, continue. */
-			if(gb->hram_io[IO_LY] +
-				(gb->hram_io[IO_LCDC] & LCDC_OBJ_SIZE ? 0 : 8) >= OY
-					|| gb->hram_io[IO_LY] + 16 < OY)
+			if(ly + (obj_big ? 0 : 8) >= OY || ly + 16 < OY)
 				continue;
 
 
@@ -1987,16 +2160,13 @@ void __not_in_flash_func(__gb_draw_line)(struct gb_s *gb)
 			/* Sprite X position. */
 			uint8_t OX = gb->oam[4 * s + 1];
 			/* Sprite Tile/Pattern Number. */
-			uint8_t OT = gb->oam[4 * s + 2]
-				     & (gb->hram_io[IO_LCDC] & LCDC_OBJ_SIZE ? 0xFE : 0xFF);
+			uint8_t OT = gb->oam[4 * s + 2] & (obj_big ? 0xFE : 0xFF);
 			/* Additional attributes. */
 			uint8_t OF = gb->oam[4 * s + 3];
 
 #if !PEANUT_GB_HIGH_LCD_ACCURACY
 			/* If sprite isn't on this line, continue. */
-			if(gb->hram_io[IO_LY] +
-					(gb->hram_io[IO_LCDC] & LCDC_OBJ_SIZE ? 0 : 8) >= OY ||
-					gb->hram_io[IO_LY] + 16 < OY)
+			if(ly + (obj_big ? 0 : 8) >= OY || ly + 16 < OY)
 				continue;
 #endif
 
@@ -2005,10 +2175,10 @@ void __not_in_flash_func(__gb_draw_line)(struct gb_s *gb)
 				continue;
 
 			// y flip
-			py = gb->hram_io[IO_LY] - OY + 16;
+			py = ly - OY + 16;
 
 			if(OF & OBJ_FLIP_Y)
-				py = (gb->hram_io[IO_LCDC] & LCDC_OBJ_SIZE ? 15 : 7) - py;
+				py = (obj_big ? 15 : 7) - py;
 
 			// fetch the tile
 #if PEANUT_FULL_GBC_SUPPORT
@@ -2044,47 +2214,58 @@ void __not_in_flash_func(__gb_draw_line)(struct gb_s *gb)
 			t1 >>= shift;
 			t2 >>= shift;
 
-			/* TODO: Put for loop within the to if statements
-			 * because the BG priority bit will be the same for
-			 * all the pixels in the tile. */
-			for(disp_x = start; disp_x != end; disp_x += dir)
-			{
-				uint8_t c = (t1 & 0x1) | ((t2 & 0x1) << 1);
-				// check transparency / sprite overlap / background overlap
+			// check transparency / sprite overlap / background overlap
 #if PEANUT_FULL_GBC_SUPPORT
-				if(gb->cgb.cgbMode)
-				{
-					uint8_t isBackgroundDisabled = c && !(gb->hram_io[IO_LCDC] & LCDC_BG_ENABLE);
-					uint8_t isPixelPriorityNonConflicting = c &&
-															!(pixelsPrio[disp_x] && (pixels[disp_x] & 0x3)) &&
-															!((OF & OBJ_PRIORITY) && (pixels[disp_x] & 0x3));
+			if(gb->cgb.cgbMode)
+			{
+				/* Drawn where the background is off, or where
+				 * neither the BG priority bit nor the OBJ's
+				 * priority bit hides it behind BG colours 1-3. */
+				const uint8_t bg_off = !(lcdc & LCDC_BG_ENABLE);
+				const uint8_t opri = OF & OBJ_PRIORITY;
+				const uint8_t col = ((OF & OBJ_CGB_PALETTE) << 2) + 0x20;  // add 0x20 to differentiate from BG
 
-					if(isBackgroundDisabled || isPixelPriorityNonConflicting)
+				for(disp_x = start; disp_x != end; disp_x += dir)
+				{
+					const uint8_t c = (t1 & 0x1) | ((t2 & 0x1) << 1);
+
+					if(c && (bg_off || !((pixelsPrio[disp_x] || opri) &&
+							     (pixels[disp_x] & 0x3))))
+						pixels[disp_x] = col + c;
+
+					t1 = t1 >> 1;
+					t2 = t2 >> 1;
+				}
+			}
+			else
+#endif
+			{
+				const uint8_t *const sp = &gb->display.sp_palette[(OF & OBJ_PALETTE) ? 4 : 0];
+				const uint8_t opri = OF & OBJ_PRIORITY;
+				const uint8_t bg0 = gb->display.bg_palette[0];
+
+				for(disp_x = start; disp_x != end; disp_x += dir)
+				{
+					const uint8_t c = (t1 & 0x1) | ((t2 & 0x1) << 1);
+
+					if(c && !(opri && (pixels[disp_x] & 0x3) != bg0))
 					{
 						/* Set pixel colour. */
-						pixels[disp_x] = ((OF & OBJ_CGB_PALETTE) << 2) + c + 0x20;  // add 0x20 to differentiate from BG
-					}
-				}
-				else
-#endif
-				if(c && !(OF & OBJ_PRIORITY && !((pixels[disp_x] & 0x3) == gb->display.bg_palette[0])))
-				{
-					/* Set pixel colour. */
-					pixels[disp_x] = (OF & OBJ_PALETTE)
-						? gb->display.sp_palette[c + 4]
-						: gb->display.sp_palette[c];
+						uint8_t v = sp[c];
 #if PEANUT_GB_12_COLOUR
-					/* Set pixel palette (OBJ0 or OBJ1). */
-					pixels[disp_x] |= (OF & OBJ_PALETTE);
+						/* Set pixel palette (OBJ0 or OBJ1). */
+						v |= (OF & OBJ_PALETTE);
 #endif
 #if PEANUT_FULL_GBC_SUPPORT
-					/* Deselect BG palette. */
-					pixels[disp_x] &= ~LCD_PALETTE_BG;
+						/* Deselect BG palette. */
+						v &= ~LCD_PALETTE_BG;
 #endif
-				}
+						pixels[disp_x] = v;
+					}
 
-				t1 = t1 >> 1;
-				t2 = t2 >> 1;
+					t1 = t1 >> 1;
+					t2 = t2 >> 1;
+				}
 			}
 		}
 	}
@@ -2094,9 +2275,79 @@ void __not_in_flash_func(__gb_draw_line)(struct gb_s *gb)
 #endif
 
 /**
- * Internal function used to step the CPU.
+ * PBC: after a full timing tail, the number of cycles that may pass before
+ * the tail has more to do than add them to its counters: the next DIV or
+ * TIMA increment, the next serial event (a transfer that has not started
+ * calls gb_serial_tx at once) and the next LCD mode change or line (the
+ * LCD counts half the cycles in double speed). All instruction cycle
+ * counts are multiples of 4, so adding them up first gives the same
+ * counts as adding them one by one.
  */
-void __not_in_flash_func(__gb_step_cpu)(struct gb_s *gb)
+static void __attribute__((noinline))
+__not_in_flash_func(__gb_timing_budget)(struct gb_s *gb)
+{
+	int_fast32_t b;
+
+	/* TIMA at 262144 Hz: at most 16 cycles anyway, run the tail every
+	 * time (0 is always correct) and save the rest. */
+	if((gb->hram_io[IO_TAC] & (IO_TAC_ENABLE_MASK | IO_TAC_RATE_MASK)) ==
+			(IO_TAC_ENABLE_MASK | 1))
+	{
+		gb->timing_budget = 0;
+		return;
+	}
+
+	b = DIV_CYCLES - (int_fast32_t)gb->counter.div_count;
+
+	if(gb->hram_io[IO_SC] & SERIAL_SC_TX_START)
+	{
+		if(gb->counter.serial_count == 0 && gb->gb_serial_tx != NULL)
+			b = 0;
+		else
+		{
+			int_fast32_t serial_cycles = SERIAL_CYCLES_1KB;
+#if PEANUT_FULL_GBC_SUPPORT
+			if(gb->hram_io[IO_SC] & 0x3)
+				serial_cycles = SERIAL_CYCLES_32KB;
+#endif
+			serial_cycles -= (int_fast32_t)gb->counter.serial_count;
+			if(serial_cycles < b)
+				b = serial_cycles;
+		}
+	}
+
+	if(gb->hram_io[IO_TAC] & IO_TAC_ENABLE_MASK)
+	{
+		static const uint16_t __not_in_flash_func(tac_cycles)[4] = {1024, 16, 64, 256};
+		const int_fast32_t t = tac_cycles[gb->hram_io[IO_TAC] & IO_TAC_RATE_MASK] -
+			(int_fast32_t)gb->counter.tima_count;
+		if(t < b)
+			b = t;
+	}
+
+	if(gb->hram_io[IO_LCDC] & LCDC_ENABLE)
+	{
+		static const uint16_t __not_in_flash_func(lcd_next)[4] =
+			{ LCD_MODE_2_CYCLES, LCD_LINE_CYCLES, LCD_MODE_3_CYCLES, LCD_LINE_CYCLES };
+		int_fast32_t l = lcd_next[gb->hram_io[IO_STAT] & STAT_MODE] -
+			(int_fast32_t)gb->counter.lcd_count;
+#if PEANUT_FULL_GBC_SUPPORT
+		if(l > 0)
+			l <<= gb->cgb.doubleSpeed;
+#endif
+		if(l < b)
+			b = l;
+	}
+
+	gb->timing_budget = (b > 0) ? (uint_fast16_t)b : 0;
+}
+
+/**
+ * Internal function used to step the CPU.
+ * PBC: inlined into gb_run_frame, so the instruction loop is one function
+ * (no call, register save and restore per instruction).
+ */
+static inline __attribute__((always_inline)) void __gb_step_cpu(struct gb_s *gb)
 {
 	uint8_t opcode;
 	uint_fast16_t inst_cycles;
@@ -2278,6 +2529,7 @@ void __not_in_flash_func(__gb_step_cpu)(struct gb_s *gb)
 #if PEANUT_FULL_GBC_SUPPORT
 		if(gb->cgb.cgbMode & gb->cgb.doubleSpeedPrep)
 		{
+			__gb_timing_flush(gb);	/* PBC: LCD speed changes */
 			gb->cgb.doubleSpeedPrep = 0;
 			gb->cgb.doubleSpeed ^= 1;
 		}
@@ -2823,6 +3075,9 @@ void __not_in_flash_func(__gb_step_cpu)(struct gb_s *gb)
 	{
 		int_fast16_t halt_cycles = INT_FAST16_MAX;
 
+		/* PBC: the counters are read below */
+		__gb_timing_flush(gb);
+
 		/* TODO: Emulate HALT bug? */
 		gb->gb_halt = 1;
 
@@ -2832,7 +3087,11 @@ void __not_in_flash_func(__gb_step_cpu)(struct gb_s *gb)
 			/* This may be intentional, but this is required to stop an infinite
 			 * loop. */
 			(gb->gb_error)(gb, GB_HALT_FOREVER, gb->cpu_reg.pc.reg - 1);
-			PGB_UNREACHABLE();
+			/* PBC: gb_error returns; nothing could ever end this
+			 * HALT, so do not halt (it used to run on into
+			 * undefined code). */
+			gb->gb_halt = 0;
+			break;
 		}
 
 		if(gb->hram_io[IO_SC] & SERIAL_SC_TX_START)
@@ -3641,8 +3900,20 @@ void __not_in_flash_func(__gb_step_cpu)(struct gb_s *gb)
 	default:
 		/* Return address where invlid opcode that was read. */
 		(gb->gb_error)(gb, GB_INVALID_OPCODE, gb->cpu_reg.pc.reg - 1);
-		PGB_UNREACHABLE();
+		/* PBC: gb_error returns; go on as if nothing happened (0
+		 * cycles, from op_cycles) instead of into undefined code. */
+		break;
 	}
+
+	/* PBC: skip the tail while it would only count; a skipped tail
+	 * changes nothing anyone sees (see __gb_timing_budget). */
+	gb->timing_pending += inst_cycles;
+
+	if(gb->timing_pending < gb->timing_budget)
+		return;
+
+	inst_cycles = gb->timing_pending;
+	gb->timing_pending = 0;
 
 	do
 	{
@@ -3814,11 +4085,8 @@ void __not_in_flash_func(__gb_step_cpu)(struct gb_s *gb)
 				//DMA GBC
 				if(gb->cgb.cgbMode && !gb->cgb.dmaActive && gb->cgb.dmaMode)
 				{
-					for (uint8_t i = 0; i < 0x10; i++)
-					{
-						__gb_write(gb, ((gb->cgb.dmaDest & 0x1FF0) | 0x8000) + i,
-								   __gb_read(gb, (gb->cgb.dmaSource & 0xFFF0) + i));
-					}
+					__gb_dma_block(gb, gb->cgb.dmaSource & 0xFFF0,
+						       (gb->cgb.dmaDest & 0x1FF0) | 0x8000);
 					gb->cgb.dmaSource += 0x10;
 					gb->cgb.dmaDest += 0x10;
 					if(!(--gb->cgb.dmaSize)) gb->cgb.dmaActive = 1;
@@ -3862,6 +4130,8 @@ void __not_in_flash_func(__gb_step_cpu)(struct gb_s *gb)
 		}
 	} while(gb->gb_halt && (gb->hram_io[IO_IF] & gb->hram_io[IO_IE]) == 0);
 	/* If halted, loop until an interrupt occurs. */
+
+	__gb_timing_budget(gb);
 }
 
 /* PBC: noinline, or GCC inlines it into the caller's loop in flash */
@@ -3924,6 +4194,10 @@ uint8_t gb_colour_hash(struct gb_s *gb)
  */
 void gb_reset(struct gb_s *gb)
 {
+	/* PBC: nothing deferred; the tail runs after the first instruction */
+	gb->timing_pending = 0;
+	gb->timing_budget = 0;
+
 	gb->gb_halt = 0;
 	gb->gb_ime = 1;
 
@@ -4026,6 +4300,7 @@ void gb_reset(struct gb_s *gb)
 		gb->cgb.OAMPalette[(i << 1)] = gb->cgb.BGPalette[(i << 1)] = 0x7F;
 		gb->cgb.OAMPalette[(i << 1) + 1] = gb->cgb.BGPalette[(i << 1) + 1] = 0xFF;
 	}
+	gb->cgb.palDirty = 1;
 	gb->cgb.OAMPaletteID = 0;
 	gb->cgb.BGPaletteID = 0;
 	gb->cgb.OAMPaletteInc = 0;
@@ -4036,6 +4311,9 @@ void gb_reset(struct gb_s *gb)
 	gb->cgb.dmaSource = 0;
 	gb->cgb.dmaDest = 0;
 #endif
+	/* PBC: banks and offsets are set; build the memory map. */
+	__gb_map_rom(gb);
+	__gb_map_ram(gb);
 }
 
 enum gb_init_error_e gb_init(struct gb_s *gb,
@@ -4090,6 +4368,16 @@ enum gb_init_error_e gb_init(struct gb_s *gb,
 	gb->gb_serial_rx = NULL;
 
 	gb->gb_bootrom_read = NULL;
+
+	/* PBC: ROM reads through gb_rom_read until gb_set_rom_map. */
+	gb->rom_bank0 = NULL;
+	gb->rom_data = NULL;
+	gb->rom_size = 0;
+	for(unsigned i = 0; i < 16; i++)
+	{
+		gb->rmap[i] = NULL;
+		gb->wmap[i] = NULL;
+	}
 
 	/* Check valid ROM using checksum value. */
 	{
@@ -4276,7 +4564,7 @@ void gb_run_frame(struct gb_s *gb);
  *
  * \param	An initialised emulator context. Must not be NULL.
  */
-void __gb_step_cpu(struct gb_s *gb);
+/* PBC: static inline, only gb_run_frame calls it. */
 
 /** Function prototypes: Optional Functions **/
 /**

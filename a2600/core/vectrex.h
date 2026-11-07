@@ -43,7 +43,12 @@ void vectrex_frame(int16_t *audio, int samples);
  * brightness values 0..255) stay as they are until the next call. */
 bool vectrex_picture(void);
 const uint8_t *vectrex_row(int y);
+uint8_t vectrex_row_or(int y);          /* all the row's values ORed */
 
 uint8_t *vectrex_ram(void);             /* 1 KB */
+
+/* The Vectrex's big buffers (word aligned), idle while another system
+ * runs: room for that one's cartridge. */
+uint8_t *vectrex_arena(uint32_t *size);
 
 #endif

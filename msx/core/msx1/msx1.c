@@ -33,18 +33,26 @@ uint8_t *msx_readmap[8];                /* redcode reads through it (Z80_PBC_MAP
 
 static Z80 cpu;
 static uint8_t ram[0x20000];            /* MSX1: 64 KB in slot 3; MSX2: the 128 KB mapper */
+/* MSX1: the upper 64 KB of ram[] hold copies of the main ROM and of a
+ * plain cartridge up to 32 KB (msx1_reset), which run from there instead
+ * of from flash */
+#define RAM_BIOS_COPY (ram + 0x10000)
+#define RAM_CART_COPY (ram + 0x18000)
 static uint8_t empty[0x2000];
 static uint8_t scc_page[0x2000];        /* 8000h-9FFFh with the SCC switched in */
 
 static const uint8_t *bios_main[4], *bios_logo;
+static const uint8_t *bios_given[4];    /* bios_main as handed over (flash) */
 static const uint8_t *cart;
 static uint32_t cart_size, cart_banks;  /* banks of 8 KB, a power of two */
 static int mapper;
 static const uint8_t *plain[8];         /* plain ROM: what each 8 KB page shows */
+static const uint8_t *plain_given[8];   /* the same in the cartridge as handed over */
 static uint8_t bank[4];
 static bool scc_on;
 
 static uint8_t slots;                   /* PPI port A: primary slot per page */
+static uint8_t *wpage[4];               /* per 16 KB page the RAM writes go to; NULL: other */
 static uint8_t ppi_c;                   /* PPI port C: keyboard row, ... */
 
 /* MSX2: slot 3 expanded -- 3-0 and 3-1 the sub-ROM at 0000h, 3-2 the RAM
@@ -79,7 +87,10 @@ static int frame_samples, made;
 static void sound_to(int cycle);
 static int now(void);
 
-static const uint8_t *cart_bank(int b)
+/* the port handlers and what they call run from RAM: games poll the VDP
+ * and the PSG all the time, and every call into flash risks a cache miss */
+
+static MSX_RAM const uint8_t *cart_bank(int b)
 {
     return cart + ((uint32_t)(b & (cart_banks - 1)) << 13) % cart_size;
 }
@@ -91,7 +102,7 @@ static void scc_page_fill(void)
         scc_page[i] = scc_read(&scc, (uint16_t)i);
 }
 
-static const uint8_t *slot1_page(int p)
+static MSX_RAM const uint8_t *slot1_page(int p)
 {
     if (!cart)
         return empty;
@@ -113,7 +124,7 @@ static inline uint8_t *mapper_ram(int page16)
     return ram + (uint32_t)(mapper_seg[page16] & 7) * 0x4000;
 }
 
-static const uint8_t *slot3_page(int p)
+static MSX_RAM const uint8_t *slot3_page(int p)
 {
     if (!msx2)
         return ram + p * 0x2000;
@@ -124,7 +135,7 @@ static const uint8_t *slot3_page(int p)
     }
 }
 
-static void map_update(void)
+static MSX_RAM void map_update(void)
 {
     for (int p = 0; p < 8; p++) {
         int slot = (slots >> ((p >> 1) * 2)) & 3;
@@ -136,6 +147,16 @@ static void map_update(void)
         default: m = empty; break;
         }
         msx_readmap[p] = (uint8_t *)m;
+    }
+    for (int p = 0; p < 4; p++) {
+        uint8_t *w = NULL;
+        if (((slots >> (p * 2)) & 3) == 3) {
+            if (!msx2)
+                w = ram + p * 0x4000;
+            else if (((sub3 >> (p * 2)) & 3) == 2)
+                w = mapper_ram(p);
+        }
+        wpage[p] = w;
     }
     /* MSX2: FFFFh of slot 3 reads back the secondary slot register,
      * inverted (the RAM byte under it is out of reach) */
@@ -151,7 +172,7 @@ static void map_update(void)
     }
 }
 
-static void cart_write(int a, int v)
+static MSX_RAM void cart_write(int a, int v)
 {
     switch (mapper) {
     case MAP_KONAMI:
@@ -197,6 +218,11 @@ static void cart_write(int a, int v)
 
 MSX_RAM void msx_write(int a, int v)
 {
+    uint8_t *w = wpage[a >> 14];        /* plain RAM: at once */
+    if (w && a != 0xffff) {
+        w[a & 0x3fff] = (uint8_t)v;
+        return;
+    }
     int slot = (slots >> ((a >> 14) * 2)) & 3;
     if (slot == 3) {
         if (!msx2) {
@@ -214,11 +240,11 @@ MSX_RAM void msx_write(int a, int v)
 
 /* ---- sound --------------------------------------------------------------- */
 
-static void sound_to(int cycle)
+static MSX_RAM void sound_to(int cycle)
 {
     if (!frame_samples)
         return;
-    int want = (int)((int64_t)cycle * frame_samples / FRAME_CYCLES);
+    int want = cycle * frame_samples / FRAME_CYCLES;     /* < 2^31; no __aeabi_ldivmod */
     if (want > frame_samples) want = frame_samples;
     if (want > made) {
         ay_render(&psg, mix + made, want - made);
@@ -227,14 +253,14 @@ static void sound_to(int cycle)
     }
 }
 
-static int now(void)
+static MSX_RAM int now(void)
 {
     return line_start + (int)cpu.cycles;
 }
 
 /* ---- I/O ----------------------------------------------------------------- */
 
-static uint8_t joy_port(void)
+static MSX_RAM uint8_t joy_port(void)
 {
     int j = msx_joy[(psg.reg[15] >> 6) & 1];
     uint8_t v = 0x3f;
@@ -247,7 +273,7 @@ static uint8_t joy_port(void)
     return v | 0x40;                    /* bit 7: cassette in (0) */
 }
 
-static void irq_update(void)
+static MSX_RAM void irq_update(void)
 {
     z80_int(&cpu, msx2 ? v99_irq() : tms_irq());
 }
@@ -290,7 +316,7 @@ static void rtc_write(uint8_t v)
         rtc_mem[rtc_mode & 3][rtc_sel] = v & 15;
 }
 
-static zuint8 io_in(void *ctx, zuint16 port)
+static MSX_RAM zuint8 io_in(void *ctx, zuint16 port)
 {
     (void)ctx;
     if (msx2) {
@@ -317,7 +343,7 @@ static zuint8 io_in(void *ctx, zuint16 port)
     }
 }
 
-static void io_out(void *ctx, zuint16 port, zuint8 v)
+static MSX_RAM void io_out(void *ctx, zuint16 port, zuint8 v)
 {
     (void)ctx;
     if (msx2) {
@@ -362,7 +388,7 @@ static void wr(void *ctx, zuint16 a, zuint8 v)
     msx_write(a, v);
 }
 
-static zuint8 inta(void *ctx, zuint16 a)
+static MSX_RAM zuint8 inta(void *ctx, zuint16 a)
 {
     (void)ctx;
     (void)a;
@@ -559,11 +585,12 @@ int msx_key_of_char(char c)
 void msx1_init(const uint8_t *const main_rom[4], const uint8_t *logo_rom)
 {
     msx2 = false;
+    memcpy(bios_given, main_rom, sizeof bios_given);
     memcpy(bios_main, main_rom, sizeof bios_main);
     bios_logo = logo_rom;
     memset(empty, 0xff, sizeof empty);
-    ay_init(&psg, CLOCK / 2, 22222);
-    scc_init(&scc, CLOCK, 22222);
+    ay_init(&psg, CLOCK / 2, 45454);   /* = AUDIO_RATE (src/audio_pwm.h) */
+    scc_init(&scc, CLOCK, 45454);
 }
 
 void msx2_init(const uint8_t *const main_rom[4], const uint8_t *logo_rom,
@@ -591,7 +618,7 @@ int msx1_insert(const uint8_t *rom, uint32_t size)
     cart_banks = 1;
     while (cart_banks * 0x2000 < size)
         cart_banks <<= 1;
-    memset(plain, 0, sizeof plain);
+    memset(plain_given, 0, sizeof plain_given);
     bool ab0 = rom[0] == 'A' && rom[1] == 'B';
     bool ab4 = size > 0x4000 && rom[0x4000] == 'A' && rom[0x4001] == 'B';
     if (size > 0x10000) {
@@ -611,7 +638,7 @@ int msx1_insert(const uint8_t *rom, uint32_t size)
             if (size <= 0x2000 && off >= 0 && off < 0x4000)
                 off &= 0x1fff;          /* 8 KB: mirrored in its 16 KB */
             if (off >= 0 && (uint32_t)off < size)
-                plain[p] = rom + off;
+                plain_given[p] = rom + off;
         }
         if (!ab0 && !ab4 && size <= 0x8000)
             return -1;
@@ -622,6 +649,22 @@ int msx1_insert(const uint8_t *rom, uint32_t size)
 void msx1_reset(void)
 {
     memset(ram, 0, sizeof ram);
+    memcpy(bios_main, bios_given, sizeof bios_main);
+    memcpy(plain, plain_given, sizeof plain);
+    if (!msx2) {                        /* the ROMs into the unused 64 KB */
+        for (int p = 0; p < 4; p++) {
+            memcpy(RAM_BIOS_COPY + p * 0x2000, bios_given[p], 0x2000);
+            bios_main[p] = RAM_BIOS_COPY + p * 0x2000;
+        }
+        /* whole 8 KB pages, as the page map reads them */
+        uint32_t n = (cart_size + 0x1fff) & ~0x1fffu;
+        if (cart && mapper == MAP_PLAIN && n <= 0x8000) {
+            memcpy(RAM_CART_COPY, cart, n);
+            for (int p = 0; p < 8; p++)
+                if (plain_given[p])
+                    plain[p] = RAM_CART_COPY + (plain_given[p] - cart);
+        }
+    }
     memset(msx_keys, 0, sizeof msx_keys);
     tms_reset();
     v99_reset();
@@ -633,7 +676,7 @@ void msx1_reset(void)
     memset(rtc_mem, 0, sizeof rtc_mem);
     frame_total = 0;
     ay_reset(&psg);
-    scc_init(&scc, CLOCK, 22222);
+    scc_init(&scc, CLOCK, 45454);
     for (int i = 0; i < 4; i++)
         bank[i] = (uint8_t)(mapper == MAP_ASCII16 ? 0 : i);
     scc_on = false;
@@ -655,10 +698,13 @@ void msx1_reset(void)
     debt = 0;
 }
 
+/* where a line is drawn that nobody wants: the chips' flags (sprite
+ * collision, 5th sprite) still come from drawing it */
+static uint16_t scratch[V99_WIDTH] __attribute__((aligned(4)));   /* written as words */
+
 /* MSX2: the frame through the V9938, lines as RGB565 */
-static MSX_RAM void frame_v99(msx_line565_fn line)
+static MSX_RAM void frame_v99(msx_line565_begin_fn begin, msx_line565_commit_fn commit)
 {
-    static uint16_t px[V99_WIDTH] __attribute__((aligned(4)));   /* written as words */
     v99_frame_start();
     int shown = v99_lines();
     for (int y = 0; y < LINES; y++) {
@@ -668,10 +714,11 @@ static MSX_RAM void frame_v99(msx_line565_fn line)
         debt = ran - want;
         if (debt < 0) debt = 0;
         if (y < shown) {
-            v99_line(y, px);
+            uint16_t *px = begin ? begin(y, shown) : NULL;    /* straight into the video ring */
+            v99_line(y, px ? px : scratch);
             irq_update();
-            if (line)
-                line(y, shown, px);
+            if (px)
+                commit(y, shown);
         }
         if (y == shown - 1) {
             v99_vblank();
@@ -680,11 +727,11 @@ static MSX_RAM void frame_v99(msx_line565_fn line)
     }
 }
 
-msx_line565_fn msx_line565;
+msx_line565_begin_fn msx_line565_begin;
+msx_line565_commit_fn msx_line565_commit;
 
-MSX_RAM void msx1_frame(msx_line_fn line, int16_t *audio, int samples)
+MSX_RAM void msx1_frame(msx_line_begin_fn begin, msx_line_commit_fn commit, int16_t *audio, int samples)
 {
-    static uint8_t px[TMS_WIDTH];
     frame_total++;
     if (samples > (int)(sizeof mix / sizeof mix[0]))
         samples = sizeof mix / sizeof mix[0];
@@ -692,16 +739,18 @@ MSX_RAM void msx1_frame(msx_line_fn line, int16_t *audio, int samples)
     made = 0;
     memset(mix, 0, (size_t)samples * sizeof mix[0]);
 
-    if (msx2) frame_v99(msx_line565); else
+    if (msx2) frame_v99(msx_line565_begin, msx_line565_commit); else
     for (int y = 0; y < LINES; y++) {
         line_start = y * LINE_CYCLES;
         int want = LINE_CYCLES - debt;
         int ran = want > 0 ? (int)z80_run(&cpu, (zusize)want) : 0;
         debt = ran - want;
         if (debt < 0) debt = 0;
-        if (y < TMS_LINES && line) {
-            tms_line(y, px);
-            line(y, px, tms_backdrop());
+        if (y < TMS_LINES && begin) {
+            uint8_t *px = begin(y);     /* straight into the video ring */
+            tms_line(y, px ? px : (uint8_t *)scratch);
+            if (px)
+                commit(y, tms_backdrop());
         }
         if (y == TMS_LINES - 1) {
             tms_vblank();

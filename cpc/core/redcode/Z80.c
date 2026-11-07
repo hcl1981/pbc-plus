@@ -3102,7 +3102,13 @@ Z80_API PBC_FN zusize z80_run(Z80 *self, zusize cycles)
 #		endif
 		}
 
-	while (self->cycles < self->cycle_limit) /* main execution loop */
+#	ifdef Z80_PBC_ROUND4
+		/* PicoBoy (CPC): each instruction or interrupt response takes whole
+		   microseconds; rounded up to 4 T-states before the next one */
+		while ((self->cycles = (self->cycles + 3) & ~(zusize)3) < self->cycle_limit)
+#	else
+		while (self->cycles < self->cycle_limit) /* main execution loop */
+#	endif
 		{
 		if (REQUEST)
 			{

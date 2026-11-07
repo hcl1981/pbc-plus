@@ -12,7 +12,7 @@ ist dasselbe wie bei [`../nes`](../nes/) und [`../c64`](../c64/):
 |---|---|
 | HuCards von SD-Karte | **USB-Stick-Modus** in eine FatFs-Partition im Flash (aus [PicoBoyGB](../picoboygb/)); die Karte liegt im ROM-Bereich, pce-go blendet ihre Bänke direkt per XIP ein |
 | HDMI 320×240 | **ST7789**: auf 240 Pixel Breite beschnitten bzw. verkleinert, auf Kern 1 per DMA |
-| Ton über HDMI/I2S | **PWM-Lautsprecher** (GP15), 22 222 Hz, per DMA |
+| Ton über HDMI/I2S | **PWM-Lautsprecher** (GP15), 45 454 Hz, per DMA |
 | CD-ROM², SuperGrafx | entfallen (bräuchten PSRAM) |
 | Menü mit Spielständen, Einstellungen, Controller-Test | entfallen |
 
@@ -93,9 +93,18 @@ Zeile bei 1,79 MHz, 455 nach `CSH` bei 7,16 MHz, was fast jedes Spiel
 einschaltet); die Bildlänge folgt deshalb `PCE.Timer.cycles_per_line`. Vorher
 war sie fest auf 263 × 113, und bei 7,16 MHz landete jeder PSG-Zugriff ab
 etwa Zeile 65 am Bildende – Sprache und Samples (DDA) klangen verzerrt.
-Der Kern rechnet stereo, die Ausgabe mischt auf mono herunter.
+Gerechnet wird gleich mono (`psg_update_mono`): genau (links + rechts) / 2
+des Stereo-Tons – kein Kanal kann übersteuern (6 × 16 × 16 × 15 < 32767) –,
+aber ohne Stereopuffer und zweites Mischen; abgeschaltete und stumme Kanäle
+werden nur weitergezählt (Wellenzeiger, Rausch-Schieberegister), nicht
+gerechnet. Die Zeit bis zum Schreibzugriff wird in 32 Bit umgerechnet statt
+mit einer 64-Bit-Division, und Zugriffe, die den Ton nicht ändern
+(Kanalwahl, LFO, Daten für einen abgeschalteten Kanal), lösen kein
+Nachrechnen aus. Am PC mit Bomberman '94 über 3000 Bilder bitgleich zum
+alten Stand (beide mit 45 454 Hz), mit 23 % weniger Nachrechnen.
 Abgespielt wird über `audio_pwm`: Ein DMA-Kanal, getaktet von einem
-DMA-Timer, schreibt alle 45 µs ein Sample aus dem Ringpuffer in den
+DMA-Timer, schreibt alle 22 µs (45 454 Hz; bis November 2026 alle 45 µs)
+ein Sample aus dem Ringpuffer in den
 PWM-Vergleichswert. Vorher lief dafür 22 222-mal pro Sekunde ein
 Timer-Interrupt auf Kern 1, dessen SDK-Code aus dem Flash kam.
 

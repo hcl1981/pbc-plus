@@ -112,6 +112,8 @@ static void write_launch(int device, const char *game)
          * settings itself. In link play CPC, ZX and Atari ignore it. */
         settings_load();
         l.key = (uint8_t)settings_key_raw(game);
+        if (devices[device].app == APP_ZX)  /* a tape game's machine (ui.c) */
+            l.opt2 = settings_true_drive(game) ? 1 : 0;
     }
     snprintf(l.game, sizeof l.game, "%s", game);
     l.check = pbc_launch_hash(&l);

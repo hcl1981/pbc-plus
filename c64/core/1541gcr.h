@@ -78,6 +78,7 @@ private:
 	void sector2gcr(unsigned track, unsigned sector, uint8_t * gcr);
 
 	const uint8_t * track_data(unsigned halftrack);
+	const uint8_t * load_track_data(unsigned halftrack);
 
 	void advance_disk_change_seq(uint32_t cycle_counter);
 	void rotate_disk(uint32_t cycle_counter);

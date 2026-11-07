@@ -25,6 +25,7 @@ static const uint32_t pepto[16] = {
     0x6F4F25, 0x433900, 0x9A6759, 0x444444, 0x6C6C6C, 0x9AD284, 0x6C5EB5, 0x959595,
 };
 static uint16_t pal[256];              /* indexed by the raw byte, masked to 16 colours */
+static uint16_t pavg[256];             /* [a << 4 | b]: 50/50 mix of colours a and b */
 
 static volatile bool frame_ready;
 static volatile bool core1_ready;
@@ -106,15 +107,47 @@ static void __not_in_flash_func(convert_row)(int r, uint16_t *out)
     }
 }
 
+/* The same for the 4 -> 3 modes (standard, no border), group by group:
+ * of four source pixels the outer ones are taken as they are, so are the
+ * outer rows of four (ya == yb); only the middle ones are averaged. The
+ * same results as convert_row(), with fewer lookups and averages. */
+static inline unsigned cpair(uint8_t a, uint8_t b)
+{
+    return (a & 15u) << 4 | (b & 15u);
+}
+
+static void __not_in_flash_func(convert_row_43)(int r, uint16_t *out)
+{
+    const uint8_t *ra = g_pixels + (src_y + ya[r]) * C64_FB_W + src_x;
+    if (ya[r] == yb[r]) {
+        for (int g = 0; g < OUT_W / 3; g++, ra += 4, out += 3) {
+            out[0] = pal[ra[0]];
+            out[1] = pavg[cpair(ra[1], ra[2])];
+            out[2] = pal[ra[3]];
+        }
+    } else {
+        const uint8_t *rb = g_pixels + (src_y + yb[r]) * C64_FB_W + src_x;
+        for (int g = 0; g < OUT_W / 3; g++, ra += 4, rb += 4, out += 3) {
+            out[0] = pavg[cpair(ra[0], rb[0])];
+            out[1] = pbc_avg565(pavg[cpair(ra[1], ra[2])], pavg[cpair(rb[1], rb[2])]);
+            out[2] = pavg[cpair(ra[3], rb[3])];
+        }
+    }
+}
+
 void __not_in_flash_func(c64_video_core1_main)(void)
 {
-    for (int i = 0; i < 256; i++)
+    for (int i = 0; i < 256; i++) {
         pal[i] = pbc_rgb24(pepto[i & 15]);
+        pavg[i] = pbc_avg565(pbc_rgb24(pepto[i >> 4]), pbc_rgb24(pepto[i & 15]));
+    }
+    bool four_to_three = true;
     switch (mode) {
     case C64_VIDEO_FULL_BORDER:     /* the whole buffer, 5/8 */
         src_x = 0; src_y = 0; src_w = C64_FB_W; src_h = C64_FB_H; out_h = 170;
         build_map_any(xa, xb, OUT_W, src_w);
         build_map_any(ya, yb, out_h, src_h);
+        four_to_three = false;
         break;
     case C64_VIDEO_NO_BORDER:       /* the 320x200 screen only, 3/4 */
         src_x = 32; src_y = 35; src_w = 320; src_h = 200; out_h = 150;
@@ -153,7 +186,11 @@ void __not_in_flash_func(c64_video_core1_main)(void)
             scan = pbc_scanlines_on();
         int b = 0;
         for (int y = 0; y < out_h; y++) {
-            convert_row(y, rowbuf[b]);  /* the DMA sends the other buffer meanwhile */
+            /* the DMA sends the other buffer meanwhile */
+            if (four_to_three)
+                convert_row_43(y, rowbuf[b]);
+            else
+                convert_row(y, rowbuf[b]);
             if (scan && (y & 1))
                 pbc_scanline_dim(rowbuf[b], OUT_W);
             pbc_battwarn_row(rowbuf[b], out_y + y, 0, OUT_W);

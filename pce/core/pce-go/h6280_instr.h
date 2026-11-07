@@ -2272,6 +2272,31 @@ OPCODE_FUNC tia(void)
 	UWORD alternate = 0;
 
 	Cycles += (6 * len) + 17;
+	/* PBC: the usual VRAM upload -- TIA to the VDC data port ($0002/$0003)
+	 * with VWR selected: the words straight into VRAM, exactly as
+	 * vdc_io_write does for VWR (low byte latched, the high byte writes
+	 * the word below 8000h and steps MAWR), without two trips through
+	 * pce_writeIO per word. Not for the SuperGrafx or an Arcade Card. */
+	if (PageW[to >> 13] == PCE.IOAREA && (to & 0x1F03) == 0x0002 &&
+	    PCE.VDC.reg == VWR && !PCE.VPC.is_sgx && !(CD.cd_attached && CD.acd_ram))
+	{
+		while (len-- != 0)
+		{
+			uint8_t v = pce_read8(from++);
+			if (!alternate) {
+				PCE.VDC.regs[VWR].B.l = v;
+			} else {
+				unsigned inc = (PCE.VDC.regs[CR].W >> 11) & 3;
+				if (PCE.VDC.regs[MAWR].W < 0x8000)
+					PCE.VRAM[PCE.VDC.regs[MAWR].W] = (v << 8) | PCE.VDC.regs[VWR].B.l;
+				PCE.VDC.regs[MAWR].W += inc ? 16u << inc : 1u;
+				PCE.VDC.regs[VWR].B.h = v;
+			}
+			alternate ^= 1;
+		}
+		CPU.PC += 7;
+		return;
+	}
 	while (len-- != 0)
 	{
 		pce_write8(to + alternate, pce_read8(from++));

@@ -12,7 +12,7 @@ wie bei [`../megadrive`](../megadrive/):
 | ROM von SD-Karte, in PSRAM | ROM im **Flash**, QuickNES liest PRG direkt per XIP |
 | SD-Karten-Browser | **USB-Stick-Modus** in eine FatFs-Partition im Flash (aus [PicoBoyGB](../picoboygb/)) |
 | HDMI/VGA/TV | **ST7789**: 240×240 Pixel **1:1**, auf Kern 1 per DMA gesendet |
-| Ton über HDMI/I2S/PWM | Ton über den **PWM-Lautsprecher** (GP15), 22 222 Hz, an/aus und Lautstärke in den Optionen |
+| Ton über HDMI/I2S/PWM | Ton über den **PWM-Lautsprecher** (GP15), 45 454 Hz, an/aus und Lautstärke in den Optionen |
 | Spielstände (Batterie-RAM) auf SD | **`<Spiel>.sav`** neben der ROM auf dem USB-Laufwerk, wie bei [`../gbc`](../gbc/) |
 | Game Genie (Codes eintippen) | Codes in **`<Spiel>.cht`** neben der ROM |
 | Einstellungen, Speicherstände, USB-HID | entfallen |
@@ -123,14 +123,16 @@ emuliert. Bei 150 MHz läuft der SPI mit 75 MHz; ein Bild braucht rund 12 ms.
 
 ## Ton
 
-Ein DMA-Kanal, getaktet von einem DMA-Timer, holt alle 45 µs einen Sample aus
+Ein DMA-Kanal, getaktet von einem DMA-Timer, holt alle 22 µs einen Sample aus
 einem Ringpuffer und schreibt ihn in den PWM-Wert von GP15 (10 Bit, Träger
 ~146 kHz bei 150 MHz) – ohne Interrupt pro Sample; vorher lief dafür 22 222-mal
 pro Sekunde ein Timer-Interrupt, zum Teil aus dem Flash. QuickNES erzeugt genau
-diese Rate (22 222 Hz). Weil Bildtakt und Sample-Takt zwei getrennte Uhren
+diese Rate (45 454 Hz; bis November 2026 22 222 Hz). Weil Bildtakt und Sample-Takt zwei getrennte Uhren
 sind, wird der Füllstand bei jedem Bild geprüft und um einen Sample korrigiert;
 hinter dem letzten Sample steht Stille, so hört man bei Rückstand nichts statt
-alter Samples. Laute Spitzen werden weich begrenzt. Ist der Ton aus, steht der
+alter Samples; neu geschrieben wird davon je Bild nur das Stück, das der DMA
+seit dem letzten Bild gelesen hat (rund 750 statt 2600 Einträge, derselbe
+Ringinhalt). Laute Spitzen werden weich begrenzt. Ist der Ton aus, steht der
 DMA, und der Lautsprecher-Pin liegt auf Low (kein Ruhestrom).
 
 ## Mapper
@@ -175,12 +177,34 @@ und alle Spiele mit CHR-RAM (z. B. Zelda, Mega Man 2). Spiele mit 256 KB CHR-ROM
 (z. B. Kirby's Adventure) passen nicht; sie melden „Cannot load game“ statt
 abzustürzen.
 
+Was danach vom Heap übrig ist, bekommt das **PRG-ROM**: Passt es mit 8 KB
+Reserve hinein, wird es nach allem anderen (auch Game-Genie-Kopien) einmal
+aus dem Flash in den RAM kopiert, und die CPU liest es von dort
+(`qnes_prg_to_ram()`, `Nes_Emu::move_prg()`; die eingeblendeten Seiten
+werden umgehängt, das Spiel läuft bitgleich). Das gelingt bei kleinen
+Spielen wie Super Mario Bros. und bei Spielen mit CHR-RAM bis 128 KB PRG
+(Zelda); bei 256 KB PRG mit CHR-RAM (Mega Man 2) bleiben nach Rechnung etwa
+11 KB übrig, ohne Game-Genie-Codes. Wo der Tile-Cache eines großen CHR-ROMs
+den Platz braucht (Super Mario Bros. 3), bleibt das PRG wie bisher im Flash.
+Während des Spiels reserviert nichts mehr Speicher.
+
 Was pro Befehl, Zeile oder Sample läuft, liegt im RAM (`NES_RAM` in
 `blargg_common.h`, zusammen 18 KB): neben `Nes_Cpu::run` die Speicher- und
 I/O-Zugriffe der CPU (`cpu_read`/`cpu_write`, PPU- und APU-Register), der
 Zeilenzeichner (`Nes_Ppu_Rendering`), die Tonkanäle samt `Blip_Buffer` und
-die Mapper MMC1/MMC3 (001/004); dazu die Taktzahltabelle der CPU. Aus dem
-Flash konkurrierte das mit dem Spiel-ROM um den 16-KB-XIP-Cache. Den Platz
+die Mapper MMC1/MMC3 (001/004); dazu die Taktzahltabelle der CPU und das
+Umrechnen geänderter CHR-RAM-Kacheln (`update_tile`, inzwischen mit einem
+Speicherbefehl je Zeile und der gespiegelten Kachel per Nibble-Tausch). Kern 1
+wartet auf den DMA des Displays ebenfalls aus dem RAM (`src/display.c`). Aus
+dem Flash konkurrierte das mit dem Spiel-ROM um den 16-KB-XIP-Cache.
+
+Kleinigkeiten in `Nes_Cpu::run`: Die Adresse der Taktzahltabelle liegt in
+einem Register statt in einem Literal, um das GCC bei jedem Befehl
+herumsprang. Die Operanden der Rechenbefehle (ADC, SBC, AND, ORA, EOR, CMP)
+aus RAM und ROM werden ohne Aufruf von `cpu_read` gelesen, und der
+Blindlesezugriff von STA abs,X/Y entfällt dort, wo Lesen nichts bewirkt.
+Alles auf dem PC mit vier Spielen über je 10 000 Bilder mit Eingaben
+geprüft: Bild, Ton und RAM bitgleich. Den Platz
 dafür geben Puffer frei, die nur beim Laden gebraucht werden: FatFs im
 „tiny“-Modus (die Dateien teilen den Sektorpuffer des Laufwerks), und
 Formatieren, ROM-Prüfung und USB-Stick-Modus holen ihren Puffer vom Heap.

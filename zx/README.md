@@ -41,8 +41,8 @@ Loader“, beim 48K tippt er `LOAD ""`. Standard-Blöcke lädt er sofort (die
 Laderoutine LD-BYTES im ROM ist abgefangen); alles andere, etwa
 Schnelllader, spielt das Band in Echtzeit ab. Dann läuft die Emulation so
 schnell sie kann, ohne Ton, und zeichnet nur jedes 16. Bild; unten steht
-„LOADING“. Läuft ein Spiel auf dem 128K nicht, startet es das Menü als 48K
-neu.
+„LOADING“. Läuft ein Spiel auf dem 128K nicht, in den Spieloptionen im
+Starter „Machine: 48K“ wählen.
 
 ## Tasten
 
@@ -54,13 +54,16 @@ neu.
 | Mitte + B | ENTER (andere Taste: Menü oder Einstellungen des Spiels im Starter) |
 | Mitte + A | Menü |
 
-**Menü:** Joystick-Art (Kempston an Port 1Fh, Sinclair = Tasten 6–0, Cursor
-= 5–8 und 0, QAOP mit SPACE als Feuer), Neustart als 48K oder 128K, Band
-zurückspulen (bei Snapshots: Reset), welche Taste auf Mitte + B liegt
-(„Center + B: …“; dauerhaft je Spiel in dessen Einstellungen im Starter,
-außer im Link-Spiel) und jede Taste einmal drücken (ENTER,
-SPACE, BREAK, DELETE, CAPS SHIFT, SYMBOL SHIFT, 0–9, A–Z). Die Wahl gilt bis
-zum Verlassen des Spiels.
+**Menü** (Mitte + A, wie bei C64, CPC und MSX aufgebaut): „Rewind tape“
+(nur bei Bändern), „Settings“ mit der Joystick-Art (Kempston an Port 1Fh,
+Sinclair = Tasten 6–0, Cursor = 5–8 und 0, QAOP mit SPACE als Feuer) und
+der Taste auf Mitte + B, „Press a key“ (jede Taste einmal drücken: ENTER,
+SPACE, BREAK, DELETE, CAPS SHIFT, SYMBOL SHIFT, 0–9, A–Z) und ganz unten
+„Back to game“ (oder A). Die Settings gelten sofort und werden beim Spiel
+gespeichert (dieselbe Tabelle wie die Spieloptionen im Starter, außer im
+Link-Spiel). Ob ein Band als 48K oder 128K startet, steht in den
+Spieloptionen im Starter („Machine“); Snapshots bringen ihr Modell mit.
+Einen Neustart-Punkt gibt es nicht mehr: RESET und das Spiel neu starten.
 
 ## Link-Spiel
 
@@ -94,7 +97,6 @@ Spalten links und rechts weg). Die Statuszeile liegt im unteren Rand.
   Sprünge (23h) und Aufrufe (26h) nicht ausgeführt.
 * Kein +2A/+3 (Diskette), kein Interface 1. Link-Spiel nicht mit zwei
   Geräten getestet.
-* Die Einstellungen im Menü (Joystick, Maschine) merkt er sich nicht.
 
 ## Aufbau
 
@@ -106,9 +108,14 @@ Spalten links und rechts weg). Die Statuszeile liegt im unteren Rand.
 | `core/roms.S` | bindet die drei ROMs aus `roms/` ein |
 | `core/redcode` | Z80 (redcode, gepatcht wie in `../msx`) |
 | `src/main.c` | Start, Spielschleife, Menü, Schnellvorlauf beim Laden |
-| `src/zx_video.c` | die 280 Zeilen über einen Ring an Kern 1, der sie umrechnet und die Statuszeile einblendet |
+| `src/zx_video.c` | der Kern zeichnet die 280 Zeilen direkt in einen Ring, Kern 1 rechnet sie um und blendet die Statuszeile ein |
 | `src/zx_input.c` | Tasten → Joystick und Tastatur |
 | übrige `src/`, `fatfs/` | Plattform aus `../msx` |
+
+Für die Geschwindigkeit läuft das Editor-ROM des 128K aus einer Kopie im
+RAM (das 48-BASIC-ROM ohnehin, wegen des Traps), ebenso die Ein- und
+Ausgabe (IN/OUT, Beeper-Musik schreibt sehr oft nach FEh) und die Tabellen
+des AY.
 
 ## Lizenz
 

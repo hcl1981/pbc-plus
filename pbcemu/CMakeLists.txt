@@ -74,6 +74,7 @@ target_compile_options(pbcemu PRIVATE -Wall -Wno-unused-function)
 set_source_files_properties(src/gfx.c PROPERTIES COMPILE_FLAGS "-O3")
 
 target_link_libraries(pbcemu
+    pico_flash          # settings.c: flash_safe_execute
     pico_stdlib
     pico_unique_id
     hardware_spi

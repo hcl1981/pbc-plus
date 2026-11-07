@@ -88,7 +88,7 @@ static A26_RAM void end_line(void)
     line_cycle = 0;
 }
 
-static inline void cycle(void)
+static inline A26_RAM void cycle(void)
 {
     if (++line_cycle >= LINE_CYCLES)
         end_line();
@@ -102,8 +102,9 @@ static inline void cycle(void)
 static uint32_t tim_w;                  /* the cycle it was written */
 static uint32_t tim_clr;                /* t when the flag was last cleared */
 static uint8_t tim_v, tim_s;
+static uint8_t intim_hit;               /* INTIM was read (skip_poll) */
 
-static inline uint32_t tim_t(void) { return line_base + (uint32_t)line_cycle - tim_w; }
+static inline A26_RAM uint32_t tim_t(void) { return line_base + (uint32_t)line_cycle - tim_w; }
 
 static A26_RAM uint8_t tim_intim(uint32_t t)
 {
@@ -146,7 +147,7 @@ static A26_RAM void bank_switch(uint16_t a)
         map_pages();
 }
 
-static inline uint8_t cart_read(uint16_t a)
+static inline A26_RAM uint8_t cart_read(uint16_t a)
 {
     a &= 0x0fff;
     if (superchip && (a & 0xf80) == 0x80)
@@ -195,6 +196,7 @@ static A26_RAM uint8_t riot_read(uint16_t a)
     case 4: case 6: {                           /* INTIM */
         uint32_t t = tim_t();
         tim_clr = t;
+        intim_hit = 1;
         return tim_intim(t);
     }
     default:                                    /* TIMINT */
@@ -370,6 +372,69 @@ __attribute__((optimize("Os"))) void a2600_reset(void)
     cpu_reset();
 }
 
+/* `n` CPU cycles without the CPU: as many cycle()s */
+static A26_RAM void advance(uint32_t n)
+{
+    while (n) {
+        uint32_t s = (uint32_t)(LINE_CYCLES - line_cycle);
+        if (s > n) s = n;
+        line_cycle += (int)s;
+        n -= s;
+        if (line_cycle >= LINE_CYCLES)
+            end_line();
+    }
+}
+
+/* Waiting for the timer: LDA/LDX/LDY INTIM ; BNE *-3, 7 cycles a round,
+ * in plain ROM. After a round that read a value other than 0 (the
+ * instruction at pc0 just did), the rounds whose reads still find one
+ * change nothing but the time and the last read (the register, the flags,
+ * tim_clr): they are taken at once, short of the end of the frame. */
+static A26_RAM void skip_poll(uint16_t pc0)
+{
+    uint16_t pc = cpu.pc;
+    if ((uint16_t)(pc0 + 3) != pc || (cpu.p & 0x02) || lines >= MAX_LINES || tia_vsync_pending())
+        return;
+    uint16_t a = pc0 & 0x1fff, b = (uint16_t)((pc + 2) & 0x1fff);    /* b: BNE's dummy read */
+    if ((uint16_t)(a - fast_lo) >= fast_n || (uint16_t)(b - fast_lo) >= fast_n || b < a || ((a ^ b) & 0xff00))
+        return;
+#define PK(x) page[((x) >> 10) & 3][(x) & 0x3ff]
+    uint8_t op = PK(a);
+    uint16_t ad = (uint16_t)((PK(a + 1) | PK(a + 2) << 8) & 0x1fff);
+    if (PK(a + 3) != 0xd0 || PK(a + 4) != 0xfb || (op != 0xad && op != 0xae && op != 0xac) ||
+        (ad & 0x1000) || !(ad & 0x80) || !(ad & 0x200) || (ad & 5) != 4)
+        return;
+#undef PK
+    /* the next time a read gives 0 */
+    uint32_t t = tim_clr, tz;
+    uint32_t t0 = (uint32_t)(tim_v + 1) << tim_s, z0 = (uint32_t)tim_v << tim_s;
+    if (t < z0) {
+        tz = z0;
+    } else if (t < t0) {
+        return;
+    } else {
+        uint32_t d = (t - t0) & 255;
+        if (d == 255)
+            return;
+        tz = t + (255 - d);
+    }
+    uint32_t lim = tz - 1 - t;          /* reads at t + 7, t + 14, ... before tz */
+    uint32_t r = (uint32_t)(MAX_LINES - lines) * LINE_CYCLES - (uint32_t)line_cycle;
+    if (r - 1 < lim)
+        lim = r - 1;                    /* and no instruction past the frame's last line */
+    uint32_t k = lim / 7;
+    if (!k)
+        return;
+    t += 7 * k;
+    tim_clr = t;
+    uint8_t v = tim_intim(t);
+    if (op == 0xad) cpu.a = v;
+    else if (op == 0xae) cpu.x = v;
+    else cpu.y = v;
+    cpu.p = (uint8_t)((cpu.p & ~0x82) | (v & 0x80) | (v ? 0 : 0x02));
+    advance(7 * k);
+}
+
 A26_RAM int a2600_frame(a26_line_fn line, int16_t *audio, int samples)
 {
     line_out = line;
@@ -379,8 +444,10 @@ A26_RAM int a2600_frame(a26_line_fn line, int16_t *audio, int samples)
     tia_set_fire(0, a26_joy[0] & A26_FIRE);
     tia_set_fire(1, a26_joy[1] & A26_FIRE);
 
+    intim_hit = 0;
     while (lines < MAX_LINES) {
         int before = lines;
+        uint16_t pc0 = cpu.pc;
         cpu_step();
         if (tia_wsync_req) {                    /* wait for the end of the line */
             tia_wsync_req = 0;
@@ -391,6 +458,10 @@ A26_RAM int a2600_frame(a26_line_fn line, int16_t *audio, int samples)
             /* VSYNC began on the line that just ended: the frame is over,
              * the next one counts from here */
             break;
+        }
+        if (intim_hit) {
+            intim_hit = 0;
+            skip_poll(pc0);
         }
     }
 
@@ -417,7 +488,7 @@ uint8_t *a2600_ram(void)
 
 /* The CPU, compiled here: its opcode and operand fetches come from the
  * cartridge nearly always and take the short way. */
-static inline uint8_t bus_fetch(uint16_t a)
+static inline A26_RAM uint8_t bus_fetch(uint16_t a)
 {
     a &= 0x1fff;
     if ((uint16_t)(a - fast_lo) < fast_n) {
@@ -429,4 +500,17 @@ static inline uint8_t bus_fetch(uint16_t a)
 }
 
 #define CPU_FETCH(a) bus_fetch(a)
+
+/* the dummy read at pc of one-byte instructions, taken branches, RTS: in
+ * plain ROM it changes nothing but the time */
+static A26_RAM __attribute__((noinline)) void dummy_pc(void)
+{
+    uint16_t a = cpu.pc & 0x1fff;
+    if ((uint16_t)(a - fast_lo) < fast_n) {
+        cycle();
+        return;
+    }
+    cpu_read(a);
+}
+#define CPU_DUMMY_PC() dummy_pc()
 #include "cpu6502.c"

@@ -53,6 +53,7 @@
 #include "cpc_video.h"
 #include "cpc_input.h"
 #include "cpc.h"
+#include "pbc_game_opts.h"
 
 #if !PBC_MULTI
 #error "PBC CPC exists only as part of the combined firmware (pbcemu/build.sh)"
@@ -159,7 +160,8 @@ static const char *start(void)
 
 /* ---- the in-game menu (Center + A) ------------------------------------------------ */
 
-enum { M_JOY = 0, M_RESTART = CPC_JOYS, M_REWIND, M_DISK, M_CENTER_B, M_KEYS,
+/* What a menu choice does, as a number: so it can go over the link. */
+enum { M_JOY = 0, M_REWIND = CPC_JOYS, M_KEYS,     /* M_JOY + kind, M_KEYS + key: press it once */
        M_SET_CENTER_B = M_KEYS + 64,    /* + key index: the choice for Center + B */
        M_DISK_DO = M_SET_CENTER_B + 64 };   /* a disk was chosen: its name follows */
 
@@ -302,90 +304,125 @@ static const char *disk_menu(void)
     return k >= 0 && k != cur ? files[k] : NULL;
 }
 
+/* The game's settings into the launcher's table: the next start and the
+ * game's options show them too. Not in link play (fixed options there). */
+static void settings_keep(void)
+{
+    if (!pbc_link_active())
+        pbc_game_opts_set_key(game, (uint8_t)(cpc_center_b | cpc_joy_mode << 6));
+}
+
 static const char *menu_do(int sel)
 {
-    if (sel < 0)
+    if (sel < 0 || sel == M_DISK_DO)    /* the disk: menu() and menu_wait() */
         return NULL;
     if (sel < CPC_JOYS) {
         cpc_joy_mode = sel;
+        settings_keep();
         return cpc_joy_names[sel];
     }
-    switch (sel) {
-    case M_RESTART:
-        start();
-        return "Restart";
-    case M_REWIND:
-        if (game_kind == G_CDT) {
-            cpc_tape_rewind();
-            return "Tape rewound";
-        }
-        cpc_reset();
-        return "Reset";
-    case M_CENTER_B:                    /* became M_SET_CENTER_B + key in menu() */
-    case M_DISK:                        /* became M_DISK_DO in menu() */
-        return NULL;
-    default:
-        if (sel == M_DISK_DO)               /* the partner's side; the chooser's is in menu() */
+    if (sel == M_REWIND) {
+        cpc_tape_rewind();
+        return "Tape rewound";
+    }
+    if (sel >= M_SET_CENTER_B) {
+        static char s[24];
+        if (sel - M_SET_CENTER_B >= cpc_key_count)
             return NULL;
-        if (sel >= M_SET_CENTER_B) {
-            static char s[24];
-            if (sel - M_SET_CENTER_B >= cpc_key_count)
-                return NULL;
-            cpc_center_b = sel - M_SET_CENTER_B;
-            snprintf(s, sizeof s, "Center + B: %s", cpc_keys_menu[cpc_center_b].name);
-            return s;
+        cpc_center_b = sel - M_SET_CENTER_B;
+        settings_keep();
+        snprintf(s, sizeof s, "Center + B: %s", cpc_keys_menu[cpc_center_b].name);
+        return s;
+    }
+    if (sel - M_KEYS >= cpc_key_count)
+        return NULL;
+    cpc_input_press(sel - M_KEYS);
+    return cpc_keys_menu[sel - M_KEYS].name;
+}
+
+/* Settings: the joystick and the key on Center + B; a choice, or -1 */
+static int settings_menu(void (*idle)(void))
+{
+    static const char *plain[64];
+    static char joy_row[32], key_row[28];
+    for (;;) {
+        snprintf(joy_row, sizeof joy_row, "Joystick: %s", cpc_joy_names[cpc_joy_mode]);
+        snprintf(key_row, sizeof key_row, "Center + B: %s", cpc_keys_menu[cpc_center_b].name);
+        const char *rows[] = { joy_row, key_row, "Back" };
+        int r = menu_pick("Settings", rows, 3, 0, -1, NULL, idle);
+        if (r == 0) {
+            int j = menu_pick("Joystick", cpc_joy_names, CPC_JOYS, cpc_joy_mode, cpc_joy_mode, "in use", idle);
+            if (j >= 0)
+                return M_JOY + j;
+        } else if (r == 1) {
+            for (int i = 0; i < cpc_key_count && i < 64; i++)
+                plain[i] = cpc_keys_menu[i].name;
+            int k = menu_pick("Center + B", plain, cpc_key_count, cpc_center_b, cpc_center_b, "in use", idle);
+            if (k >= 0)
+                return M_SET_CENTER_B + k;
+        } else {
+            return -1;
         }
-        cpc_input_press(sel - M_KEYS);
-        return cpc_keys_menu[sel - M_KEYS].name;
     }
 }
 
+/* Center + A: swap the disk (disk games) or rewind the tape (tapes),
+ * settings, press a key once, back to the game (also A). In link play the
+ * chooser's choice goes to the partner as one number. */
 static const char *menu(void)
 {
-    static const char *rows[M_KEYS + 64];
     static const char *plain[64];
-    static char names[64][20];
-    static char joy[CPC_JOYS][28];
-    static char center_b[28];
-    int n = 0;
-    for (int j = 0; j < CPC_JOYS; j++) {
-        snprintf(joy[j], sizeof joy[j], "Joystick: %s", cpc_joy_names[j]);
-        rows[n++] = joy[j];
-    }
-    rows[n++] = "Restart";
-    rows[n++] = game_kind == G_CDT ? "Rewind tape" : "Reset";
-    rows[n++] = game_kind == G_DSK ? "Insert disk" : "(no disk)";
-    snprintf(center_b, sizeof center_b, "Center + B: %s", cpc_keys_menu[cpc_center_b].name);
-    rows[n++] = center_b;
-    for (int i = 0; i < cpc_key_count && i < 64; i++) {
-        snprintf(names[i], sizeof names[i], "Key %s", cpc_keys_menu[i].name);
-        rows[n++] = names[i];
-        plain[i] = cpc_keys_menu[i].name;
-    }
     void (*idle)(void) = pbc_link_active() ? link_idle : NULL;
-    int sel = menu_pick("Amstrad CPC", rows, n, cpc_joy_mode, cpc_joy_mode, NULL, idle);
+    enum { R_DISK, R_REWIND, R_SETTINGS, R_KEY, R_BACK };
+    int sel = -1;
     const char *disk = NULL;
-    if (sel == M_DISK) {
-        /* the drive's file system only for this; the game reads its disk
-         * from flash */
-        if (game_kind == G_DSK && fs_mount())
-            disk = disk_menu();
-        sel = disk ? M_DISK_DO : -1;
-        if (!disk)
+    for (;;) {
+        const char *rows[5];
+        int what[5], n = 0;
+        if (game_kind == G_DSK) { rows[n] = "Swap disk";   what[n++] = R_DISK; }
+        if (game_kind == G_CDT) { rows[n] = "Rewind tape"; what[n++] = R_REWIND; }
+        rows[n] = "Settings";     what[n++] = R_SETTINGS;
+        rows[n] = "Press a key";  what[n++] = R_KEY;
+        rows[n] = "Back to game"; what[n++] = R_BACK;
+        int r = menu_pick("Amstrad CPC", rows, n, 0, -1, NULL, idle);
+        if (r < 0 || what[r] == R_BACK)
+            break;
+        if (what[r] == R_DISK) {
+            /* the drive's file system only for this; the game reads its
+             * disk from flash */
+            if (fs_mount())
+                disk = disk_menu();
+            if (disk) {
+                sel = M_DISK_DO;
+                break;
+            }
             f_unmount("");
-    }
-    if (sel == M_CENTER_B) {
-        /* which key Center + B gives from now on: in link play for both */
-        int k = menu_pick("Center + B", plain, cpc_key_count, cpc_center_b, cpc_center_b,
-                          "in use", idle);
-        sel = k >= 0 ? M_SET_CENTER_B + k : -1;
+            continue;
+        }
+        if (what[r] == R_REWIND) {
+            sel = M_REWIND;
+            break;
+        }
+        if (what[r] == R_SETTINGS) {
+            sel = settings_menu(idle);
+            if (sel >= 0)
+                break;
+            continue;
+        }
+        for (int i = 0; i < cpc_key_count && i < 64; i++)
+            plain[i] = cpc_keys_menu[i].name;
+        int k = menu_pick("Press a key", plain, cpc_key_count, 0, -1, NULL, idle);
+        if (k >= 0) {
+            sel = M_KEYS + k;
+            break;
+        }
     }
     if (pbc_link_active())
         link_swap((uint16_t)(LINK_DONE | (sel + 1)));
     if (sel == M_DISK_DO) {
-        const char *s = disk_change(disk);
+        const char *st = disk_change(disk);
         f_unmount("");
-        return s;
+        return st;
     }
     return menu_do(sel);
 }
@@ -447,7 +484,7 @@ static void __attribute__((noreturn)) emulation_loop(bool show_stats)
             next_frame = time_us_64();
         }
         bool draw = !fast || (++fast_n % FAST_DRAW_EVERY) == 0;
-        cpc_frame(draw ? cpc_video_line : NULL, samples, (int)n);
+        cpc_frame(draw ? cpc_video_line_begin : NULL, cpc_video_line_commit, samples, (int)n);
         if (!fast)
             audio_pwm_push(samples, (int)n);
 
@@ -499,6 +536,7 @@ static void __attribute__((noreturn)) emulation_loop(bool show_stats)
                      (unsigned long)stat_drawn,
                      (unsigned long)(stat_emulated * 100 / 50),
                      (unsigned long)(stat_busy_us * 100 / (now - stat_t0)));
+            pbc_test_stats((unsigned long)stat_drawn, (unsigned long)(stat_emulated * 100 / 50), (unsigned long)(stat_busy_us * 100 / (now - stat_t0)));
             cpc_video_set_status(s);
             stat_t0 = now;
             stat_drawn = stat_emulated = 0;

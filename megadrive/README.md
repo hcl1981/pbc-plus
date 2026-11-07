@@ -152,7 +152,8 @@ src/ym2612_synth.c  zweite Übersetzung von core/sound/ym2612.c für Core 1
 src/audio_pwm.c   PWM-Lautsprecher per DMA, wie in ../sms
 tools/m68k_gen.py       erzeugt die 68000-Befehlsroutinen und ihre Tabelle (Musashi)
 tools/m68k_hot.py       wählt die 68000-Befehlsroutinen für den RAM aus
-tools/host/       mdhost: der Kern als PC-Programm, für Bildfehler (eigene README)
+tools/host/       mdhost: der Kern als PC-Programm, für Bildfehler (eigene README);
+                  cmp/: zwei Stände bitgenau vergleichen, Befehle zählen
 src/HDMI.h        Ersatz für den HDMI-Header, den der VDP-Kern einbindet
 src/flash_fs.*, usb_*.c, tusb_config.h, fatfs/   aus ../picoboygb
 core/             Emulatorkern aus frank-genesis
@@ -264,6 +265,45 @@ oder pro Sample gebraucht wird, liegt deshalb im RAM.
   Kern 1 42,8 % → 32,7 %. Die großen Tabellen des alten fallen weg; das
   RAM nutzen jetzt mehr 68000-Routinen (unten). Frei bleiben in der
   Einzel-Firmware 40 KB, in PBCemu 29 KB.
+- **Weniger Last auf beiden Kernen (November 2026):** alles bitgenau, am
+  PC und auf einem emulierten Cortex-M33 mit `tools/host/cmp/` gegen den
+  Stand davor geprüft (Bild, Ton beider Chips, RAM, CPU-Zustand nach jedem
+  Zeitabschnitt; Sonic 2, Streets of Rage 2, Gunstar Heroes je 6000
+  Bilder mit Eingaben, dazu Zufallstests für VDP, Zeilenzeichner,
+  Skalierer, YM2612). Befehle pro Bild im Spiel (M33-Emulation, ohne
+  Flash-Wartezeiten): Kern 1 (Zeilen, Skalierer, Ton) rund −30 %, Kern 0
+  (68000, Z80) je nach Spiel −4 bis −25 %; zusammen Sonic 2 4,2 → 3,1 Mio.,
+  SoR2 3,9 → 2,7 Mio. Auf dem Gerät noch nicht gemessen.
+  * Zeilenzeichner (`gwenesis_vdp_line_opt.S`): Ebene A, B und Fenster
+    machen die acht Pixel einer Kachelzeile als zwei Wörter mit den
+    DSP-Befehlen (USUB8/SEL/UQSUB8) statt Byte für Byte: −35 %.
+  * Skalierer (`video.c`): eine Schleife je Modus statt zweier
+    Index-Tabellen; gemittelt wird nur, wo zwei Quellpixel zusammenfallen:
+    −45 %.
+  * 68000: Warteschleifen aus `tst`/`btst`/`cmpi` auf eine RAM-Adresse und
+    `Bcc.s` zurück sowie `DBF Dn,*` laufen bis zum Ende des Zeitabschnitts
+    in einem Schritt (`m68ki_poll_skip`, erst wenn die Schleife einmal ganz
+    lief). Innerhalb eines Abschnitts ändert nichts anderes das RAM;
+    Register, Flags und Takt am Abschnittsende bleiben gleich, nur eine
+    Spur Befehl für Befehl (`MDHOST_TRACE`) sieht weniger Befehle. SoR2 im
+    Spiel: 68000 −48 %, Sonic 2 je nach Szene −10 bis −46 %.
+  * YM2612 auf Kern 1: Dämpfung je Operator nur noch bei Änderung
+    berechnet, Timer nur im CSM-Betrieb pro Sample, Tabellen für Hüllkurve,
+    halbe Sinuswelle und Exponent, Frequenzberechnung im RAM: −11 bis
+    −14 %. Die Kopie auf Kern 0 führt nur noch die Register 24–27 (Timer).
+  * Kern 1 rechnet pro Aufruf höchstens 8 Samples je Chip, gibt das Bild
+    in Stücken an den Lautsprecher und schaut auch zwischen Ton und
+    Skalierer nach einer zu zeichnenden Zeile; so sollte Kern 0 seltener
+    selbst zeichnen (V). Wie weit beide Chips beim Abarbeiten des
+    Protokolls stehen, bleibt dabei genau gleich: Das Protokoll ist nicht
+    zeitlich sortiert (der Z80 läuft nach dem 68000), ein kleinerer Schritt
+    allein hätte den Ton verändert.
+  * DMA in den VRAM ohne Neuladen der Register pro Byte; im RAM jetzt
+    auch die Zugriffe des 68000 auf VDP, I/O und Z80-Bus, `z80_run`, die
+    Palette, das Protokoll an Kern 1, die Schleife von Kern 1 und die
+    Display-Aufrufe darin.
+  * Flash −5 KB, freies RAM 17,7 → 18,6 KB (PBCemu-Bau). `-O3` für den
+    Z80 brachte nichts.
 
 ### Wie das Bild aufs Display kommt
 

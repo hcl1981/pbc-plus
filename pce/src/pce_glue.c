@@ -58,9 +58,8 @@ void pce_glue_frame_size(int *w, int *h)
  * 263 * 113 put every PSG write after about line 65 at the frame end. */
 #define PCE_CYCLES_PER_FRAME (263 * PCE.Timer.cycles_per_line)
 #define PCE_FPS_X10000       598261u            /* 59.8261 Hz */
-#define SAMPLES_MAX          400                /* 22222 / 59.8 = 372 */
+#define SAMPLES_MAX          800                /* 45454 / 59.8 = 760; <= PSG_MONO_MAX */
 
-static int16_t stereo_buf[SAMPLES_MAX * 2];
 static int16_t mono_buf[SAMPLES_MAX];
 static int audio_pos;
 static int samples_this_frame = AUDIO_RATE * 10000 / PCE_FPS_X10000;
@@ -77,12 +76,14 @@ static int advance_samples(void)
 
 void __not_in_flash_func(osd_psg_sync)(int frame_cycle)
 {
-    int target = (int)((int64_t)frame_cycle * samples_this_frame / PCE_CYCLES_PER_FRAME);  /* < 2^31 */
+    /* 32 bits: at most 263 * 455 * 800 < 2^27, one hardware division instead
+     * of __aeabi_ldivmod on every PSG write */
+    int target = frame_cycle * samples_this_frame / PCE_CYCLES_PER_FRAME;
     if (target > samples_this_frame)
         target = samples_this_frame;
     int n = target - audio_pos;
     if (n > 0) {
-        psg_update(stereo_buf + audio_pos * 2, (size_t)n, 0x3F);
+        psg_update_mono(mono_buf + audio_pos, (size_t)n);   /* = (L + R) / 2 of psg_update */
         audio_pos += n;
     }
 }
@@ -95,8 +96,6 @@ void __not_in_flash_func(osd_psg_scanline)(void)
 
 void pce_glue_audio_frame(void)
 {
-    for (int i = 0; i < audio_pos; i++)
-        mono_buf[i] = (int16_t)(((int)stereo_buf[2 * i] + stereo_buf[2 * i + 1]) / 2);
     audio_pwm_push(mono_buf, audio_pos);
     audio_pos = 0;
     samples_this_frame = advance_samples();

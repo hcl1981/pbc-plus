@@ -9,8 +9,10 @@
 
 #ifdef PBC_ON_DEVICE
 #define CPC_RAM __attribute__((section(".time_critical.cpc")))
+#define CPC_TAB(n) __attribute__((section(".data.cpc_" n)))  /* a table read by RAM code */
 #else
 #define CPC_RAM
+#define CPC_TAB(n)
 #endif
 
 #define LINE_T    256                   /* 64 us at 4 MHz */
@@ -28,6 +30,9 @@ static uint8_t ram[8][0x4000];
 
 const uint8_t *cpc_ram(void) { return &ram[0][0]; }
 static const uint8_t *rom_os, *rom_basic, *rom_amsdos;
+/* the ROMs run from RAM: the firmware's interrupt code alone runs 300
+ * times a second, and from flash every miss of the XIP cache costs */
+static uint8_t rom_ram[3][0x4000] __attribute__((aligned(4)));
 static uint8_t *wpage[4];
 
 /* gate array */
@@ -59,12 +64,12 @@ static int type_pos, type_wait;
 
 /* ---- memory ---------------------------------------------------------------------- */
 
-static const uint8_t ram_map[8][4] = {
+static uint8_t ram_map[8][4] CPC_TAB("ram_map") = {
     { 0, 1, 2, 3 }, { 0, 1, 2, 7 }, { 4, 5, 6, 7 }, { 0, 3, 2, 7 },
     { 0, 4, 2, 3 }, { 0, 5, 2, 3 }, { 0, 6, 2, 3 }, { 0, 7, 2, 3 },
 };
 
-static void map_update(void)
+static CPC_RAM void map_update(void)
 {
     for (int p = 0; p < 4; p++)
         wpage[p] = ram[ram_map[ram_cfg & 7][p]];
@@ -94,11 +99,11 @@ static inline int now(void)
     return frame_t + (int)cpu.cycles;
 }
 
-static void sound_to(int t)
+static CPC_RAM void sound_to(int t)
 {
     if (!frame_n)
         return;
-    int want = (int)((int64_t)t * frame_n / FRAME_T);
+    int want = t * frame_n / FRAME_T;   /* < 2^31; no __aeabi_ldivmod */
     if (want > frame_n) want = frame_n;
     if (want > made) {
         ay_render(&psg, mix + made, want - made);
@@ -107,7 +112,7 @@ static void sound_to(int t)
 }
 
 /* the tape runs in 3.5 MHz T-states (the TZX unit), the CPC at 4 MHz */
-static void tape_sync(int t)
+static CPC_RAM void tape_sync(int t)
 {
     if (t > tape_t) {
         if (tape_playing())
@@ -116,7 +121,7 @@ static void tape_sync(int t)
     }
 }
 
-static void set_motor(bool on)
+static CPC_RAM void set_motor(bool on)
 {
     if (on == motor)
         return;
@@ -130,18 +135,18 @@ static void set_motor(bool on)
 
 /* ---- I/O ------------------------------------------------------------------------- */
 
-static uint8_t keyboard_row(void)
+static CPC_RAM uint8_t keyboard_row(void)
 {
     int r = ppi_c & 15;
     return r < 10 ? (uint8_t)~cpc_keys[r] : 0xff;
 }
 
-static void irq(bool on)
+static CPC_RAM void irq(bool on)
 {
     z80_int(&cpu, on ? Z_TRUE : Z_FALSE);
 }
 
-static void psg_control(void)
+static CPC_RAM void psg_control(void)
 {
     switch (ppi_c >> 6) {
     case 2: sound_to(now()); ay_write_data(&psg, ppi_a); break;
@@ -150,7 +155,7 @@ static void psg_control(void)
     }
 }
 
-static zuint8 io_in(void *ctx, zuint16 port)
+static CPC_RAM zuint8 io_in(void *ctx, zuint16 port)
 {
     (void)ctx;
     uint8_t v = 0xff;
@@ -176,7 +181,7 @@ static zuint8 io_in(void *ctx, zuint16 port)
     return v;
 }
 
-static void io_out(void *ctx, zuint16 port, zuint8 v)
+static CPC_RAM void io_out(void *ctx, zuint16 port, zuint8 v)
 {
     (void)ctx;
     if ((port & 0xc000) == 0x4000) {    /* gate array */
@@ -238,7 +243,7 @@ static void io_out(void *ctx, zuint16 port, zuint8 v)
     }
 }
 
-static zuint8 inta(void *ctx, zuint16 a)
+static CPC_RAM zuint8 inta(void *ctx, zuint16 a)
 {
     (void)ctx;
     (void)a;
@@ -249,21 +254,40 @@ static zuint8 inta(void *ctx, zuint16 a)
 
 /* ---- the screen -------------------------------------------------------------------- */
 
-/* per byte and mode the eight mode-2-wide pixels' pens */
-static uint8_t pen_tab[3][256][8];
-
 /* per byte its eight pixels in the current inks and mode, rebuilt when
- * one of them changes */
-static uint8_t line_tab[256][8] __attribute__((aligned(8)));
+ * one of them changes. Each half (four pixels, one word) is one of 16
+ * words that depend only on the inks: per mode, pen_idx says which two
+ * of them a byte is, so a rebuild makes the 16 words and copies. */
+static uint32_t line_tab[256][2] __attribute__((aligned(8)));
+static uint8_t pen_idx[3][256][2];
 static int tab_mode = -1;
 
 static CPC_RAM void build_line_tab(void)
 {
     int mode = ga_mode == 3 ? 0 : ga_mode;
-    uint8_t mask = ga_mode == 3 ? 3 : 15;
-    for (int b = 0; b < 256; b++)
-        for (int i = 0; i < 8; i++)
-            line_tab[b][i] = ga_ink[pen_tab[mode][b][i] & mask];
+    uint32_t t[16];
+    for (int n = 0; n < 16; n++) {
+        uint32_t a, b;
+        switch (mode) {
+        case 0:                         /* one pen, four pixels */
+            t[n] = ga_ink[n & (ga_mode == 3 ? 3 : 15)] * 0x01010101u;
+            break;
+        case 1:                         /* two pens, two pixels each */
+            a = ga_ink[n >> 2];
+            b = ga_ink[n & 3];
+            t[n] = a * 0x0101u | b * 0x01010000u;
+            break;
+        default:                        /* four pens, one pixel each */
+            t[n] = (uint32_t)ga_ink[n >> 3 & 1] | (uint32_t)ga_ink[n >> 2 & 1] << 8 |
+                   (uint32_t)ga_ink[n >> 1 & 1] << 16 | (uint32_t)ga_ink[n & 1] << 24;
+            break;
+        }
+    }
+    const uint8_t (*ix)[2] = pen_idx[mode];
+    for (int b = 0; b < 256; b++) {
+        line_tab[b][0] = t[ix[b][0]];
+        line_tab[b][1] = t[ix[b][1]];
+    }
     tab_mode = ga_mode;
     ink_dirty = false;
 }
@@ -271,18 +295,18 @@ static CPC_RAM void build_line_tab(void)
 static void make_tables(void)
 {
     for (int b = 0; b < 256; b++) {
-        int p0 = ((b >> 7) & 1) | ((b >> 2) & 2) | ((b >> 3) & 4) | ((b << 2) & 8);
-        int p1 = ((b >> 6) & 1) | ((b >> 1) & 2) | ((b >> 2) & 4) | ((b << 3) & 8);
-        for (int k = 0; k < 4; k++) {
-            pen_tab[0][b][k] = (uint8_t)p0;
-            pen_tab[0][b][4 + k] = (uint8_t)p1;
-        }
-        for (int i = 0; i < 4; i++) {
-            int p = ((b >> (7 - i)) & 1) | (((b >> (3 - i)) & 1) << 1);
-            pen_tab[1][b][2 * i] = pen_tab[1][b][2 * i + 1] = (uint8_t)p;
-        }
-        for (int i = 0; i < 8; i++)
-            pen_tab[2][b][i] = (uint8_t)((b >> (7 - i)) & 1);
+        /* mode 0: the two pixels' pens */
+        pen_idx[0][b][0] = (uint8_t)(((b >> 7) & 1) | ((b >> 2) & 2) | ((b >> 3) & 4) | ((b << 2) & 8));
+        pen_idx[0][b][1] = (uint8_t)(((b >> 6) & 1) | ((b >> 1) & 2) | ((b >> 2) & 4) | ((b << 3) & 8));
+        /* mode 1: pixels 0,1 and 2,3 as pen * 4 + pen */
+        int p[4];
+        for (int i = 0; i < 4; i++)
+            p[i] = ((b >> (7 - i)) & 1) | (((b >> (3 - i)) & 1) << 1);
+        pen_idx[1][b][0] = (uint8_t)(p[0] << 2 | p[1]);
+        pen_idx[1][b][1] = (uint8_t)(p[2] << 2 | p[3]);
+        /* mode 2: the nibbles, leftmost pixel in bit 3 */
+        pen_idx[2][b][0] = (uint8_t)(b >> 4);
+        pen_idx[2][b][1] = (uint8_t)(b & 15);
     }
 }
 
@@ -404,11 +428,13 @@ void cpc_reset(void)
 
 void cpc_init(const uint8_t *rom, const uint8_t *amsdos)
 {
-    rom_os = rom;
-    rom_basic = rom + 0x4000;
-    rom_amsdos = amsdos;
+    memcpy(rom_ram[0], rom, 0x8000);    /* OS and BASIC */
+    memcpy(rom_ram[2], amsdos, 0x4000);
+    rom_os = rom_ram[0];
+    rom_basic = rom_ram[1];
+    rom_amsdos = rom_ram[2];
     make_tables();
-    ay_init(&psg, 1000000, 22222);
+    ay_init(&psg, 1000000, 45454);    /* = AUDIO_RATE (src/audio_pwm.h) */
     cpc_reset();
 }
 
@@ -576,18 +602,20 @@ bool cpc_load_snapshot(const uint8_t *d, uint32_t n)
 
 /* ---- the frame ------------------------------------------------------------------------ */
 
-/* run up to T-state t: every instruction takes whole microseconds */
+/* run up to T-state t: every instruction takes whole microseconds. The
+ * Z80 rounds them itself (Z80_PBC_ROUND4) and runs the stretch in one
+ * call; before, one call per instruction cost about as much as the
+ * instruction, and a HALT went 4 T-states per call. */
 static CPC_RAM void run_to(int t)
 {
     while (frame_t < t) {
-        int c = (int)z80_run(&cpu, 1);
+        int c = (int)z80_run(&cpu, (zusize)(t - frame_t));
         frame_t += c > 0 ? (c + 3) & ~3 : 4;
     }
 }
 
-CPC_RAM void cpc_frame(cpc_line_fn line, int16_t *audio, int n)
+CPC_RAM void cpc_frame(cpc_line_begin_fn begin, cpc_line_commit_fn commit, int16_t *audio, int n)
 {
-    static uint8_t px[CPC_WIDTH] __attribute__((aligned(8)));
     if (n > AUDIO_MAX_N)
         n = AUDIO_MAX_N;
     frame_n = n;
@@ -599,9 +627,12 @@ CPC_RAM void cpc_frame(cpc_line_fn line, int16_t *audio, int n)
     for (int l = 0; l < LINES; l++) {
         run_to((l + 1) * LINE_T);
         int p = since_vsync - 32;
-        if (line && p >= 0 && p < CPC_SHOWN) {
-            draw_line(px);
-            line(p, px);
+        if (begin && p >= 0 && p < CPC_SHOWN) {
+            uint8_t *px = begin(p);     /* straight into the video ring */
+            if (px) {
+                draw_line(px);
+                commit(p);
+            }
         }
         end_line();
     }

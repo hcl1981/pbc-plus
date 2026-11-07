@@ -1,9 +1,9 @@
 /* msx_video.h -- MSX scanlines -> ST7789, sent by core 1.
  *
- * There is no frame buffer. The core hands over each of the 192 lines as
- * TMS9918 colour indices (256 wide); core 0 turns it into 240 panel words
- * at once and puts it into a small ring; core 1 sends the lines from there
- * as they come, inside one window per frame that line 0 opens. Core 0 only
+ * There is no frame buffer. The core draws each of the 192 lines as
+ * TMS9918 colour indices (MSX2: RGB565, 256 wide) straight into a small
+ * ring; core 1 turns them into 240 panel words and sends them as they
+ * come, inside one window per frame that line 0 opens. Core 0 only
  * waits when the ring is full, so the panel always shows whole lines of
  * the newest frame.
  *
@@ -23,11 +23,15 @@ enum { MSX_MODE_FIT, MSX_MODE_CROP, MSX_MODES };
 /* Core 0, before core 1 starts. */
 void msx_video_init(unsigned mode);
 
-/* Core 0: a finished line (msx1_frame's callback). */
-void msx_video_line(int y, const uint8_t *pixels, int backdrop);
-/* Core 0: an MSX2 line (msx_line565), 256 RGB565 pixels of `lines` */
+/* Core 0, msx1_frame's callbacks: where line y goes (a ring slot, NULL if
+ * not shown now), and that it is drawn there. */
 #include <stdint.h>
-void msx_video_line565(int y, int lines, const uint16_t *pixels);
+uint8_t *msx_video_line_begin(int y);
+void msx_video_line_commit(int y, int backdrop);
+/* Core 0: the same for MSX2 lines (msx_line565_begin/commit), 256 RGB565
+ * pixels of `lines` */
+uint16_t *msx_video_line565_begin(int y, int lines);
+void msx_video_line565_commit(int y, int lines);
 
 /* Core 1 entry point. */
 void msx_video_core1_main(void);

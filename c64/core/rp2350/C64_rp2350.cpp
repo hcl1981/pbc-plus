@@ -604,7 +604,7 @@ void c64_nmi(void)
  *  Run one frame of emulation
  *  Returns true when frame is complete
  */
-bool c64_run_frame(void)
+C64_HOT(c64_run_frame) bool c64_run_frame(void)
 {
     if (!TheC64) {
         return false;

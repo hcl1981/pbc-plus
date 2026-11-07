@@ -361,7 +361,9 @@ inline unsigned long reorder( unsigned long n )
 	return ((n << 14) | n);
 }
 
-inline void Nes_Ppu_Impl::update_tile( int index )
+// PBC: in RAM, it is called from update_tiles() there (CHR-RAM writes);
+// from flash it went through a veneer and competed for the XIP cache
+inline NES_RAM_INLINE(update_tile) void Nes_Ppu_Impl::update_tile( int index )
 {
 	long at = (long) index * bytes_per_tile;
 	const uint8_t* in = at < chr_rom_bytes ? chr_data + at : chr_ram + (at - chr_rom_bytes);
@@ -384,6 +386,17 @@ inline void Nes_Ppu_Impl::update_tile( int index )
 				((reorder( in [9] ) & bit_mask) << 3);
 		in += 2;
 		
+#if !defined (MSB_FIRST) && defined (__GNUC__)
+		// PBC: the same bytes in two stores. The flipped version is c with
+		// its nibbles in reverse order; stored big-endian, that is c with
+		// the two nibbles of each byte swapped, stored little-endian.
+		uint32_t be = __builtin_bswap32( (uint32_t) c );
+		uint32_t fl = (((uint32_t) c >> 4) & 0x0F0F0F0F) | (((uint32_t) c & 0x0F0F0F0F) << 4);
+		memcpy( out, &be, 4 );
+		memcpy( flipped_out, &fl, 4 );
+		out += 4;
+		flipped_out += 4;
+#else
 		SET_BE32( out, c );
 		out += 4;
 		
@@ -398,6 +411,7 @@ inline void Nes_Ppu_Impl::update_tile( int index )
 				((c & 0x000f) << 28);
 		SET_BE32( flipped_out, c );
 		flipped_out += 4;
+#endif
 	}
 }
 

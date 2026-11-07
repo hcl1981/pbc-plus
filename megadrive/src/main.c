@@ -375,18 +375,29 @@ bool flash_fs_park(bool on)
     return true;
 }
 
-static void core1_main(void)
+static inline __attribute__((always_inline)) void core1_draw_line(void)
+{
+    if (vdp_job_take()) {
+        render_line(vdp_job_line);
+        __dmb();
+        vdp_job_done = true;
+    }
+}
+
+/* In RAM: it spins all the time, and from flash it would compete with
+ * core 0 for the flash cache. */
+static void __no_inline_not_in_flash_func(core1_main)(void)
 {
     core1_running = true;
     for (;;) {
         if (park_req)
             core1_park();
-        if (vdp_job_take()) {
-            render_line(vdp_job_line);
-            __dmb();
-            vdp_job_done = true;
-        }
+        /* A line to draw is looked for between the other two steps as
+         * well: core 0 draws it itself if core 1 has not taken it by the
+         * end of the next line, and each step takes a while. */
+        core1_draw_line();
         video_service();
+        core1_draw_line();
         ym_core1_service();
     }
 }
@@ -644,6 +655,7 @@ static void __attribute__((noreturn)) emulation_loop(void)
                      (unsigned long)(stat_z80_us * 100ull / span),
                      (unsigned long)(stat_vdp_us * 100ull / span),
                      (unsigned long)((ym_us - stat_ym_us0) * 100ull / span));
+            pbc_test_stats((unsigned long)stat_drawn, (unsigned long)(stat_emulated * 100 / full), (unsigned long)(stat_busy_us * 100 / span));
             stat_ym_us0 = ym_us;
             video_set_status(s);
             stat_t0 = now;

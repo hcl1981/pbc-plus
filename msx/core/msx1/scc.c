@@ -27,14 +27,14 @@ void scc_init(scc_t *s, uint32_t clock, uint32_t rate)
     rate_hz = rate;
 }
 
-static void set_inc(scc_t *s, int c)
+static SCC_RAM void set_inc(scc_t *s, int c)
 {
     uint32_t p = s->period[c];
     /* very short periods are above hearing (and the chip is silent below 9) */
     s->inc[c] = p < 9 ? 0 : (uint32_t)(((uint64_t)clock_hz << 27) / ((uint64_t)(p + 1) * rate_hz));
 }
 
-void scc_write(scc_t *s, uint16_t addr, uint8_t v)
+SCC_RAM void scc_write(scc_t *s, uint16_t addr, uint8_t v)
 {
     int o = addr & 0xff;
     s->used = 1;
@@ -59,7 +59,7 @@ void scc_write(scc_t *s, uint16_t addr, uint8_t v)
     }
 }
 
-uint8_t scc_read(scc_t *s, uint16_t addr)
+SCC_RAM uint8_t scc_read(scc_t *s, uint16_t addr)
 {
     int o = addr & 0xff;
     if (o < 0x80)

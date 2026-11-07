@@ -11,7 +11,10 @@ uint8 *linebuf;
 //uint16 pixel[PALETTE_SIZE];
 
 
-#define ALIGN_DWORD 1 // esp doesn't support unaligned word writes
+/* PBC: the Cortex-M33 reads and writes words at any address (LDR/STR, not
+ * LDRD/STRD), so the byte-wise path for unaligned ones is not needed; see
+ * read_dword/write_dword below. */
+// #define ALIGN_DWORD 1 // esp doesn't support unaligned word writes
 
 // int16 cachePtr[512 * 4];            //(tile+attr<<9) -> cache tile store index (i<<6); -1 if not cached
 // uint8 cacheStore[CACHEDTILES * 64]; // Tile store
@@ -164,6 +167,15 @@ uint8 *in_ram(getCache)(int tile, int attr)
     return &cacheStore[i << 6];
 }
 
+/* PBC: the cache hit of getCache() inline, the same test and result */
+static inline uint8 *getCacheFast(int tile, int attr)
+{
+    int16 p = cachePtr[tile + (attr << 9)];
+    if (p != -1)
+        return &cacheStore[p];
+    return getCache(tile, attr);
+}
+
 /* Macros to access memory 32-bits at a time (from MAME's drawgfx.c) */
 
 #ifdef ALIGN_DWORD
@@ -210,8 +222,18 @@ static __inline__ void in_ram(write_dword)(void *address, uint32 data)
 }
 
 #else
-#define read_dword(address) *(uint32 *)address
-#define write_dword(address, data) *(uint32 *)address = data
+/* PBC: through memcpy on bytes, so that GCC uses LDR/STR, which may be
+ * unaligned, and never pairs two into LDRD/STRD, which may not */
+static inline uint32 read_dword(const void *address)
+{
+    uint32 v;
+    memcpy(&v, (const uint8 *)address, 4);
+    return v;
+}
+static inline void write_dword(void *address, uint32 data)
+{
+    memcpy((uint8 *)address, &data, 4);
+}
 #endif
 
 /****************************************************************************/
@@ -441,9 +463,9 @@ void in_ram(render_bg_sms)(int line)
 #endif
         a = (attr >> 7) & 0x30;
 
+        ctp = getCacheFast((attr & 0x1ff), (attr >> 9) & 3);    /* PBC: once */
         for (x = shift; x < 8; x += 1)
         {
-            ctp = getCache((attr & 0x1ff), (attr >> 9) & 3);
             c = ctp[(v_row) | (x)];
             linebuf[(0 - shift) + (x)] = ((c) | (a));
         }
@@ -472,7 +494,7 @@ void in_ram(render_bg_sms)(int line)
         atex_mask = atex[(attr >> 11) & 3];
 
         /* Point to a line of pattern data in cache */
-        ctp = getCache((attr & 0x1ff), (attr >> 9) & 3);
+        ctp = getCacheFast((attr & 0x1ff), (attr >> 9) & 3);
         cache_ptr = (uint32 *)&ctp[(v_row)];
 
         /* Copy the left half, adding the attribute bits in */
@@ -496,17 +518,17 @@ void in_ram(render_bg_sms)(int line)
 #endif
         a = (attr >> 7) & 0x30;
 
+        ctp = getCacheFast((attr & 0x1ff), (attr >> 9) & 3);    /* PBC: once */
         for (x = 0; x < shift; x += 1)
         {
-            ctp = getCache((attr & 0x1ff), (attr >> 9) & 3);
             c = ctp[(v_row) | (x)];
             p[x] = ((c) | (a));
         }
     }
 }
 
-/* Draw the Game Gear background */
-void render_bg_gg(int line)
+/* Draw the Game Gear background (PBC: in RAM, it ran from flash) */
+void in_ram(render_bg_gg)(int line)
 {
     /* The name table is 28 rows tall, or 32 in the 224-line mode */
     int v_line = line + vdp.reg[9];
@@ -538,7 +560,7 @@ void render_bg_gg(int line)
         atex_mask = atex[(attr >> 11) & 3];
 
         /* Point to a line of pattern data in cache */
-        ctp = getCache((attr & 0x1ff), (attr >> 9) & 3);
+        ctp = getCacheFast((attr & 0x1ff), (attr >> 9) & 3);
         cache_ptr = (uint32 *)&ctp[(v_row)];
 
         /* Copy the left half, adding the attribute bits in */
@@ -650,7 +672,7 @@ void in_ram(render_obj)(int line)
                  * the zoomed line and the row from r, so the lower half read
                  * the wrong tile and 8x16 read past the 64-byte tile */
                 int r = (line - yp) >> 1;
-                ctp = getCache((n & 0x1ff) + (r >> 3), (n >> 9) & 3);
+                ctp = getCacheFast((n & 0x1ff) + (r >> 3), (n >> 9) & 3);
                 uint8 *cache_ptr = (uint8 *)&ctp[(r & 7) << 3];
 
                 /* Draw sprite line */
@@ -677,7 +699,7 @@ void in_ram(render_obj)(int line)
             else /* Regular size sprite (8x8 / 8x16) */
             {
                 int x;
-                ctp = getCache((n & 0x1ff) + ((line - yp) >> 3), (n >> 9) & 3);
+                ctp = getCacheFast((n & 0x1ff) + ((line - yp) >> 3), (n >> 9) & 3);
                 uint8 *cache_ptr = (uint8 *)&ctp[((line - yp) << 3) & 0x38];
 
                 /* Draw sprite line */

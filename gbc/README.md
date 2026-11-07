@@ -105,17 +105,64 @@ der Starter ein, in der Einzel-Firmware `SHOW_FPS=1`.
 
 ## Ton
 
-Ein DMA-Kanal, getaktet von einem DMA-Timer, holt alle 45 µs einen Sample
+Ein DMA-Kanal, getaktet von einem DMA-Timer, holt alle 22 µs einen Sample
 aus einem Ringpuffer und schreibt ihn in den PWM-Wert von GP15 – ohne
 Interrupt pro Sample (vorher feuerte ein Timer 22 222-mal pro Sekunde und
 lief dabei teils aus dem Flash). minigb_apu rechnet mit genau dieser Rate
-(22 222 Hz, 372 Samples pro Game-Boy-Bild); seine Routinen pro Sample liegen
+(45 454 Hz, 761 Samples pro Game-Boy-Bild; bis November 2026 22 222 Hz,
+dumpfer); seine Routinen pro Sample liegen
 im RAM.
 
-Weitere Kleinigkeiten fürs Tempo: Die Farbpalette von Game-Boy-Color-Spielen
-wird pro Zeile nur noch dort umgerechnet, wo sich ein Eintrag geändert hat,
-und `gb_run_frame()` bleibt als eigene Funktion im RAM, statt in die
-Hauptschleife im Flash eingebaut zu werden.
+Weitere Kleinigkeiten fürs Tempo: `gb_run_frame()` bleibt als eigene
+Funktion im RAM, statt in die Hauptschleife im Flash eingebaut zu werden.
+
+### Tempo (Kern, November 2026)
+
+Ziel: Game-Boy-Color-Spiele bei 200 MHz in vollem Tempo. Alles ohne
+Änderung an Bild oder Ton:
+
+* **Befehlsschleife in einer Funktion:** `__gb_step_cpu()` ist in
+  `gb_run_frame()` eingebaut – kein Aufruf samt Register-Sichern pro Befehl.
+* **Speicherzugriffe über eine Seitentabelle:** je 4-KB-Seite ein Zeiger
+  zum Lesen und einer zum Schreiben (ROM-Bank 0 aus der RAM-Kopie, die
+  gewählte ROM-Bank direkt im Flash, VRAM- und WRAM-Bänke, Echo). Opcode-
+  und Operandenlesen gehen ohne Funktionsaufruf; nur Cartridge-RAM,
+  OAM/IO/HRAM und Bänke hinter dem ROM-Ende nehmen den alten Weg. Die
+  Tabelle wird nach MBC-Schreibzugriffen, FF4F, FF50, FF70 und beim Reset
+  neu gesetzt; `main.c` übergibt Bank 0 und ROM mit `gb_set_rom_map()`.
+* **Timer/LCD-Nachlauf nur bei Bedarf:** Nach jedem Befehl zählte der Kern
+  DIV, Serial, TIMA und LCD einzeln hoch. Jetzt werden die Takte nur
+  gesammelt, bis das nächste Ereignis fällig wäre (DIV- oder TIMA-Schritt,
+  Serial, LCD-Moduswechsel, im doppelten Takt halb so schnell). Vor
+  IO-Schreibzugriffen, HALT und dem Taktwechsel wird nachgezählt.
+* **Hintergrund und Fenster kachelweise:** 8 Pixel auf einmal aus den
+  beiden Bitebenen (Tabellen, auch für gespiegelte Kacheln), DMG-Palette
+  direkt auf den Bitebenen; kein `memset` aus dem Flash pro Zeile mehr.
+* **HDMA/GDMA** kopiert 16-Byte-Blöcke direkt über die Seitentabelle.
+* **CGB-Palette:** der Kern meldet Änderungen (FF69/FF6B), `main.c` rechnet
+  die 64 Farben nur dann neu um, statt jede Zeile alle zu vergleichen.
+* **minigb_apu:** In der Schleife pro Sample stand eine Division, die
+  nachweislich immer 0 ergab; ohne sie bleibt nur das Weiterzählen der
+  Wellenform (gleiche Schritte, gleicher Zählerstand).
+* Kleinkram: `pbc_cable_poll()` (im Flash) pro Zeile nur noch, wenn das
+  Linkkabel eingeschaltet ist; das Cartridge-RAM merkt sich Änderungen nur
+  noch als Merker, die Zeit dazu nimmt `save_poll()` einmal pro Bild (statt
+  zweimal `time_us_64()` pro geändertem Byte).
+* Undefiniertes Verhalten entschärft: MBC3-RAM-Bank 0x0D–0xFF las/schrieb
+  hinter `cart_rtc[]` in den Emulatorzustand (jetzt 0xFF bzw. ignoriert);
+  nach `gb_error()` bei ungültigem Opcode bzw. HALT mit IE=0 läuft der Kern
+  definiert weiter (wie NOP) statt in `__builtin_unreachable()`.
+
+**Geprüft am PC** (Testprogramm im Scratch-Verzeichnis, alter und neuer Kern
+mit denselben Einstellungen, Integer-Breiten wie auf dem RP2350): je 6000
+Bilder Zelda DX, Metal Gear Solid (GBC), Pokémon Rot, Kirby, Super Mario
+Land, Tetris, ohne Eingabe (Intro) und mit zwei zufälligen Tastenfolgen, dazu
+sieben erzeugte Test-ROMs mit zufälligen Zugriffen auf Timer, LCD, Serial,
+Interrupts, HALT, doppelten Takt, Bänke und HDMA/GDMA, auch mit
+Serial-Callbacks. Pro Zeile Pixel, Palette und fertige Panelfarben, pro Bild
+die Samples, dazu RAM und Zustand: alles bitgleich; außerdem 2 Mio.
+zufällige Zeilen direkt durch `__gb_draw_line()`. Am PC ist `gb_run_frame()`
+damit rund ein Viertel schneller; auf dem Gerät **noch nicht gemessen**.
 
 ## Spielstände
 
@@ -185,7 +232,7 @@ src/flash_fs.c    Flash-Laufwerk; überspringt unveränderte Sektoren,
                   parkt Kern 1 beim Schreiben
 src/input.c, menu.c, rom_store.c, settings.c, display.c   aus ../nes
 src/usb_*.c, tusb_config.h, fatfs/                         aus ../picoboygb
-core/peanut_gb.h  Peanut-GB mit GBC-Erweiterung, aus pico-peanutGB; geändert: Kopfbytes für ROM-/RAM-Größe werden geprüft statt hinter Tabellen zu lesen, 64-KB-Speicherstände (0x05) erkannt
+core/peanut_gb.h  Peanut-GB mit GBC-Erweiterung, aus pico-peanutGB; geändert: Kopfbytes für ROM-/RAM-Größe werden geprüft statt hinter Tabellen zu lesen, 64-KB-Speicherstände (0x05) erkannt, Tempo (siehe „Tempo“)
 core/minigb_apu.* aus ../picoboygb
 ```
 
@@ -194,7 +241,10 @@ core/minigb_apu.* aus ../picoboygb
 * **Nicht auf Hardware geprüft.**
 * Echtzeituhr (MBC3) läuft beim Ausschalten nicht weiter.
 * Game-Boy-Color-Spiele im doppelten Takt brauchen mehr Rechenzeit; laut
-  pico-peanutGB haben manche Farbspiele Bild- oder Tonfehler.
+  pico-peanutGB haben manche Farbspiele Bild- oder Tonfehler. Zelda: Link's
+  Awakening DX im Intro (im Verbund gemessen, vor den Tempo-Änderungen vom
+  November 2026): bei 200 MHz gut 80 % Tempo, bei 250 MHz volle 60 fps,
+  Kern 0 zu 96 % ausgelastet.
 * Keine Paletten-Auswahl für klassische Spiele (dafür gibt es `../picoboygb`).
 
 ## Lizenzen

@@ -7,8 +7,10 @@
 
 #ifdef PBC_ON_DEVICE
 #define ZX_RAM __attribute__((section(".time_critical.zx")))
+#define ZX_TAB(n) __attribute__((section(".data.zx_" n)))    /* a table read by RAM code */
 #else
 #define ZX_RAM
+#define ZX_TAB(n)
 #endif
 
 #define AUDIO_MAX_N 1024
@@ -26,6 +28,7 @@ static int t_line, n_lines, t_frame, first_line, int_len, float_base;
 
 static uint8_t ram[8][0x4000];          /* 48K: banks 5, 2, 0 */
 static uint8_t basic_rom[0x4000];       /* the 48 BASIC ROM, LD-BYTES trapped */
+static uint8_t editor_rom[0x4000];      /* the 128's editor ROM: from RAM, not flash */
 static const uint8_t *rom48, *rom_editor, *rom_basic128;
 static uint8_t *wpage[4];               /* NULL: ROM */
 static uint8_t port7ffd;
@@ -49,7 +52,7 @@ static int auto_frame = -1;
 
 /* ---- memory ------------------------------------------------------------------- */
 
-static void map_update(void)
+static ZX_RAM void map_update(void)
 {
     const uint8_t *rom = (model == ZX_128K && !(port7ffd & 0x10)) ? rom_editor : basic_rom;
     int top = model == ZX_128K ? (port7ffd & 7) : 0;
@@ -86,11 +89,11 @@ static inline int now(void)
     return frame_t + (int)cpu.cycles;
 }
 
-static void sound_to(int t)
+static ZX_RAM void sound_to(int t)
 {
     if (model != ZX_128K || !frame_n)
         return;
-    int want = (int)((int64_t)t * frame_n / t_frame);
+    int want = t * frame_n / t_frame;   /* < 2^31: t_frame 70908, frame_n <= 1024 */
     if (want > frame_n) want = frame_n;
     if (want > made) {
         ay_render(&psg, mix + made, want - made);
@@ -98,7 +101,7 @@ static void sound_to(int t)
     }
 }
 
-static void beep(uint8_t level)
+static ZX_RAM void beep(uint8_t level)
 {
     if (level == beep_level)
         return;
@@ -110,7 +113,7 @@ static void beep(uint8_t level)
     }
 }
 
-static void tape_sync(int t)
+static ZX_RAM void tape_sync(int t)
 {
     if (t > tape_t) {
         if (tape_playing())
@@ -122,7 +125,7 @@ static void tape_sync(int t)
 /* ---- I/O ---------------------------------------------------------------------- */
 
 /* what the ULA is reading from the screen right now (FFh outside it) */
-static uint8_t floating_bus(void)
+static ZX_RAM uint8_t floating_bus(void)
 {
     int d = now() - float_base;
     if (d < 0)
@@ -141,7 +144,7 @@ static uint8_t floating_bus(void)
     return scr[((y & 0xc0) << 5) | ((y & 7) << 8) | ((y & 0x38) << 2) | col];
 }
 
-static zuint8 io_in(void *ctx, zuint16 port)
+static ZX_RAM zuint8 io_in(void *ctx, zuint16 port)
 {
     (void)ctx;
     if (!(port & 1)) {                  /* ULA */
@@ -161,7 +164,7 @@ static zuint8 io_in(void *ctx, zuint16 port)
     return floating_bus();
 }
 
-static void io_out(void *ctx, zuint16 port, zuint8 v)
+static ZX_RAM void io_out(void *ctx, zuint16 port, zuint8 v)
 {
     (void)ctx;
     if (!(port & 1)) {
@@ -185,7 +188,7 @@ static void io_out(void *ctx, zuint16 port, zuint8 v)
     }
 }
 
-static zuint8 inta(void *ctx, zuint16 a)
+static ZX_RAM zuint8 inta(void *ctx, zuint16 a)
 {
     (void)ctx;
     (void)a;
@@ -264,7 +267,7 @@ static void set_model(int m)
     t_frame = t_line * n_lines;
     basic_rom[0x0556] = 0x64;           /* the trap, see above */
     /* AY at 1.7734 MHz (128K) */
-    ay_init(&psg, 1773400, 22222);
+    ay_init(&psg, 1773400, 45454);    /* = AUDIO_RATE (src/audio_pwm.h) */
 }
 
 void zx_reset(void)
@@ -296,7 +299,8 @@ void zx_reset(void)
 void zx_init(int m, const uint8_t *r48, const uint8_t *r128_0, const uint8_t *r128_1)
 {
     rom48 = r48;
-    rom_editor = r128_0;
+    memcpy(editor_rom, r128_0, sizeof editor_rom);
+    rom_editor = editor_rom;
     rom_basic128 = r128_1;
     set_model(m);
     zx_reset();
@@ -569,7 +573,13 @@ static ZX_RAM void run_to(int t)
     }
 }
 
-static ZX_RAM void draw_line(int ul, uint8_t *px)
+/* 4 pixels of a bitmap nibble (bit 3 the left one) as byte masks */
+static uint32_t nib_mask[16] ZX_TAB("nib") = {
+    0x00000000, 0xff000000, 0x00ff0000, 0xffff0000, 0x0000ff00, 0xff00ff00, 0x00ffff00, 0xffffff00,
+    0x000000ff, 0xff0000ff, 0x00ff00ff, 0xffff00ff, 0x0000ffff, 0xff00ffff, 0x00ffffff, 0xffffffff,
+};
+
+static ZX_RAM void draw_line(int ul, uint8_t *px)       /* px word-aligned */
 {
     int y = ul - first_line;
     if (y < 0 || y >= 192) {
@@ -587,9 +597,11 @@ static ZX_RAM void draw_line(int ul, uint8_t *px)
         if ((a & 0x80) && flash) {
             uint8_t s = ink; ink = paper; paper = s;
         }
-        uint8_t *o = px + c * 8;
-        for (int i = 0; i < 8; i++)
-            o[i] = (b & (0x80 >> i)) ? ink : paper;
+        /* 8 pixels in two words: paper, ink where the bit is set */
+        uint32_t p = paper * 0x01010101u, x = (uint32_t)(ink ^ paper) * 0x01010101u;
+        uint32_t *o = (uint32_t *)(px + c * 8);
+        o[0] = p ^ (x & nib_mask[b >> 4]);
+        o[1] = p ^ (x & nib_mask[b & 15]);
     }
 }
 
@@ -599,25 +611,28 @@ static void beeper_render(void)
     static const int amp[4] = { 0, 1200, 9000, 10200 };    /* MIC, EAR */
     int ci = 0;
     uint8_t level = beep_start;
+    /* 32 bits are enough (t_frame * frame_n < 2^27, acc < 10200 * 160), and
+     * b of one sample is a of the next: one hardware division per sample
+     * instead of three of __aeabi_ldivmod */
+    int b = 0;
     for (int s = 0; s < frame_n; s++) {
-        int a = (int)((int64_t)s * t_frame / frame_n);
-        int b = (int)((int64_t)(s + 1) * t_frame / frame_n);
-        int64_t acc = 0;
+        int a = b;
+        b = (s + 1) * t_frame / frame_n;
+        int32_t acc = 0;
         int t = a;
         while (ci < beep_n && beep_t[ci] < b) {
             int c = beep_t[ci] < a ? a : beep_t[ci];
-            acc += (int64_t)amp[level] * (c - t);
+            acc += amp[level] * (c - t);
             t = c;
             level = beep_v[ci++];
         }
-        acc += (int64_t)amp[level] * (b - t);
-        mix[s] += (int32_t)(acc / (b - a));
+        acc += amp[level] * (b - t);
+        mix[s] += acc / (b - a);
     }
 }
 
-ZX_RAM void zx_frame(zx_line_fn line, int16_t *audio, int n)
+ZX_RAM void zx_frame(zx_line_begin_fn begin, zx_line_commit_fn commit, int16_t *audio, int n)
 {
-    static uint8_t px[ZX_WIDTH];
     if (n > AUDIO_MAX_N)
         n = AUDIO_MAX_N;
     frame_n = n;
@@ -639,9 +654,12 @@ ZX_RAM void zx_frame(zx_line_fn line, int16_t *audio, int n)
     for (int ul = 0; ul < n_lines; ul++) {
         run_to((ul + 1) * t_line);
         int p = ul - top;
-        if (line && p >= 0 && p < ZX_SHOWN) {
-            draw_line(ul, px);
-            line(p, px);
+        if (begin && p >= 0 && p < ZX_SHOWN) {
+            uint8_t *px = begin(p);     /* straight into the video ring */
+            if (px) {
+                draw_line(ul, px);
+                commit(p);
+            }
         }
     }
     tape_sync(t_frame);

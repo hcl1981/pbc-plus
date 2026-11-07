@@ -106,13 +106,16 @@ auf CB2, CA2/CB2), die Analogtechnik, die den Strahl führt (DAC an Port A,
 Multiplexer an Port B, X/Y-Integratoren mit RAMP, ZERO und BLANK,
 Helligkeit, der Joystick-Vergleicher), und der AY-3-8910 hinter Port A (aus
 `../msx`). Der Strahl wird Takt für Takt verfolgt (ruhige Abschnitte, in
-denen kein Timer abläuft und der Strahl geradeaus läuft, in einem Schritt);
-jede beleuchtete Strecke wird eine Linie. Kern 0 rechnet ein Bild (30000
+denen kein Timer abläuft und der Strahl geradeaus läuft, in einem Schritt,
+ebenso Läufe gleicher Bits im Schieberegister und die Warteschleifen des
+System-ROMs auf einen Timer, `BITA/BITB <$0D; BEQ`, bis kurz vor dessen
+Ablauf); jede beleuchtete Strecke wird eine Linie. Kern 0 rechnet ein Bild (30000
 Takte, 50 Hz) und gibt die Linien an Kern 1, der sie in ein Helligkeitsbild
 über das ganze Display zeichnet (240 × 280, hochkant wie der Vectrex), das
 je Bild auf die Hälfte nachglüht, mit leichtem Leuchten um den Strahl. Zum
-Display gehen nur Zeilen mit Licht und die, die gerade dunkel wurden.
-Modul und System-ROM liegen im RAM. Das System-ROM mit Mine Storm ist
+Display gehen nur Zeilen mit Licht und die, die gerade dunkel wurden;
+schwarze Zeilen lässt schon das Nachglühen aus. Modul und System-ROM liegen
+als ein 64-KB-Adressraum im RAM. Das System-ROM mit Mine Storm ist
 eingebaut wie bei vecx (`LICENSE.vectrex`).
 
 | PicoBoy | Vectrex |
@@ -151,11 +154,11 @@ Vorgaben.
 | Datei | Aufgabe |
 |---|---|
 | `core/cpu6502.c` | 6507: jeder Buszyklus ist ein Zugriff, auch die Blindzugriffe, damit die TIA die Schreibzugriffe am richtigen Takt sieht |
-| `core/a2600.c` | Maschine: Adressdekodierung, RIOT (Timer wird erst beim Lesen ausgerechnet), Bankumschaltung, Bildablauf (76 CPU-Takte pro Zeile, WSYNC springt ans Zeilenende); der CPU-Kern wird hier mitübersetzt, damit Befehle aus dem ROM ohne Umweg gelesen werden |
-| `core/a7800.c` | Atari 7800: MARIA, RIOT, Speicher, Bankumschaltung; der 6502 ein zweites Mal unter eigenen Namen |
+| `core/a2600.c` | Maschine: Adressdekodierung, RIOT (Timer wird erst beim Lesen ausgerechnet), Bankumschaltung, Bildablauf (76 CPU-Takte pro Zeile, WSYNC springt ans Zeilenende); der CPU-Kern wird hier mitübersetzt, damit Befehle aus dem ROM ohne Umweg gelesen werden. Warteschleifen auf den Timer (`LDA/LDX/LDY INTIM; BNE`) überspringt er bis kurz vor die Null, mit demselben Ergebnis |
+| `core/a7800.c` | Atari 7800: MARIA, RIOT, Speicher, Bankumschaltung; der 6502 ein zweites Mal unter eigenen Namen. Grafikbytes 0 zeichnen nichts und werden übersprungen (außer mit Kangaroo und in 320D) |
 | `core/pokey.c` | POKEY-Ton für 7800-Module, die einen haben |
-| `core/tia.c` | TIA: Spielfeld, zwei Spieler, zwei Raketen, Ball, Kollisionen, HMOVE, vertikale Verzögerung; das Bild wird bis zum aktuellen Takt nachgezeichnet, bevor ein Register sich ändert. Zwei Tonkanäle mit allen AUDC-Formen |
-| `src/main.c` | Start, Spielschleife, Link |
+| `core/tia.c` | TIA: Spielfeld, zwei Spieler, zwei Raketen, Ball, Kollisionen, HMOVE, vertikale Verzögerung; das Bild wird bis zum aktuellen Takt nachgezeichnet, bevor ein Register sich ändert, je vier Pixel ohne Objekt in einem Schritt; HMOVE baut nur bewegte Objekte neu. Zwei Tonkanäle mit allen AUDC-Formen |
+| `src/main.c` | Start, Spielschleife, Link; 2600- und 7800-Module bis 188 KB kommen in die dann freien Puffer des Vectrex (RAM statt Flash) |
 | `src/a26_video.c` | jede fertige Zeile geht als Farbindizes über einen Ring (halbes Bild) an Kern 1; der rechnet 160 → 240 Pixel (a, Mittelwert, b) und schickt sie ans Display. Gezeigt werden die Zeilen 26 bis 265 |
 | `src/rom_store.c` | Modul in den Flash |
 | `src/tilt.c` | Beschleunigungssensor über I2C0 (GP20/21), Drehung in der Bildebene für die Paddles |

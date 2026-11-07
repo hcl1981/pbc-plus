@@ -57,11 +57,14 @@ void zx_autoload(void);
 void zx_tape_rewind(void);
 bool zx_tape_busy(void);                /* real-time loading going on */
 
-/* One frame (50 Hz). line(y, px) for each of the ZX_SHOWN lines: ZX_WIDTH
- * colour indices 0..15 (8..15 bright); NULL: not drawn. samples: mono
- * 16-bit at the platform's rate, `n` of them for this frame. */
-typedef void (*zx_line_fn)(int y, const uint8_t *px);
-void zx_frame(zx_line_fn line, int16_t *audio, int n);
+/* One frame (50 Hz). For each of the ZX_SHOWN lines y: begin(y) says
+ * where its ZX_WIDTH colour indices 0..15 (8..15 bright) go (word-aligned;
+ * NULL: not wanted), the core draws them there, commit(y) hands them on;
+ * begin NULL: nothing is drawn. samples: mono 16-bit at the platform's
+ * rate, `n` of them for this frame. */
+typedef uint8_t *(*zx_line_begin_fn)(int y);
+typedef void (*zx_line_commit_fn)(int y);
+void zx_frame(zx_line_begin_fn begin, zx_line_commit_fn commit, int16_t *audio, int n);
 
 /* all of the RAM (the 48K uses banks 5, 2, 0), for link play's check */
 #define ZX_RAM_SIZE 0x20000

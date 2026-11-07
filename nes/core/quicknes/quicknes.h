@@ -89,6 +89,12 @@ int qnes_load_rom(const void *data, long size);
  * Returns 0 on success, non-zero on error. */
 int qnes_load_rom_inplace(const void *data, long size);
 
+/* PBC: copy the PRG of the game loaded with qnes_load_rom_inplace to the
+ * heap and read it from there, if that leaves margin bytes free; call it
+ * after everything else is allocated. Returns the PRG size, or 0 if it
+ * stays in place. Emulates exactly the same. */
+long qnes_prg_to_ram(long margin);
+
 /* Emulate one frame.
  * joypad1/joypad2: button bitmask (A=0, B=1, Sel=2, Start=3, U=4, D=5, L=6, R=7)
  * Returns 0 on success. */

@@ -166,6 +166,8 @@ void pbc_loading_begin(const char *game)
 
 void pbc_loading_progress(uint32_t done, uint32_t total)
 {
+    if (watchdog_hw->scratch[3] == PBC_TEST_MAGIC)
+        watchdog_hw->load = 0xffffff;   /* launcher test mode: a long game copy is no hang */
     int p = total ? (int)((uint64_t)done * 100 / total) : 0;
     if (p == percent)
         return;

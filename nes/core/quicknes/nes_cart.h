@@ -43,6 +43,9 @@ public:
 	// Size of PRG data
 	long prg_size() const { return prg_size_; }
 	
+	// PBC: the PRG was copied to p (prg_size() + 2 bytes, not freed here)
+	void move_prg( uint8_t* p ) { prg_ = p; }
+	
 	// Size of CHR data
 	long chr_size() const { return chr_size_; }
 	

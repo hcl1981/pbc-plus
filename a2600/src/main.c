@@ -211,7 +211,7 @@ static uint8_t switches_of(uint16_t w)
 
 static void __attribute__((noreturn)) emulation_loop(bool show_stats, const char *start_status)
 {
-    static int16_t samples[512];
+    static int16_t samples[1024];
     uint64_t next_frame = time_us_64();
     uint64_t stat_t0 = next_frame, stat_busy_us = 0;
     uint32_t stat_drawn = 0, stat_emulated = 0;
@@ -326,6 +326,7 @@ static void __attribute__((noreturn)) emulation_loop(bool show_stats, const char
                      (unsigned long)stat_drawn,
                      (unsigned long)(stat_emulated * 100 / fps),
                      (unsigned long)(stat_busy_us * 100 / (now - stat_t0)));
+            pbc_test_stats((unsigned long)stat_drawn, (unsigned long)(stat_emulated * 100 / fps), (unsigned long)(stat_busy_us * 100 / (now - stat_t0)));
             a26_video_set_status(s);
             stat_t0 = now;
             stat_drawn = stat_emulated = 0;
@@ -415,17 +416,29 @@ int main(void)
     isvec = ext && strcasecmp(ext, ".vec") == 0;
     if (is7800)
         fixed_switches &= (uint8_t)~A26_BW;     /* there it is PAUSE */
+    /* 2600 and 7800: the cartridge into the Vectrex's idle buffers if it
+     * fits (192 KB); from flash, every read that misses the cache is slow */
+    const uint8_t *rom = rom_store_data();
+    uint32_t rom_n = rom_store_size();
+    if (!isvec) {
+        uint32_t room;
+        uint8_t *buf = vectrex_arena(&room);
+        if (rom_n <= room) {
+            memcpy(buf, rom, rom_n);
+            rom = buf;
+        }
+    }
     if (isvec) {
         if (!vectrex_insert(rom_store_data(), rom_store_size()))
             fatal("Not a Vectrex cartridge", game);
         vectrex_reset();
     } else if (is7800) {
-        if (!a7800_insert(rom_store_data(), rom_store_size()))
+        if (!a7800_insert(rom, rom_n))
             fatal("Not a 7800 cartridge", game);
         a26_video_set_pal(a7800_pal());
         a7800_reset();
     } else {
-        int type = a2600_insert(rom_store_data(), rom_store_size());
+        int type = a2600_insert(rom, rom_n);
         if (type < 0)
             fatal("Unknown cartridge type", game);
         a2600_reset();

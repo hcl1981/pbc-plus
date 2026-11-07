@@ -705,7 +705,12 @@ static inline __attribute__((always_inline)) void gwenesis_bus_write_memory_16(u
  *   Read an address from memory mapped and return value as byte
  *
  ******************************************************************************/
-unsigned int m68k_read_memory_8(unsigned int address)
+/* PBC: the CPU's accesses that leave RAM and ROM (VDP, I/O, Z80 bus,
+ * sound) run from RAM as well: games poll the VDP and the Z80 bus in
+ * loops, and the flash cache is busy with the game's ROM. */
+#define BUS_RAM __attribute__((section(".time_critical.bus")))
+
+BUS_RAM unsigned int m68k_read_memory_8(unsigned int address)
 {
       //  if ((address &  0xFF0000 ) == 0xFF0000) return FETCH8RAM(address);
     return gwenesis_bus_read_memory_8(address);
@@ -717,7 +722,7 @@ unsigned int m68k_read_memory_8(unsigned int address)
  *   Read an address from memory mapped and return value as word
  *
  ******************************************************************************/
- unsigned int m68k_read_memory_16(unsigned int address)
+BUS_RAM unsigned int m68k_read_memory_16(unsigned int address)
 {
      //   if ((address &  0xFF0000 ) == 0xFF0000) return FETCH16RAM(address);
     return gwenesis_bus_read_memory_16(address);
@@ -741,7 +746,7 @@ unsigned int m68k_read_memory_8(unsigned int address)
  *   Write an value as byte to memory mapped on specified address
  *
  ******************************************************************************/
-void m68k_write_memory_8(unsigned int address, unsigned int value) {
+BUS_RAM void m68k_write_memory_8(unsigned int address, unsigned int value) {
   // if ((address & 0xFF0000) == 0xFF0000) {
   //   WRITE8RAM(address, value);
   //   return;
@@ -756,7 +761,7 @@ void m68k_write_memory_8(unsigned int address, unsigned int value) {
  *   Write an value as word to memory mapped on specified address
  *
  ******************************************************************************/
-void m68k_write_memory_16(unsigned int address, unsigned int value) {
+BUS_RAM __attribute__((noinline)) void m68k_write_memory_16(unsigned int address, unsigned int value) {
   // if ((address & 0xFF0000) == 0xFF0000) {
   //   WRITE16RAM(address, value);
   //   return;
@@ -770,14 +775,15 @@ void m68k_write_memory_16(unsigned int address, unsigned int value) {
  *   Write an value as word to memory mapped on specified address
  *
  ******************************************************************************/
-void m68k_write_memory_32(unsigned int address, unsigned int value) {
+BUS_RAM void m68k_write_memory_32(unsigned int address, unsigned int value) {
 
   // if ((address & 0xFF0000) == 0xFF0000) {
   //   WRITE32RAM(address, value);
   //   return;
   // }
-  gwenesis_bus_write_memory_16(address, (value >> 16) & 0xffff);
-  gwenesis_bus_write_memory_16(address + 2, (value)&0xffff);
+  /* PBC: through the function above rather than two inlined copies */
+  m68k_write_memory_16(address, (value >> 16) & 0xffff);
+  m68k_write_memory_16(address + 2, (value)&0xffff);
 
   return;
 }

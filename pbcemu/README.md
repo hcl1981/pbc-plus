@@ -54,7 +54,7 @@ getestet, auch nicht der Sprung vom Starter in die Emulatoren.
    durchgestrichen, zweimal pro Sekunde (`common/pbc_battwarn.c`; im
    schwarzen Rand direkt gezeichnet, über dem Bild in dessen Zeilen
    gemischt). Mit Kabelstrom oder vollen Batterien nichts.
-7. Vor dem Start zeigt der Starter die Tastenbelegung (zwei Sekunden, B
+7. Vor dem Start zeigt der Starter die Tastenbelegung (drei Sekunden, B
    überspringt). Zurück zur Liste: **RESET**.
 
 ### Einstellungen (Mitte)

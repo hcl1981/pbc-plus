@@ -20,6 +20,7 @@
 #include "sound.h"
 #include "hardware/clocks.h"
 #include "hardware/pwm.h"
+#include "hardware/spi.h"
 #include "board.h"
 #include "pbc_lobby.h"
 #include "ui.h"
@@ -221,6 +222,12 @@ static void dark_wait(void)
         gpio_put(pins[k], 0);
     }
     set_sys_clock_khz(150000, true);
+    /* set_sys_clock_khz put clk_peri on the USB PLL (48 MHz); back on clk_sys
+     * as at boot, with the SPI divider worked out again -- before, the
+     * display ran at a third of its speed after waking up */
+    uint32_t sys_hz = clock_get_hz(clk_sys);
+    clock_configure(clk_peri, 0, CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLK_SYS, sys_hz, sys_hz);
+    spi_set_baudrate(PBC_SPI, PBC_SPI_HZ);
     sound_on();
     while (input_raw())
         sleep_ms(10);
@@ -408,7 +415,7 @@ static void device_screen(int sel, int next, int t, int dir)
 /* Rows of the options card; which ones appear depends on where it opens. */
 enum { ROW_SOUND, ROW_VOLUME, ROW_DISPLAY, ROW_STATS, ROW_PORT, ROW_PROGRAM, ROW_KEY, ROW_DRIVE, ROW_FAV, ROW_BRIGHT,
        ROW_LAYOUT, ROW_JOYKIND, ROW_SWAP, ROW_PALETTE, ROW_DIFF_L, ROW_DIFF_R, ROW_BW, ROW_SCAN,
-       ROW_CABLE };
+       ROW_CABLE, ROW_MACHINE };
 
 /* A game's own options byte (c64/settings.h, settings_key_raw), handed to
  * its emulator in the launch record (pbc_launch.h, `key`): what it means
@@ -428,6 +435,7 @@ typedef struct {
     bool drive;                     /* processor-level 1541 */
     bool drive_rom;                 /* ... possible: 1541.rom is on the drive */
     bool fav;                       /* the game is a favourite */
+    bool zx48;                      /* ZX tape game: starts as a 48K (kept in `drive`) */
     int  rows[14], nrows;
 } opt_t;
 
@@ -497,6 +505,8 @@ static const char *zx_key_name(int i)
 static const char *const gb_palettes[GB_PALETTES] = { "Auto", "Grey", "Brown", "Red", "Blue", "Dark blue",
                                                       "Pastel", "Inverted" };
 static const char *const cpc_joys[3] = { "Joystick", "Cursor keys", "QAOP" };
+/* the Spectrum's joysticks, as zx_joy_names (zx/src/zx_input.c) */
+static const char *const zx_joys[4] = { "Kempston", "Sinclair", "Cursor", "QAOP" };
 
 /* where the game's byte keeps "buttons swapped" */
 static int swap_bit(const opt_t *o)
@@ -507,7 +517,7 @@ static int swap_bit(const opt_t *o)
 /* the key on Center + B of a CPC or Spectrum game, from its byte */
 static int raw_key(const opt_t *o)
 {
-    return o->raw_sys == RAW_CPC ? (o->raw & 0x3f) % CPC_KEYS : o->raw % ZX_KEYS;
+    return (o->raw & 0x3f) % (o->raw_sys == RAW_CPC ? CPC_KEYS : ZX_KEYS);
 }
 static const char *cpc_key_name(int i)
 {
@@ -559,7 +569,7 @@ static void options_screen(void (*under)(void *), void *arg, const char *title,
     static const char *const names[] = { "Sound", "Volume", "Display", "Show FPS", "Joystick", "Program",
                                          "", "True drive", "Favorite", "Brightness", "", "Joystick", "",
                                          "Palette", "Left difficulty", "Right difficulty", "TV type",
-                                         "Scanlines", "Link cable" };
+                                         "Scanlines", "Link cable", "Machine" };
     static const char *const key_names[] = { C64_KEYS(C64_KEY_NAME) };
     if (vis < o->nrows) {               /* where in the rows: a thin bar on the right */
         int track = vis * rh - 4, th = track * vis / o->nrows;
@@ -616,7 +626,10 @@ static void options_screen(void (*under)(void *), void *arg, const char *title,
             key_chips(34, y + 7, "B A");            /* ... get these buttons */
             value_arrows(xr - 8, y + 4, (o->raw & swap_bit(o)) ? (o->nes ? "B  A" : "2  1") : (o->nes ? "A  B" : "1  2"));
             break;
-        case ROW_JOYKIND: value_arrows(xr - 8, y + 4, cpc_joys[(o->raw >> 6) % 3]); break;
+        case ROW_JOYKIND:
+            value_arrows(xr - 8, y + 4, o->raw_sys == RAW_ZX ? zx_joys[(o->raw >> 6) & 3] : cpc_joys[(o->raw >> 6) % 3]);
+            break;
+        case ROW_MACHINE: value_arrows(xr - 8, y + 4, o->zx48 ? "48K" : "128K"); break;
         case ROW_PALETTE: value_arrows(xr - 8, y + 4, gb_palettes[o->raw & 7]); break;
         case ROW_DIFF_L: value_arrows(xr - 8, y + 4, (o->raw & 1) ? "A" : "B"); break;
         case ROW_DIFF_R: value_arrows(xr - 8, y + 4, (o->raw & 2) ? "A" : "B"); break;
@@ -671,7 +684,16 @@ static void options(void (*under)(void *), void *arg, int device, const char *ga
         }
         switch (o.raw_sys) {
         case RAW_CPC: o.rows[o.nrows++] = ROW_KEY; o.rows[o.nrows++] = ROW_JOYKIND; break;
-        case RAW_ZX:  o.rows[o.nrows++] = ROW_KEY; break;
+        case RAW_ZX: {
+            o.rows[o.nrows++] = ROW_KEY;
+            o.rows[o.nrows++] = ROW_JOYKIND;
+            /* tapes: the machine; a snapshot brings its own */
+            if (ext && (strcasecmp(ext, ".tap") == 0 || strcasecmp(ext, ".tzx") == 0)) {
+                o.rows[o.nrows++] = ROW_MACHINE;
+                o.zx48 = settings_true_drive(game);
+            }
+            break;
+        }
         case RAW_MD:  o.rows[o.nrows++] = ROW_LAYOUT; break;
         case RAW_SWAP: o.rows[o.nrows++] = ROW_SWAP; break;
         case RAW_GB:
@@ -772,12 +794,18 @@ static void options(void (*under)(void *), void *arg, int device, const char *ga
                 if (o.raw_sys == RAW_CPC)
                     o.raw = (o.raw & 0xc0) | (raw_key(&o) + CPC_KEYS + d) % CPC_KEYS;
                 else if (o.raw_sys == RAW_ZX)
-                    o.raw = (raw_key(&o) + ZX_KEYS + d) % ZX_KEYS;
+                    o.raw = (o.raw & 0xc0) | (raw_key(&o) + ZX_KEYS + d) % ZX_KEYS;
                 else
                     o.key = (o.key + C64_KEY_COUNT + d) % C64_KEY_COUNT;
                 break;
             case ROW_LAYOUT: o.raw = (o.raw % MD_LAYOUTS + MD_LAYOUTS + d) % MD_LAYOUTS; break;
-            case ROW_JOYKIND: o.raw = (o.raw & 0x3f) | ((((o.raw >> 6) % 3) + 3 + d) % 3) << 6; break;
+            case ROW_JOYKIND:
+                if (o.raw_sys == RAW_ZX)
+                    o.raw = (o.raw & 0x3f) | ((((o.raw >> 6) & 3) + 4 + d) & 3) << 6;
+                else
+                    o.raw = (o.raw & 0x3f) | ((((o.raw >> 6) % 3) + 3 + d) % 3) << 6;
+                break;
+            case ROW_MACHINE: o.zx48 = !o.zx48; break;
             case ROW_SWAP:    o.raw ^= swap_bit(&o); break;
             case ROW_PALETTE: o.raw = (o.raw & ~7) | (((o.raw & 7) + GB_PALETTES + d) % GB_PALETTES); break;
             case ROW_DIFF_L:  o.raw ^= 1; break;
@@ -806,6 +834,13 @@ static void options(void (*under)(void *), void *arg, int device, const char *ga
             settings_set_true_drive(game, o.drive);
         settings_save();
         free(o.files);
+    }
+    bool zx_tape = false;
+    for (int i = 0; i < o.nrows; i++)
+        zx_tape |= o.rows[i] == ROW_MACHINE;
+    if (zx_tape && o.zx48 != settings_true_drive(game)) {
+        settings_set_true_drive(game, o.zx48);  /* the ZX's machine in the C64's drive byte */
+        settings_save();
     }
     if (o.raw_sys != RAW_NONE && o.raw != settings_key_raw(game)) {
         settings_set_key_raw(game, o.raw);  /* only then: an entry for every game would fill the table */
@@ -1316,10 +1351,12 @@ static void starting_screen(int device, const char *title, const char *const *ro
     }
     if (note)
         gfx_text(&font_small, 22, 100 + rows * step + 4, note, DIM, 255);
-    gfx_text_centered(&font_small, GFX_W / 2, GFX_H - 38, "Back to this list: RESET", FAINT, 255);
+    if (!device_is_coleco(dev))         /* its six keypad rows reach down to here */
+        gfx_text_centered(&font_small, GFX_W / 2, GFX_H - 38, "Back to this list: RESET", FAINT, 255);
     if (alpha > 0) {
         int w = 120;
-        gfx_rrect((GFX_W - w) / 2, GFX_H - 20, w * alpha / 255, 4, 2, dev->accent, 255);
+        int bar_y = device_is_coleco(dev) ? GFX_H - 14 : GFX_H - 20;   /* below the keypad rows */
+        gfx_rrect((GFX_W - w) / 2, bar_y, w * alpha / 255, 4, 2, dev->accent, 255);
     }
 }
 
@@ -1351,9 +1388,8 @@ void ui_starting(int device, const char *game)
     if ((dev->app == APP_CPC || dev->app == APP_ZX) && !ui_link_player) {
         for (int i = 0; i < n; i++)
             if (strcmp(k[i], "Center + B") == 0)
-                b[i] = dev->app == APP_CPC ? cpc_key_name((raw & 0x3f) % CPC_KEYS) : zx_key_name(raw % ZX_KEYS);
-        if (dev->app == APP_CPC)
-            b[0] = cpc_joys[(raw >> 6) % 3];         /* the joystick kind */
+                b[i] = dev->app == APP_CPC ? cpc_key_name((raw & 0x3f) % CPC_KEYS) : zx_key_name((raw & 0x3f) % ZX_KEYS);
+        b[0] = dev->app == APP_CPC ? cpc_joys[(raw >> 6) % 3] : zx_joys[(raw >> 6) & 3];   /* the joystick kind */
     }
     if (((dev->app == APP_NES || dev->app == APP_SMS) && (raw & 1)) || (dev->app == APP_GBC && (raw & 8))) {
         int ia = -1, ib = -1;                       /* swapped: the names of A and B change places */
@@ -1382,9 +1418,10 @@ void ui_starting(int device, const char *game)
         snprintf(note + len, sizeof note - len, "%sLink: player %d", len ? ", " : "", ui_link_player);
     }
 
-    /* about two seconds, or until B is pressed */
+    /* about three seconds, or until B is pressed */
     ui_wait_release();
-    for (int t = 0; t <= 255; t += 4) {
+    for (int f = 0; f < 96; f++) {
+        int t = f * 255 / 95;
         starting_screen(device, fit, b, k, n, note[0] ? note : NULL, t);
         gfx_present();
         if (edges() & IN_B)

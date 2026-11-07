@@ -13,7 +13,7 @@ dort. Das Drumherum ist dasselbe wie bei [`../nes`](../nes/) und
 | Disk-Images von SD-Karte | **USB-Stick-Modus** in eine FatFs-Partition im Flash (aus [PicoBoyGB](../picoboygb/)); Frodo benutzt das Image direkt von dort, **auch schreibend** (Spielstände) |
 | PS/2- oder USB-Tastatur | keine Tastatur: **`LOAD"*",8,1`** wird nach dem Start automatisch getippt, danach bei Bedarf `RUN` |
 | HDMI/VGA 320×240 | **ST7789**: 320×240 auf 240×180 verkleinert (gemittelt), auf Kern 1 per DMA |
-| SID über I2S/PWM | SID über den **PWM-Lautsprecher** (GP15), 22 222 Hz, **per Vorgabe aus** |
+| SID über I2S/PWM | SID über den **PWM-Lautsprecher** (GP15), 45 454 Hz, **per Vorgabe aus** |
 | F9 tauscht die Joystick-Ports | **Joystick-Port pro Spiel** in den Optionen, gespeichert |
 | Diskettenwahl | **Mitte + A** im Spiel (alle `.d64` des Laufwerks) |
 | Cartridges | **`.crt`** (8K/16K, Ocean, Fun Play, Super Games, Simons' Basic, C64GS, Dinamic, Zaxxon, Magic Desk, Comal 80, EasyFlash), aus dem Flash gelesen |
@@ -80,24 +80,28 @@ bei PicoBoyGB.
 | Feuer | B |
 | RETURN | A |
 | Leertaste (andere Taste je Spiel in den Optionen: RUN/STOP, F1–F7, Y, N, 1–4; im Spiel über Mitte + A umstellbar) | Mitte + B |
-| Diskette wählen, Taste auf Mitte + B | Mitte + A |
+| Menü: Diskette, Settings, Taste drücken | Mitte + A |
 
-**Diskettenwechsel:** Mitte + A hält das Spiel an und zeigt alle `.d64` auf
-dem Laufwerk, nach Namen sortiert, wie die Spieleliste. Die im Laufwerk ist
+**Menü** (Mitte + A, wie bei CPC, ZX und MSX aufgebaut) hält das Spiel an:
+„Swap disk“ (bei Diskettenspielen), „Settings“ (Joystick-Port, außer im
+Link-Spiel, und die Taste auf Mitte + B; gelten sofort und werden beim Spiel
+gespeichert, außer im Link-Spiel), „Press a key“ (eine Taste einmal drücken:
+RETURN, SPACE, RUN/STOP, F1–F7, 0–9, A–Z; nicht im Link-Spiel) und ganz unten
+„Back to game“ (oder A). „Press a key“ hilft bei Trainer-Fragen und
+Titelbildern: Boulder Dash (Nova) etwa fragt „Endless Rockfords? (Y/N)“ und
+will dann F1 und Feuer an Port 1.
+
+**Diskettenwechsel:** „Swap disk“ zeigt alle `.d64` auf dem Laufwerk, nach
+Namen sortiert, wie die Spieleliste. Die im Laufwerk ist
 markiert („in drive“) und vorausgewählt. Hoch/runter wählt, links/rechts
 blättert, B legt sie in Laufwerk 8, A geht ohne Wechsel zurück. Ein zu langer
 Name läuft in der markierten Zeile durch. Nach einem Wechsel steht der Name
 zwei Sekunden unter dem Bild.
 
-Ganz oben in dieser Liste steht **„Center + B: …“**: B darauf öffnet die
-Tastenliste (SPACE, RUN/STOP, F1–F7, Y, N, 1–4), die gewählte gilt sofort.
-Cracktros, Trainer-Fragen und Spiele wollen oft nacheinander verschiedene
-Tasten; so geht das ohne Neustart. Die Wahl hält bis zum Ende des Spiels,
-beim nächsten Start gilt wieder die aus den Optionen. Im Link-Spiel hat
-jeder seine eigene.
-
-Darunter schaltet **„Joystick: port …“** den Joystick-Port um (nicht im
-Link-Spiel), ebenfalls bis zum Ende des Spiels.
+Unter **„Settings“** öffnet „Center + B: …“ die Tastenliste (SPACE,
+RUN/STOP, F1–F7, Y, N, 1–4), „Joystick: port …“ schaltet den Port um. Beides
+gilt sofort und steht beim nächsten Start auch in den Spieloptionen; im
+Link-Spiel bleibt es bei dieser Sitzung (die Taste hat dort jeder für sich).
 
 Zurück zur Spieleliste geht es mit RESET. Mit `-DSHOW_FPS=1` gebaut (in
 PBCemu: Option im Starter), stehen unter dem Bild gezeichnete Bilder pro
@@ -123,7 +127,9 @@ immer „Standard“):
 
 Alle Modi behalten das Seitenverhältnis.
 
-Kern 1 rechnet das Bild nach jedem Frame um und schickt es per DMA, während
+Kern 1 rechnet das Bild nach jedem Frame um (in Standard und No border
+gruppenweise mit einer Tabelle der 256 Farbmischungen: dieselben Pixel, am PC
+gut dreimal so schnell) und schickt es per DMA, während
 Kern 0 schon den nächsten emuliert. Weil Kern 1 schneller von oben liest, als
 der VIC neu zeichnet, reicht ein einziger Bildpuffer.
 
@@ -216,7 +222,10 @@ Befehl für Befehl ab. Mit True drive läuft der C64 deshalb mit 200 MHz statt
 liegt nur die Spur unter dem Lesekopf im Speicher (höchstens knapp 8 KB) und
 wird beim Spurwechsel aus der Datei erzeugt (`core/1541gcr.cpp`). Schreiben
 auf die Diskette geht mit True drive nicht über Frodos Fallen; ob ein Spiel
-dabei speichern kann, ist ungeprüft.
+dabei speichern kann, ist ungeprüft. Den Wechsel Befehl für Befehl durch
+ein Nachziehen der 1541 nur bei Zugriffen auf `$DD00` zu ersetzen, brächte
+wenig: Beim Laden liest der C64 `$DD00` etwa bei jedem dritten Befehl, die
+1541 käme selten mehr als drei Befehle am Stück voran.
 
 Beim Umbau auf OpenROMs sind zwei Fehler aus frank-c64 aufgefallen und
 behoben: Die Klasse `Prefs` war zweimal mit verschiedenem Aufbau definiert
@@ -237,13 +246,21 @@ denselben Zeilen wie in VICE.
 ## Ton
 
 SID über den Lautsprecher an GP15: Ein DMA-Kanal, getaktet von einem
-DMA-Timer, holt alle 45 µs einen Sample aus einem Ringpuffer und schreibt ihn
+DMA-Timer, holt alle 22 µs einen Sample aus einem Ringpuffer und schreibt ihn
 in den PWM-Wert (`src/audio_pwm.c`, wie in `../sms`). Es gibt keinen
 Interrupt pro Sample mehr. Früher tat das ein Timer-Interrupt 22 000-mal pro
 Sekunde, und zwar auf Kern 1: Beim C64 reicht die Aufrufkette auf Kern 0 tief
 (CPU → Laufwerk → FatFs), und der Interrupt konnte dort den 4-KB-Stack
 sprengen (die erste Fassung mit dem Timer auf Kern 0 stürzte mit Ton ab).
 Mit DMA stellt sich die Frage nicht mehr. Der Ton ist per Vorgabe aus.
+
+Ist er aus (oder die Lautstärke 0), rechnet der Emulator die Samples gar
+nicht erst aus (`c64_sid_enable()`, `core/rp2350/SID_rp2350.cpp`); das
+spart auf Kern 0 ein Fünftel bis ein Viertel der Rechenzeit (am PC
+gemessen). Das Spiel
+merkt davon nichts: Register, OSC3 und ENV3 kommen aus Frodos eigener
+Nachbildung der dritten Stimme, nicht aus der Klangerzeugung. Umschalten
+lässt sich der Ton ohnehin nur vor dem Spielstart.
 
 ## Was im RAM läuft
 
@@ -255,6 +272,15 @@ die eingebauten ROMs, alles durch denselben 16-KB-Cache. Allein die
 - die 6510-Schleife samt Speicherzugriffen, VIC-Zeile mit allen
   Zeichenroutinen (`el_*`), die CIA-Zeile und -Register sowie die SID-Ausgabe
   mit der Hüllkurventabelle, zusammen rund 52 KB;
+- mit True drive die Speicherzugriffe der 1541 (ROM und RAM inline, VIAs,
+  `read_word`, ADC/SBC), VIA-Timer und -Interrupts, der Lesekopf in
+  `GCRDisk` (`rotate_disk`, `ByteReady` …; nur das Füllen des Spurpuffers
+  bleibt im Flash) und `c64_run_frame` selbst;
+- kleine Helfer, die sonst aus dem RAM über Veneers in den Flash sprangen:
+  OSC3/ENV3 des SID, `ChangedVA` des VIC, ROML/ROMH der Cartridges und
+  `rand()` für die offenen Bits beim Lesen des Farb-RAMs (`CPUC64.cpp`:
+  dieselbe Rechnung auf demselben Zustand wie newlibs `rand()`, also auch
+  dieselbe Folge, wichtig fürs Link-Spiel);
 - BASIC, KERNAL und Zeichensatz: Die eingebauten OpenROMs werden beim Start
   in die RAM-Puffer kopiert, die sonst eigene ROMs aufnehmen
   (`c64_roms_fill_builtin`).
@@ -263,6 +289,20 @@ Für den Heap bleiben rund 197 KB (vorher 249 KB). Den Flash-Takt setzt die
 Firmware auch bei 150 MHz selbst (Teiler 2 = 75 MHz); nach jedem Schreiben
 aufs Laufwerk stellt `flash_fs.c` ihn wieder her, weil die Flash-Funktionen
 des SDK die Einstellung des Bootroms zurückschreiben.
+
+Achtung beim RAM-Code: Direkt hinter `.data` liegt der Ringpuffer des Tons,
+der auf 8 KB ausgerichtet sein muss. Wächst `.data` über die nächste
+8-KB-Grenze, kostet das auf einen Schlag 8 KB Heap (im November 2026 endete
+`.data` in der Gesamtfirmware gut 1,6 KB davor, bei `0x20016000`; nachsehen
+mit `arm-none-eabi-nm -n … | grep __data_end__`).
+
+Außerdem überspringt der VIC Sprite-Zeilen ohne gesetzten Pixel und löscht
+den Kollisionspuffer nur unter den Sprites, die zeichnen (statt 384 Bytes je
+Zeile, `el_sprites` in `core/VIC.cpp`). Diese Änderungen und die oben bei
+Ton und Bild sind am PC bitgenau gegen den Stand davor geprüft: Bild,
+SID-Samples, C64- und Laufwerks-RAM nach jedem Frame, Boulder Dash und Great
+Giana Sisters über Tausende Frames mit Eingaben, mit und ohne True drive, mit
+Commodore-ROMs und OpenROMs.
 
 ## Absturzanzeige
 
@@ -347,7 +387,7 @@ src/display.c, input.c   aus ../nes
 src/flash_fs.*, usb_*.c, tusb_config.h, fatfs/   aus ../picoboygb
 core/               Frodo4 aus frank-c64 (zeilenbasierte Fassung)
 core/rp2350/        frank-c64-Anbindung, angepasst:
-                    Display ohne HDMI, SID mit 22 222 Hz, verzögertes f_sync
+                    Display ohne HDMI, SID mit 45 454 Hz (bis November 2026 22 222 Hz, die Filter daher mit halber Grenzfrequenz), verzögertes f_sync
                     beim Schreiben, c64_get_pc() für den Autostart
 ```
 

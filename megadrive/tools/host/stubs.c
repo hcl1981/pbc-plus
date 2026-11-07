@@ -15,9 +15,14 @@ unsigned int m68k_rom_end = 0x800000;
 int sram_read8(unsigned int a) { (void)a; return -1; }
 bool sram_write8(unsigned int a, unsigned int v) { (void)a; (void)v; return false; }
 void sram_control(unsigned int v) { (void)v; }
-unsigned int m68ki_read_high_8(unsigned int a) { return ROM_DATA[a ^ 1]; }
-unsigned int m68ki_read_high_16(unsigned int a) { return *(const unsigned short *)(ROM_DATA + a); }
+/* as src/sram.c: ROM below m68k_rom_end, the rest (I/O, VDP) through the bus */
+unsigned int m68k_read_memory_8(unsigned int address);
+unsigned int m68k_read_memory_16(unsigned int address);
+unsigned int m68ki_read_high_8(unsigned int a) { return a < m68k_rom_end ? ROM_DATA[a ^ 1] : m68k_read_memory_8(a); }
+unsigned int m68ki_read_high_16(unsigned int a) { return a < m68k_rom_end ? *(const unsigned short *)(ROM_DATA + a) : m68k_read_memory_16(a); }
 unsigned int m68ki_read_high_32(unsigned int a)
 {
+    if (a >= m68k_rom_end)
+        return m68k_read_memory_16(a) << 16 | m68k_read_memory_16(a + 2);
     return (unsigned int)*(const unsigned short *)(ROM_DATA + a) << 16 | *(const unsigned short *)(ROM_DATA + a + 2);
 }

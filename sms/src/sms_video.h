@@ -1,10 +1,11 @@
 /* sms_video.h -- SMS Plus line output -> ST7789, sent by core 1.
  *
  * SMS Plus hands over one line of 8-bit palette indices at a time
- * (sms_render_line). Each line is converted to panel words right away, with
- * the palette in force on that line, so mid-frame palette changes survive,
- * and stored in one of two frame buffers. Core 1 sends the finished frame
- * while core 0 emulates the next one into the other buffer.
+ * (sms_render_line). Each line is stored as it is in one of two frame
+ * buffers, together with the palette in force on that line (kept again
+ * only when it changed), so mid-frame palette changes survive. Core 1
+ * converts the finished frame to panel words and sends it while core 0
+ * emulates the next one into the other buffer.
  *
  * Display modes (the launcher's numbering, 0 = default):
  *   Master System 256x192 (or 224 lines)
@@ -18,9 +19,8 @@
  *     1 Original     160x144, 1:1
  * No mode distorts the picture: both directions get the same factor.
  * Scaling picks the nearest source pixel, or the average of two where the
- * output pixel falls between them. Master System columns are scaled on
- * core 0 while the line is converted (the frame buffer stays 240 wide),
- * everything else on core 1 while it sends.
+ * output pixel falls between them. All of it happens on core 1 while it
+ * sends: Master System columns as a line is converted, then the rest.
  */
 #ifndef PBC_SMS_VIDEO_H
 #define PBC_SMS_VIDEO_H

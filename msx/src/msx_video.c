@@ -17,7 +17,7 @@ static uint16_t pal565[16];             /* the TMS9918 colours */
  *
  * The lines go over as the chip made them (MSX1: 256 colour indices, MSX2:
  * 256 RGB565 pixels); core 1 turns them into the 240 panel pixels while the
- * line before goes out, so core 0 only copies. */
+ * line before goes out; core 0 draws them straight into the ring. */
 
 #define RING_N 16
 #define SRC_W  256
@@ -69,14 +69,19 @@ void msx_video_init(unsigned mode)
     }
 }
 
-static void __not_in_flash_func(ring_put)(int y, int lines, const void *px, bool is565)
+/* the next free slot (waiting for one), NULL if lines are not wanted now */
+static void *__not_in_flash_func(ring_begin)(int y, int lines)
 {
     if (y >= lines || !core1_running || pause_req)
-        return;
+        return NULL;
     while (ring_head - ring_tail >= RING_N)
         __wfe();                        /* core 1 frees a slot and signals */
+    return ring[ring_head % RING_N];
+}
+
+static void __not_in_flash_func(ring_commit)(int y, int lines, bool is565)
+{
     int slot = (int)(ring_head % RING_N);
-    memcpy(ring[slot], px, is565 ? SRC_W * 2 : SRC_W);
     ring_565[slot] = is565;
     ring_y[slot] = (int16_t)y;
     ring_h[slot] = (uint8_t)lines;
@@ -86,16 +91,26 @@ static void __not_in_flash_func(ring_put)(int y, int lines, const void *px, bool
     lines_this_frame = true;
 }
 
-void __not_in_flash_func(msx_video_line)(int y, const uint8_t *px, int backdrop)
+uint8_t *__not_in_flash_func(msx_video_line_begin)(int y)
+{
+    return ring_begin(y, frame_h);
+}
+
+void __not_in_flash_func(msx_video_line_commit)(int y, int backdrop)
 {
     (void)backdrop;
-    ring_put(y, frame_h, px, false);
+    ring_commit(y, frame_h, false);
 }
 
 /* MSX2: the V9938's lines, 256 RGB565 pixels, 192 or 212 a frame */
-void __not_in_flash_func(msx_video_line565)(int y, int lines, const uint16_t *px)
+uint16_t *__not_in_flash_func(msx_video_line565_begin)(int y, int lines)
 {
-    ring_put(y, lines, px, true);
+    return ring_begin(y, lines);
+}
+
+void __not_in_flash_func(msx_video_line565_commit)(int y, int lines)
+{
+    ring_commit(y, lines, true);
 }
 
 /* core 1: a ring line to the 240 panel pixels */

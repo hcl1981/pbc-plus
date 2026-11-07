@@ -1,6 +1,6 @@
 /* audio_pwm.c -- see audio_pwm.h
  *
- * A DMA channel paced by a DMA timer copies one sample every 45 us from a
+ * A DMA channel paced by a DMA timer copies one sample every 22 us from a
  * ring buffer into the PWM compare register: no interrupt per sample (the
  * repeating timer before fired 22222 times a second and ran the SDK's
  * alarm code from flash). The DMA reads the ring endlessly. How far it
@@ -20,12 +20,12 @@
 #define PWM_WRAP   1023u                  /* 10 bit; 150-290 kHz carrier */
 #define PWM_MID    (PWM_WRAP / 2)
 
-#define RING_N     2048u                  /* 92 ms at 22 kHz */
+#define RING_N     4096u                  /* 90 ms at 45 kHz */
 #define RING_MASK  (RING_N - 1)
-#define RING_BITS  12                     /* 2048 x 2 bytes, aligned to that */
-#define FILL_TARGET 740                   /* two frames */
-#define FILL_LOW    400
-#define FILL_HIGH   1100
+#define RING_BITS  13                     /* 4096 x 2 bytes, aligned to that */
+#define FILL_TARGET 1480                  /* two frames */
+#define FILL_LOW    800
+#define FILL_HIGH   2200
 
 static uint16_t ring[RING_N] __attribute__((aligned(RING_N * 2)));
 static uint32_t head;                     /* samples written, total */
@@ -70,7 +70,7 @@ void audio_pwm_set_volume(int vol)
         pwm_set_chan_level(slice, PWM_CHAN_B, PWM_MID);
         gpio_set_function(AUDIO_PIN, GPIO_FUNC_PWM);
 
-        /* one sample per AUDIO_TICK_US: clk_sys / (MHz * 45), exact for
+        /* one sample per AUDIO_TICK_US: clk_sys / (MHz * 22), exact for
          * every whole-MHz clock */
         dma_timer_set_fraction((uint)dma_timer, 1,
                                (uint16_t)(clock_get_hz(clk_sys) / 1000000u * AUDIO_TICK_US));

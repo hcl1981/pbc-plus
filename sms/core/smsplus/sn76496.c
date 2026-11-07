@@ -95,6 +95,43 @@ static inline int noise_high(t_SN76496 *R, int period)
     return high;
 }
 
+/* A channel nobody hears (attenuation 15, or off on both sides) only has
+ * to come out in the same state after `length` samples: the flip-flop
+ * flips at count, count + period, ... up to the end, in one step. The
+ * per-sample loops above give the same, as a flip on a sample boundary
+ * belongs to the sample before it there too. */
+static inline void tone_skip(t_SN76496 *R, int ch, int period, int length)
+{
+    int t = length * STEP, count = R->Count[ch];
+    if (count > t) {
+        R->Count[ch] = count - t;
+        return;
+    }
+    int flips = 1 + (t - count) / period;
+    R->Output[ch] ^= flips & 1;
+    R->Count[ch] = count + flips * period - t;
+}
+
+/* The same for the noise channel, edge by edge for the shift register */
+static inline void noise_skip(t_SN76496 *R, int period, int length)
+{
+    int left = length * STEP, count = R->Count[3], ff = R->Output[3];
+    unsigned int lfsr = R->LFSR;
+    int white = R->Register[6] & 4;
+    while (count <= left) {
+        left -= count;
+        ff ^= 1;
+        count = period;
+        if (ff) {
+            unsigned int in = white ? ((lfsr ^ (lfsr >> 3)) & 1) : (lfsr & 1);
+            lfsr = (lfsr >> 1) | (in << 15);
+        }
+    }
+    R->Count[3] = count - left;
+    R->Output[3] = ff;
+    R->LFSR = lfsr;
+}
+
 void in_ram(SN76496Update)(int chip, INT16 *buffer[2], int length, unsigned char mask)
 {
     t_SN76496 *R = &sn[chip];
@@ -105,11 +142,23 @@ void in_ram(SN76496Update)(int chip, INT16 *buffer[2], int length, unsigned char
     for (int i = 0; i < 4; i++)
         vol[i] = R->VolTable[R->Register[2 * i + 1] & 0x0F];
 
+    /* PBC: silent channels are wound forward at once instead of per
+     * sample; a period of 0 or 1 cost several loop rounds per sample */
+    for (int i = 0; i < 4; i++) {
+        if (vol[i] && (mask & (0x11 << i)))
+            continue;
+        vol[i] = 0;
+        if (i < 3)
+            tone_skip(R, i, period[i], length);
+        else
+            noise_skip(R, nperiod, length);
+    }
+
     for (int j = 0; j < length; j++) {
         int k[4];
         for (int i = 0; i < 3; i++)
-            k[i] = tone_high(R, i, period[i]) * vol[i];
-        k[3] = noise_high(R, nperiod) * vol[3];
+            k[i] = vol[i] ? tone_high(R, i, period[i]) * vol[i] : 0;
+        k[3] = vol[3] ? noise_high(R, nperiod) * vol[3] : 0;
 
         unsigned int left = 0, right = 0;
         for (int i = 0; i < 4; i++) {

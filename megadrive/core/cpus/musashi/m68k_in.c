@@ -2300,6 +2300,9 @@ M68KMAKE_OP(bcc, 8, ., .)
 	{
 		m68ki_trace_t0();			   /* auto-disable (see m68kcpu.h) */
 		m68ki_branch_8(MASK_OUT_ABOVE_8(REG_IR));
+		/* PBC: back by 6 or 8 bytes, maybe a loop polling work RAM */
+		if((uint8)(REG_IR + 8) <= 2)
+			m68ki_poll_skip();
 		return;
 	}
 	USE_CYCLES(CYC_BCC_NOTAKE_B);
@@ -4331,6 +4334,9 @@ M68KMAKE_OP(dbf, 16, ., .)
 		m68ki_trace_t0();			   /* auto-disable (see m68kcpu.h) */
 		m68ki_branch_16(offset);
 		USE_CYCLES(CYC_DBCC_F_NOEXP);
+		/* PBC: DBF to itself, a delay loop */
+		if(REG_PC == REG_PPC)
+			m68ki_dbf_skip(r_dst);
 		return;
 	}
 	REG_PC += 2;

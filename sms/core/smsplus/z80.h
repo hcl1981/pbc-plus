@@ -19,6 +19,7 @@ extern unsigned char *cpu_writemap[8];
 void z80_reset(void *param);
 int  z80_execute(int cycles);               /* returns the T-states run */
 void z80_set_reg(int regnum, unsigned val);
+unsigned z80_get_pc(void);
 void z80_set_irq_line(int irqline, int state);
 void z80_set_nmi_line(int state);
 void z80_set_irq_callback(int (*callback)(int));

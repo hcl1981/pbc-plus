@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include "pico/stdlib.h"
 #include "hardware/flash.h"
+#include "pico/flash.h"
 #include "hardware/sync.h"
 #include "hardware/regs/addressmap.h"
 #include "settings.h"
@@ -217,6 +218,13 @@ void settings_set_file(const char *game, const char *file)
     }
 }
 
+static void write_sector(void *p)
+{
+    flash_range_erase(SETTINGS_OFFSET, FLASH_SECTOR_SIZE);
+    flash_range_program(SETTINGS_OFFSET, (const uint8_t *)p,
+                        (sizeof(stored_t) + FLASH_PAGE_SIZE - 1) & ~(FLASH_PAGE_SIZE - 1));
+}
+
 void settings_save(void)
 {
     stored_t *s = writable();
@@ -226,13 +234,8 @@ void settings_save(void)
     s->volume = (uint8_t)g_settings.volume;
     s->check = header_check(s);
 
-    if (memcmp(flash_copy(), s, sizeof *s) != 0) {
-        uint32_t irq = save_and_disable_interrupts();
-        flash_range_erase(SETTINGS_OFFSET, FLASH_SECTOR_SIZE);
-        flash_range_program(SETTINGS_OFFSET, (const uint8_t *)s,
-                            (sizeof *s + FLASH_PAGE_SIZE - 1) & ~(FLASH_PAGE_SIZE - 1));
-        restore_interrupts(irq);
-    }
+    if (memcmp(flash_copy(), s, sizeof *s) != 0)
+        flash_safe_execute(write_sector, s, 100);   /* parks core 1 if it runs (game menu) */
     free(work);
     work = NULL;
 }

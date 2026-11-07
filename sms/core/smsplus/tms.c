@@ -44,14 +44,22 @@ extern uint8 *linebuf;
 #define PG_BASE     ((vdp.reg[4] & 0x07) << 11)
 #define BACKDROP    (vdp.reg[7] & 0x0F)
 
-/* Expand one pattern byte into 8 pixels of foreground / background colour */
-#define PUT8(lb, pat, fg, bg)                       \
-    do {                                            \
-        int _p = (pat), _x;                         \
-        for (_x = 0; _x < 8; _x++) {                \
-            *(lb)++ = (_p & 0x80) ? (fg) : (bg);    \
-            _p <<= 1;                               \
-        }                                           \
+/* 4 pixels of a pattern nibble (bit 3 the left one) as byte masks */
+static uint32 nib_mask[16] = {
+    0x00000000, 0xff000000, 0x00ff0000, 0xffff0000, 0x0000ff00, 0xff00ff00, 0x00ffff00, 0xffffff00,
+    0x000000ff, 0xff0000ff, 0x00ff00ff, 0xffff00ff, 0x0000ffff, 0xff00ffff, 0x00ffffff, 0xffffffff,
+};
+
+/* Expand one pattern byte into 8 pixels of foreground / background colour:
+   two words (lb word-aligned: linebuf is, and it moves by 8) */
+#define PUT8(lb, pat, fg, bg)                                       \
+    do {                                                            \
+        int _p = (pat);                                             \
+        uint32 _b = (uint32)(bg) * 0x01010101u;                     \
+        uint32 _f = (uint32)((fg) ^ (bg)) * 0x01010101u;            \
+        ((uint32 *)(lb))[0] = _b ^ (_f & nib_mask[_p >> 4]);        \
+        ((uint32 *)(lb))[1] = _b ^ (_f & nib_mask[_p & 15]);        \
+        (lb) += 8;                                                  \
     } while (0)
 
 /* Split a colour table byte into 0x10-tagged fg/bg, transparent -> backdrop */

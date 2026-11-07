@@ -28,7 +28,7 @@ void a7800_reset(void);
 bool a7800_pal(void);                   /* the header asks for PAL (313 lines, 50 Hz) */
 
 /* One frame. line(y, px) for the shown lines (y 0..A78_LINES-1): A78_WIDTH
- * TIA palette indices (colour >> 1). Joysticks and switches: a26_joy,
+ * colour register values (bit 0 unused, as the TIA's). Joysticks and switches: a26_joy,
  * a26_switches (a2600.h; A26_BW is PAUSE here, A26_FIRE2 the right button). */
 #define A78_LINES 240
 typedef void (*a78_line_fn)(int y, const uint8_t *px);

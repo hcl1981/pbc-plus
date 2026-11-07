@@ -2,8 +2,9 @@
  *
  * A DMA channel paced by a DMA timer takes one sample per tick from a ring
  * buffer and writes it to the PWM compare value, without an interrupt per
- * sample. The tick is 45 us, so the rate is exactly 22222 Hz, and minigb_apu
- * is asked for exactly that rate. Uses one DMA channel and one DMA
+ * sample. The tick is 22 us, so the rate is exactly 45454 Hz, and minigb_apu
+ * is asked for exactly that rate (at 22222 Hz the high tones and the noise
+ * were dull, and their mirror images just below 22 kHz audible). Uses one DMA channel and one DMA
  * timer.
  *
  * The emulator's frame pacing and the sample clock are two clocks; the ring
@@ -16,8 +17,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define AUDIO_TICK_US   45
-#define AUDIO_RATE      (1000000 / AUDIO_TICK_US)   /* 22222 Hz */
+#define AUDIO_TICK_US   22
+#define AUDIO_RATE      (1000000 / AUDIO_TICK_US)   /* 45454 Hz */
 #define AUDIO_VOL_MAX   12   /* = VOLUME_MAX in settings.h */
 
 /* After the final system clock is set. */

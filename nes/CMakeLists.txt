@@ -119,12 +119,15 @@ target_compile_definitions(pbc_nes PRIVATE
     NO_UNALIGNED_ACCESS
 )
 
-# As in frank-nes: no exceptions/RTTI; -mno-unaligned-access because
-# QuickNES casts byte pointers to uint32_t* for the tile cache, and LDRD
-# faults on unaligned addresses on the Cortex-M33.
+# As in frank-nes: no exceptions/RTTI. frank-nes also had
+# -mno-unaligned-access, because QuickNES writes the tile cache through
+# uint32_t pointers at any address and LDRD/STRD fault there on the
+# Cortex-M33. Those writes go through the packed unaligned_uint32_t
+# (NO_UNALIGNED_ACCESS above), which already keeps GCC from LDRD/STRD/LDM;
+# the switch on top turned every such word into four byte stores. Plain
+# LDR/STR may be unaligned on the M33 (the PC Engine build relies on it).
 target_compile_options(pbc_nes PRIVATE
     -O2
-    -mno-unaligned-access
     $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions>
     $<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>
     -Wno-sign-compare

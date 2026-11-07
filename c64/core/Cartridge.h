@@ -37,13 +37,13 @@ public:
 	virtual void Reset() { }
 
 	// Default for $8000..$9fff is to read RAM
-	virtual uint8_t ReadROML(uint16_t adr, uint8_t ram_byte, bool notLoram)
+	C64_HOT(Cartridge_ReadROML) virtual uint8_t ReadROML(uint16_t adr, uint8_t ram_byte, bool notLoram)
 	{
 		return ram_byte;
 	}
 
 	// Default for $a000..$bfff is to read RAM or BASIC ROM, depending on /LORAM
-	virtual uint8_t ReadROMH(uint16_t adr, uint8_t ram_byte, uint8_t basic_byte, bool notLoram, bool notHiram)
+	C64_HOT(Cartridge_ReadROMH) virtual uint8_t ReadROMH(uint16_t adr, uint8_t ram_byte, uint8_t basic_byte, bool notLoram, bool notHiram)
 	{
 		return notLoram ? basic_byte : ram_byte;
 	}

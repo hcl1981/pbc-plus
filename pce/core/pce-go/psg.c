@@ -23,6 +23,12 @@ typedef int16_t sample_t;
 
 static int samplerate = 22050;
 static int stereo = true;
+/* PBC: PSG clocks per output sample in 16.16, set in psg_init. It was
+ * (CLOCK_PSG / samplerate) << 16, whose integer division dropped the
+ * fraction: 161.08 -> 161 at 22222 Hz was harmless, 78.75 -> 78 at
+ * 45454 Hz put every wave channel ~1 % (a sixth of a semitone) flat
+ * against noise and DDA. */
+static uint32_t wave_clk_fp;
 
 
 static void __not_in_flash_func(psg_update_chan)(sample_t *buf, int ch, size_t dwSize)
@@ -119,7 +125,7 @@ static void __not_in_flash_func(psg_update_chan)(sample_t *buf, int ch, size_t d
 		 * sampling rate into consideration with regard to the 3580000 effective pc engine
 		 * samplerate.  We use 16.16 fixed arithmetic for speed.
 		 */
-		uint32_t fixed_inc = ((CLOCK_PSG / samplerate) << 16) / Tp;
+		uint32_t fixed_inc = wave_clk_fp / Tp;
 
 		while (buf < buf_end) {
 			if ((sample = (chan->wave_data[chan->wave_index] - 16)) >= 0)
@@ -143,6 +149,100 @@ static void __not_in_flash_func(psg_update_chan)(sample_t *buf, int ch, size_t d
 }
 
 
+/*
+ * PBC: mono for the one speaker -- exactly (left + right) / 2 of what
+ * psg_update makes in stereo (no channel sum can clip: 6 x 16 x 16 x 15 <
+ * 32767, so the order and the clamping do not matter), but without the
+ * stereo buffer and the second mix, and channels that are off or have no
+ * volume are only advanced (wave pointer, noise LFSR), not drawn and mixed.
+ * `length` up to PSG_MONO_MAX.
+ */
+void __not_in_flash_func(psg_update_mono)(int16_t *output, size_t length)
+{
+	static int32_t acc[PSG_MONO_MAX];
+	int gl = PCE.PSG.volume >> 4, gr = PCE.PSG.volume & 0x0F;
+	bool any = false;
+
+	if (length > PSG_MONO_MAX)
+		length = PSG_MONO_MAX;
+	for (int ch = 0; ch < PSG_CHANNELS; ch++) {
+		psg_chan_t *chan = &PCE.PSG.chan[ch];
+		int lvol = ((chan->balance >> 4) * 9 * (chan->control & 0x1F)) / 256;
+		int rvol = ((chan->balance & 0xF) * 9 * (chan->control & 0x1F)) / 256;
+		int w = lvol * gl + rvol * gr;          /* the channel in L + R */
+		int sample;
+		uint32_t Tp;
+
+		if (!(chan->control & PSG_CHAN_ENABLE)) {
+			chan->wave_accum = 0;
+			continue;
+		}
+		if (chan->control & PSG_DDA_ENABLE) {
+			if (!w)
+				continue;
+			if ((sample = ((int)chan->dda_value - 16)) >= 0)
+				sample++;
+			if (!any) {
+				for (size_t i = 0; i < length; i++) acc[i] = sample * w;
+				any = true;
+			} else {
+				for (size_t i = 0; i < length; i++) acc[i] += sample * w;
+			}
+		}
+		else if ((ch == 4 || ch == 5) && (chan->noise_ctrl & PSG_NOISE_ENABLE)) {
+			uint32_t freq = chan->noise_ctrl & 0x1F;
+			uint32_t period = (freq == 0x1F) ? 32u : (((~freq) & 0x1F) * 64u);
+			uint32_t clk_per_sample = (uint32_t)(((uint64_t)CLOCK_PSG << 16) / (uint32_t)samplerate);
+			uint32_t period_fp = period << 16;
+			if (w && !any) {
+				memset(acc, 0, length * sizeof acc[0]);
+				any = true;
+			}
+			for (size_t i = 0; i < length; i++) {
+				chan->noise_accum += (int32_t)clk_per_sample;
+				while ((uint32_t)chan->noise_accum >= period_fp) {
+					chan->noise_accum -= (int32_t)period_fp;
+					uint32_t v = (uint32_t)chan->noise_rand;
+					uint32_t bit = ((v >> 0) ^ (v >> 1) ^ (v >> 11)
+					              ^ (v >> 12) ^ (v >> 17)) & 0x01;
+					chan->noise_level = (v & 0x01) ? 15 : -16;
+					chan->noise_rand = (int32_t)((v >> 1) | (bit << 17));
+				}
+				if (w)
+					acc[i] += chan->noise_level * w;
+			}
+		}
+		else if ((Tp = chan->freq_lsb + (chan->freq_msb << 8)) > 0) {
+			uint32_t fixed_inc = wave_clk_fp / Tp;
+			if (!w) {
+				/* silent: only the pointer moves (2^21 divides 2^32) */
+				chan->wave_accum = (chan->wave_accum + fixed_inc * (uint32_t)length) & 0x1FFFFF;
+				chan->wave_index = chan->wave_accum >> 16;
+				continue;
+			}
+			if (!any) {
+				memset(acc, 0, length * sizeof acc[0]);
+				any = true;
+			}
+			for (size_t i = 0; i < length; i++) {
+				if ((sample = (chan->wave_data[chan->wave_index] - 16)) >= 0)
+					sample++;
+				acc[i] += sample * w;
+				chan->wave_accum += fixed_inc;
+				chan->wave_accum &= 0x1FFFFF;
+				chan->wave_index = chan->wave_accum >> 16;
+			}
+		}
+	}
+	if (!any) {
+		memset(output, 0, length * sizeof output[0]);
+		return;
+	}
+	for (size_t i = 0; i < length; i++)
+		output[i] = (int16_t)(acc[i] / 2);
+}
+
+
 int
 psg_init(int _samplerate, bool _stereo)
 {
@@ -153,6 +253,7 @@ psg_init(int _samplerate, bool _stereo)
 
 	samplerate = _samplerate;
 	stereo = _stereo;
+	wave_clk_fp = (uint32_t)(((uint64_t)CLOCK_PSG << 16) / (uint32_t)samplerate);
 
 	return 0;
 }

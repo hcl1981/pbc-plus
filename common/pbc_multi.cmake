@@ -61,6 +61,7 @@ function(pbc_multi target)
         ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/pbc_battwarn.c
         ${launcher}/battery.c
         ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/pbc_lockstep.c
+        ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/pbc_game_opts.c
         ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/usblink.c
         ${launcher}/gfx.c
         ${launcher}/assets.c)
@@ -70,7 +71,7 @@ function(pbc_multi target)
     set_source_files_properties(${launcher}/gfx.c
         PROPERTIES COMPILE_DEFINITIONS GFX_STRIP COMPILE_OPTIONS -Os)
     # the battery warning reads the supply like the launcher (battery.c)
-    target_link_libraries(${target} hardware_adc)
+    target_link_libraries(${target} hardware_adc pico_flash)   # pico_flash: pbc_game_opts.c
     # FatFs only runs while loading and saving, never in the emulation:
     # small rather than fast (at -O3 it took 21 KB instead of 11.5 KB). The
     # flash for all emulators together is short, the time is not.

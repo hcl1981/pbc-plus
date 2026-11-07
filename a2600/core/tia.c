@@ -75,10 +75,11 @@ static uint32_t pad_window;             /* last time from dump end to dump */
 static uint16_t pad_reads;              /* INPT0-3 read, not dumped, this frame */
 static uint8_t  pad_released;           /* the dump ended this frame */
 
-static uint8_t pix[TIA_WIDTH];
+typedef uint32_t __attribute__((may_alias)) u32a;    /* four pixels at once */
+static uint8_t __attribute__((aligned(4))) pix[TIA_WIDTH];
 static int x_drawn;                     /* pixels of this line drawn so far */
 static uint8_t hmove_blank;             /* the first 8 pixels of this line */
-static uint8_t objs[TIA_WIDTH];         /* per pixel: the B_* bits of the objects */
+static uint8_t __attribute__((aligned(4))) objs[TIA_WIDTH];         /* per pixel: the B_* bits of the objects */
 static uint8_t dirty;                   /* objects to rebuild */
 static uint8_t pf_bits[40];
 static uint8_t src_tab[2][64];          /* [priority][pixel bits] -> source */
@@ -187,7 +188,7 @@ static const uint8_t copies[8] = { 1, 2, 2, 3, 2, 1, 3, 1 };
 
 static const uint8_t obj_bit[5] = { B_P0, B_P1, B_M0, B_M1, B_BL };
 
-static inline void span_or(int x, int w, uint8_t m)
+static inline TIA_RAM void span_or(int x, int w, uint8_t m)
 {
     uint8_t *p = objs + x;
     if (x + w > TIA_WIDTH) {
@@ -199,7 +200,7 @@ static inline void span_or(int x, int w, uint8_t m)
     for (int i = 0; i < w; i++) p[i] |= m;
 }
 
-static inline void span_and(int x, int w, uint8_t m)
+static inline TIA_RAM void span_and(int x, int w, uint8_t m)
 {
     uint8_t *p = objs + x;
     if (x + w > TIA_WIDTH) {
@@ -328,26 +329,36 @@ static TIA_RAM void draw_to(int x_end)
     }
     uint16_t cx = 0;
     const uint8_t *col = t.col;
-    const uint8_t *reg = reg_tab[0];
-    int mid = x_end < 80 ? x_end : 80;
-    for (;;) {
-        for (; x < mid; x++) {
-            int b = objs[x] | pf_bits[x >> 2];
-            cx |= cx_tab[b];
-            pix[x] = col[reg[b]];
+    /* left half, then right half (score mode); in groups of four pixels
+     * (one playfield bit): without objects the group is the playfield's or
+     * the background's colour, and neither collides */
+#define PIXEL(i) do { int b_ = objs[i] | pf_bits[(i) >> 2]; cx |= cx_tab[b_]; pix[i] = col[reg[b_]]; } while (0)
+    for (int half = x >= 80; ; half = 1) {
+        const uint8_t *reg = reg_tab[half];
+        int end = half || x_end < 80 ? x_end : 80;
+        for (; x < end && (x & 3); x++)
+            PIXEL(x);
+        uint32_t f_bk = col[reg[0]] * 0x01010101u, f_pf = col[reg[B_PF]] * 0x01010101u;
+        for (; x + 4 <= end; x += 4) {
+            if (*(const u32a *)(objs + x) == 0) {
+                *(u32a *)(pix + x) = pf_bits[x >> 2] ? f_pf : f_bk;
+            } else {
+                PIXEL(x); PIXEL(x + 1); PIXEL(x + 2); PIXEL(x + 3);
+            }
         }
-        if (mid == x_end)
+        for (; x < end; x++)
+            PIXEL(x);
+        if (half || end == x_end)
             break;
-        mid = x_end;
-        reg = reg_tab[1];
     }
+#undef PIXEL
     t.cx |= cx;
     if (hmove_blank)                            /* the HMOVE bar */
         for (int k = 0; k < 8 && k < x_end; k++)
             pix[k] = 0;
 }
 
-static inline int xpos(int clock)
+static inline TIA_RAM int xpos(int clock)
 {
     return clock - 68;
 }
@@ -423,10 +434,12 @@ TIA_RAM void tia_write(uint8_t reg, uint8_t v, int clock)
         t.nusiz[reg - 4] = v;
         dirty |= (uint8_t)((1 << (P0 + reg - 4)) | (1 << (M0 + reg - 4)));
         break;
-    case 0x06: t.col[0] = v >> 1; break;
-    case 0x07: t.col[1] = v >> 1; break;
-    case 0x08: t.col[2] = v >> 1; break;
-    case 0x09: t.col[3] = v >> 1; break;
+    /* the register value as it is (bit 0 unused): the 7800 hands MARIA's
+     * colours over the same way, without a pass over each line */
+    case 0x06: t.col[0] = v & 0xfe; break;
+    case 0x07: t.col[1] = v & 0xfe; break;
+    case 0x08: t.col[2] = v & 0xfe; break;
+    case 0x09: t.col[3] = v & 0xfe; break;
     case 0x0a: {
         uint8_t old = t.ctrlpf;
         t.ctrlpf = v;
@@ -491,12 +504,14 @@ TIA_RAM void tia_write(uint8_t reg, uint8_t v, int clock)
         break;
     }
     case 0x2a:                                  /* HMOVE */
-        for (int o = 0; o < 5; o++)
-            t.pos[o] = (uint8_t)((t.pos[o] - t.hm[o] + TIA_WIDTH) % TIA_WIDTH);
+        for (int o = 0; o < 5; o++)             /* only what moves is rebuilt */
+            if (t.hm[o]) {
+                t.pos[o] = (uint8_t)((t.pos[o] - t.hm[o] + TIA_WIDTH) % TIA_WIDTH);
+                dirty |= (uint8_t)(1 << o);
+            }
         for (int i = 0; i < 2; i++)
             if (t.resmp[i] & 2)
                 lock_missile(i);
-        dirty = 0x1f;
         if (xpos(clock) < 0)
             hmove_blank = 1;
         break;
@@ -552,6 +567,11 @@ TIA_RAM bool tia_vsync_started(void)
     return s;
 }
 
+TIA_RAM bool tia_vsync_pending(void)
+{
+    return t.vsync_started;
+}
+
 bool tia_vsync(void)
 {
     return (t.vsync & 2) != 0;
@@ -597,9 +617,9 @@ static struct {
     uint8_t out;
 } ch[2];
 
-static inline int step_poly4(int i) { uint8_t p = ch[i].poly4; ch[i].poly4 = (uint8_t)(((p << 1) | (((p >> 3) ^ (p >> 2)) & 1)) & 15); return ch[i].poly4 & 1; }
-static inline int step_poly5(int i) { uint8_t p = ch[i].poly5; ch[i].poly5 = (uint8_t)(((p << 1) | (((p >> 4) ^ (p >> 2)) & 1)) & 31); return ch[i].poly5 & 1; }
-static inline int step_poly9(int i) { uint16_t p = ch[i].poly9; ch[i].poly9 = (uint16_t)(((p << 1) | (((p >> 8) ^ (p >> 4)) & 1)) & 511); return ch[i].poly9 & 1; }
+static inline TIA_RAM int step_poly4(int i) { uint8_t p = ch[i].poly4; ch[i].poly4 = (uint8_t)(((p << 1) | (((p >> 3) ^ (p >> 2)) & 1)) & 15); return ch[i].poly4 & 1; }
+static inline TIA_RAM int step_poly5(int i) { uint8_t p = ch[i].poly5; ch[i].poly5 = (uint8_t)(((p << 1) | (((p >> 4) ^ (p >> 2)) & 1)) & 31); return ch[i].poly5 & 1; }
+static inline TIA_RAM int step_poly9(int i) { uint16_t p = ch[i].poly9; ch[i].poly9 = (uint16_t)(((p << 1) | (((p >> 8) ^ (p >> 4)) & 1)) & 511); return ch[i].poly9 & 1; }
 
 static TIA_RAM void audio_clock(int i)
 {

@@ -87,6 +87,8 @@ public:
 
 private:
 	uint8_t read_byte(uint16_t adr);
+	uint8_t read_byte_io(uint16_t adr);
+	void write_byte_io(uint16_t adr, uint8_t byte);
 	uint8_t read_byte_via1(uint16_t adr);
 	uint8_t read_byte_via2(uint16_t adr);
 	uint16_t read_word(uint16_t adr);

@@ -8,6 +8,7 @@
 #include "board.h"
 #include "color565.h"
 #include "display.h"
+#define FONT8X8_EXTERN
 #include "font8x8.h"
 #include "zx_video.h"
 #include "zx.h"
@@ -57,15 +58,19 @@ void zx_video_init(unsigned mode)
     }
 }
 
-void __not_in_flash_func(zx_video_line)(int y, const uint8_t *px)
+/* the core draws each line straight into its slot: no copy */
+uint8_t *__not_in_flash_func(zx_video_line_begin)(int y)
 {
     if (y >= ZX_SHOWN || !core1_running || pause_req)
-        return;
+        return NULL;
     while (ring_head - ring_tail >= RING_N)
         __wfe();                        /* core 1 frees a slot and signals */
-    int slot = (int)(ring_head % RING_N);
-    memcpy(ring[slot], px, ZX_WIDTH);
-    ring_y[slot] = (int16_t)y;
+    return ring[ring_head % RING_N];
+}
+
+void __not_in_flash_func(zx_video_line_commit)(int y)
+{
+    ring_y[ring_head % RING_N] = (int16_t)y;
     __dmb();
     ring_head++;
     __sev();

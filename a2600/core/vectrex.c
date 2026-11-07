@@ -11,7 +11,7 @@
 #endif
 
 #ifndef AUDIO_RATE
-#define AUDIO_RATE 22222
+#define AUDIO_RATE 45454                /* = src/audio_pwm.h */
 #endif
 
 #define CLOCK      1500000
@@ -19,10 +19,30 @@
 
 /* ---- memory ------------------------------------------------------------------- */
 
-/* the cartridge and the System ROM, in RAM: from flash, every read that
- * misses the cache costs more than a whole emulated cycle */
-static uint8_t cart[0x8000];
-static uint8_t bios[0x2000];
+/* the lines of a frame */
+#define MAX_LINES 3000
+typedef struct { int16_t x0, y0, x1, y1; uint8_t c; } vline_t;
+
+/* The big buffers in one piece; when another system runs, its cartridge
+ * may use them (vectrex_arena).
+ * mem: the address space as rd() sees it outside C000h-DFFFh -- the
+ * cartridge at 0000h-7FFFh, 0xff at 8000h-BFFFh, the System ROM at
+ * E000h-FFFFh -- in RAM: from flash, every read that misses the cache
+ * costs more than a whole emulated cycle.
+ * lines: two lists, core 0 fills one while core 1 draws the other
+ * (vectrex_picture); while core 1 is still busy, the next frame's lines
+ * join those of the frame before.
+ * pic: the phosphor. */
+static struct {
+    uint8_t mem[0x10000];
+    vline_t lines[2][MAX_LINES];
+    uint8_t pic[VEC_H][VEC_W];
+} __attribute__((aligned(4))) vb;
+_Static_assert(__builtin_offsetof(__typeof__(vb), pic) % 4 == 0, "pic: words");
+#define mem   vb.mem
+#define lines vb.lines
+#define pic   vb.pic
+
 static uint8_t ram[1024];
 
 /* VIA 6522 */
@@ -52,19 +72,12 @@ static ay8910_t psg;
 static uint8_t snd_sel;
 static uint8_t buttons_lo = 0xff;       /* AY port A: the buttons, active low */
 
-/* the lines of this frame */
-#define MAX_LINES 3000
-typedef struct { int16_t x0, y0, x1, y1; uint8_t c; } vline_t;
-/* Two lists: core 0 fills one while core 1 draws the other
- * (vectrex_picture). While core 1 is still busy, the next frame's lines join
- * those of the frame before. */
-static vline_t lines[2][MAX_LINES];
 static int nl[2];
 static int lw;                          /* the list being filled */
 static volatile bool handed;            /* the other one waits for core 1 */
 static int hand_n;
 
-static void add_line(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint8_t c)
+static VEC_RAM void add_line(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint8_t c)
 {
     if (nl[lw] >= MAX_LINES || c == 0)
         return;
@@ -102,7 +115,7 @@ static VEC_RAM void alg_update(void)
     dy = rsh - ysh;
 }
 
-static void snd_update(void)
+static VEC_RAM void snd_update(void)
 {
     switch (orb & 0x18) {
     case 0x10:                          /* the chip takes data */
@@ -118,7 +131,7 @@ static void snd_update(void)
     }
 }
 
-static uint8_t psg_read(void)
+static VEC_RAM uint8_t psg_read(void)
 {
     if (snd_sel == 14)
         return buttons_lo;
@@ -126,7 +139,7 @@ static uint8_t psg_read(void)
     return ay_read_data(&psg, NULL);
 }
 
-static void int_update(void)
+static VEC_RAM void int_update(void)
 {
     if (ifr & ier & 0x7f) ifr |= 0x80;
     else ifr &= 0x7f;
@@ -222,15 +235,10 @@ static __attribute__((noinline)) VEC_RAM void via_write(uint8_t r, uint8_t v)
 /* not inlined: they are everywhere, and the VIA behind them is big */
 static __attribute__((noinline)) VEC_RAM uint8_t rd(uint16_t a)
 {
-    if ((a & 0xe000) == 0xe000)
-        return bios[a & 0x1fff];
-    if ((a & 0xe000) == 0xc000) {
-        if (a & 0x800) return ram[a & 0x3ff];
-        if (a & 0x1000) return via_read((uint8_t)a);
-        return 0xff;
-    }
-    if (a < 0x8000)
-        return cart[a];
+    if ((a & 0xe000) != 0xc000)
+        return mem[a];
+    if (a & 0x800) return ram[a & 0x3ff];
+    if (a & 0x1000) return via_read((uint8_t)a);
     return 0xff;
 }
 
@@ -347,9 +355,26 @@ static VEC_RAM void cycle(void)
 static VEC_RAM void cycles(int n)
 {
     while (n > 0) {
-        if (srb < 8 ||
-            (t1on && n > t1c && ((acr & 0x40) || t1int)) ||
-            (t2on && !(acr & 0x20) && t2int && n > t2c))
+        int nb = n;                     /* the cycles taken in one step */
+        uint8_t srm = acr & 0x1c;
+        if (srb < 8) {
+            /* the shift register: shifting out under the system clock it
+             * is taken in runs of equal bits (CB2 stays as it is); the
+             * other modes that shift go cycle by cycle; disabled or on an
+             * external clock it does nothing */
+            if (srm == 0x18) {
+                uint8_t x = cb2s ? (uint8_t)~sr : sr;     /* the next bits equal to CB2 */
+                int m = x ? __builtin_clz((uint32_t)x << 24) : 8;
+                if (m > 8 - srb) m = 8 - srb;
+                if (!m)
+                    goto one;
+                if (nb > m) nb = m;
+            } else if (srm == 0x04 || srm == 0x08 || srm == 0x10 || srm == 0x14) {
+                goto one;
+            }
+        }
+        if ((t1on && nb > t1c && ((acr & 0x40) || t1int)) ||
+            (t2on && !(acr & 0x20) && t2int && nb > t2c))
             goto one;
         if ((pcr & 0x0e) == 0x0a) ca2 = 1;
         if ((pcr & 0xe0) == 0xa0) cb2h = 1;
@@ -365,7 +390,7 @@ static VEC_RAM void cycles(int n)
             sx = ramp ? 0 : dx;
             sy = ramp ? 0 : dy;
         }
-        int32_t ex = cur_x + sx * n, ey = cur_y + sy * n;
+        int32_t ex = cur_x + sx * nb, ey = cur_y + sy * nb;
         if (vectoring) {
             /* the line goes on; inside at both ends, it is inside all along */
             if (!blank || sx != vdx || sy != vdy || (uint8_t)zsh != vcolor ||
@@ -379,16 +404,25 @@ static VEC_RAM void cycles(int n)
         }
         cur_x = ex;
         cur_y = ey;
-        if (t1on) t1c = (uint16_t)(t1c - n);
-        if (t2on && !(acr & 0x20)) t2c = (uint16_t)(t2c - n);
-        int k = n;                      /* the shift clock divider */
+        if (t1on) t1c = (uint16_t)(t1c - nb);
+        if (t2on && !(acr & 0x20)) t2c = (uint16_t)(t2c - nb);
+        int k = nb;                     /* the shift clock divider */
         while (k > src) {
             k -= src + 1;
             src = t2ll;
             srclk = !srclk;
         }
         src = (uint8_t)(src - k);
-        return;
+        if (srb < 8 && srm == 0x18) {
+            sr = (uint8_t)(sr << (nb & 7) | sr >> ((8 - nb) & 7));
+            srb = (uint8_t)(srb + nb);
+            if (srb == 8) {
+                ifr |= 0x04;
+                int_update();
+            }
+        }
+        n -= nb;
+        continue;
     one:
         cycle();
         n--;
@@ -402,32 +436,37 @@ enum { CC_C = 0x01, CC_V = 0x02, CC_Z = 0x04, CC_N = 0x08, CC_I = 0x10, CC_H = 0
 static uint8_t A, B, DP, CC;
 static uint16_t X, Y, U, S, PC;
 static bool waiting;                    /* CWAI or SYNC */
+static bool poll;                       /* a BEQ *-2 was taken (see poll_skip) */
 static bool pushed;                     /* ... CWAI: the state is on the stack already */
 static int extra;                       /* cycles of the indexed mode */
 
 #define D_REG ((uint16_t)(A << 8 | B))
-static inline void set_d(uint16_t v) { A = (uint8_t)(v >> 8); B = (uint8_t)v; }
+static inline VEC_RAM void set_d(uint16_t v) { A = (uint8_t)(v >> 8); B = (uint8_t)v; }
 
-static inline uint16_t rd16(uint16_t a) { return (uint16_t)(rd(a) << 8 | rd((uint16_t)(a + 1))); }
-static inline void wr16(uint16_t a, uint16_t v) { wr(a, (uint8_t)(v >> 8)); wr((uint16_t)(a + 1), (uint8_t)v); }
-static inline uint8_t imm8(void) { return rd(PC++); }
-static inline uint16_t imm16(void) { uint16_t v = rd16(PC); PC += 2; return v; }
+static inline VEC_RAM uint16_t rd16(uint16_t a) { return (uint16_t)(rd(a) << 8 | rd((uint16_t)(a + 1))); }
+static inline VEC_RAM void wr16(uint16_t a, uint16_t v) { wr(a, (uint8_t)(v >> 8)); wr((uint16_t)(a + 1), (uint8_t)v); }
+static inline VEC_RAM uint8_t imm8(void)
+{
+    uint16_t a = PC++;
+    return (a & 0xe000) != 0xc000 ? mem[a] : rd(a);     /* code: ROM nearly always */
+}
+static inline VEC_RAM uint16_t imm16(void) { uint16_t v = rd16(PC); PC += 2; return v; }
 
-static inline void push8(uint16_t *sp, uint8_t v) { wr(--*sp, v); }
-static inline void push16(uint16_t *sp, uint16_t v) { wr(--*sp, (uint8_t)v); wr(--*sp, (uint8_t)(v >> 8)); }
-static inline uint8_t pull8(uint16_t *sp) { return rd((*sp)++); }
-static inline uint16_t pull16(uint16_t *sp) { uint16_t v = (uint16_t)(rd(*sp) << 8 | rd((uint16_t)(*sp + 1))); *sp += 2; return v; }
+static inline VEC_RAM void push8(uint16_t *sp, uint8_t v) { wr(--*sp, v); }
+static inline VEC_RAM void push16(uint16_t *sp, uint16_t v) { wr(--*sp, (uint8_t)v); wr(--*sp, (uint8_t)(v >> 8)); }
+static inline VEC_RAM uint8_t pull8(uint16_t *sp) { return rd((*sp)++); }
+static inline VEC_RAM uint16_t pull16(uint16_t *sp) { uint16_t v = (uint16_t)(rd(*sp) << 8 | rd((uint16_t)(*sp + 1))); *sp += 2; return v; }
 
-static inline void nz8(uint8_t v)
+static inline VEC_RAM void nz8(uint8_t v)
 {
     CC = (uint8_t)((CC & ~(CC_N | CC_Z)) | (v & 0x80 ? CC_N : 0) | (v ? 0 : CC_Z));
 }
-static inline void nz16(uint16_t v)
+static inline VEC_RAM void nz16(uint16_t v)
 {
     CC = (uint8_t)((CC & ~(CC_N | CC_Z)) | (v & 0x8000 ? CC_N : 0) | (v ? 0 : CC_Z));
 }
 
-static uint16_t *idx_reg(uint8_t pb)
+static VEC_RAM uint16_t *idx_reg(uint8_t pb)
 {
     switch ((pb >> 5) & 3) {
     case 0:  return &X;
@@ -470,10 +509,10 @@ static VEC_RAM uint16_t ea_indexed(void)
     return ea;
 }
 
-static inline uint16_t ea_direct(void) { return (uint16_t)(DP << 8 | imm8()); }
+static inline VEC_RAM uint16_t ea_direct(void) { return (uint16_t)(DP << 8 | imm8()); }
 
 /* ALU */
-static inline uint8_t op_add8(uint8_t a, uint8_t b, int c)
+static inline VEC_RAM uint8_t op_add8(uint8_t a, uint8_t b, int c)
 {
     unsigned r = (unsigned)a + b + c;
     CC = (uint8_t)(CC & ~(CC_H | CC_N | CC_Z | CC_V | CC_C));
@@ -483,7 +522,7 @@ static inline uint8_t op_add8(uint8_t a, uint8_t b, int c)
     nz8((uint8_t)r);
     return (uint8_t)r;
 }
-static inline uint8_t op_sub8(uint8_t a, uint8_t b, int c)
+static inline VEC_RAM uint8_t op_sub8(uint8_t a, uint8_t b, int c)
 {
     unsigned r = (unsigned)a - b - c;
     CC = (uint8_t)(CC & ~(CC_N | CC_Z | CC_V | CC_C));
@@ -492,7 +531,7 @@ static inline uint8_t op_sub8(uint8_t a, uint8_t b, int c)
     nz8((uint8_t)r);
     return (uint8_t)r;
 }
-static inline uint16_t op_add16(uint16_t a, uint16_t b)
+static inline VEC_RAM uint16_t op_add16(uint16_t a, uint16_t b)
 {
     uint32_t r = (uint32_t)a + b;
     CC = (uint8_t)(CC & ~(CC_N | CC_Z | CC_V | CC_C));
@@ -501,7 +540,7 @@ static inline uint16_t op_add16(uint16_t a, uint16_t b)
     nz16((uint16_t)r);
     return (uint16_t)r;
 }
-static inline uint16_t op_sub16(uint16_t a, uint16_t b)
+static inline VEC_RAM uint16_t op_sub16(uint16_t a, uint16_t b)
 {
     uint32_t r = (uint32_t)a - b;
     CC = (uint8_t)(CC & ~(CC_N | CC_Z | CC_V | CC_C));
@@ -510,7 +549,7 @@ static inline uint16_t op_sub16(uint16_t a, uint16_t b)
     nz16((uint16_t)r);
     return (uint16_t)r;
 }
-static inline uint8_t op_logic(uint8_t v) { CC &= (uint8_t)~CC_V; nz8(v); return v; }
+static inline VEC_RAM uint8_t op_logic(uint8_t v) { CC &= (uint8_t)~CC_V; nz8(v); return v; }
 
 /* read-modify-write group (NEG .. CLR): op 0..15 */
 static VEC_RAM uint8_t rmw(uint8_t op, uint8_t v)
@@ -541,7 +580,7 @@ static VEC_RAM uint8_t rmw(uint8_t op, uint8_t v)
     return v;
 }
 
-static bool branch(uint8_t op)
+static VEC_RAM bool branch(uint8_t op)
 {
     bool n = CC & CC_N, z = CC & CC_Z, v = CC & CC_V, c = CC & CC_C;
     switch (op & 0x0f) {
@@ -564,7 +603,7 @@ static bool branch(uint8_t op)
     }
 }
 
-static uint16_t reg_get(int r)
+static VEC_RAM uint16_t reg_get(int r)
 {
     switch (r) {
     case 0x0: return D_REG;
@@ -581,7 +620,7 @@ static uint16_t reg_get(int r)
     }
 }
 
-static void reg_set(int r, uint16_t v)
+static VEC_RAM void reg_set(int r, uint16_t v)
 {
     switch (r) {
     case 0x0: set_d(v); break;
@@ -598,7 +637,7 @@ static void reg_set(int r, uint16_t v)
 }
 
 /* PSHS/PSHU and PULS/PULU: `sp` the stack, `other` the other stack register */
-static int psh(uint16_t *sp, uint16_t other, uint8_t m)
+static VEC_RAM int psh(uint16_t *sp, uint16_t other, uint8_t m)
 {
     int n = 0;
     if (m & 0x80) { push16(sp, PC); n += 2; }
@@ -612,7 +651,7 @@ static int psh(uint16_t *sp, uint16_t other, uint8_t m)
     return n;
 }
 
-static int pul(uint16_t *sp, uint16_t *other, uint8_t m)
+static VEC_RAM int pul(uint16_t *sp, uint16_t *other, uint8_t m)
 {
     int n = 0;
     if (m & 0x01) { CC = pull8(sp); n++; }
@@ -626,7 +665,7 @@ static int pul(uint16_t *sp, uint16_t *other, uint8_t m)
     return n;
 }
 
-static __attribute__((noinline)) void push_all(void)
+static __attribute__((noinline)) VEC_RAM void push_all(void)
 {
     push16(&S, PC);
     push16(&S, U);
@@ -651,7 +690,7 @@ static const uint8_t cyc0[256] = {
 };
 
 /* the operand's address for 0x80..0xFF (and 0x00..0x7F RMW): mode by bits 4..5 */
-static inline uint16_t ea_for(uint8_t op)
+static inline VEC_RAM uint16_t ea_for(uint8_t op)
 {
     switch (op & 0x30) {
     case 0x10: return ea_direct();
@@ -716,7 +755,9 @@ static VEC_RAM int step(void)
 {
     if (waiting)
         return 1;
-    uint8_t op = imm8();
+    /* the opcode: from ROM or cartridge (nearly always) without the call */
+    uint8_t op = (PC & 0xe000) != 0xc000 ? mem[PC] : rd(PC);
+    PC++;
     int c = cyc0[op];
     extra = 0;
     uint16_t ea, v16;
@@ -743,7 +784,11 @@ static VEC_RAM int step(void)
     }
     if (op >= 0x20 && op < 0x30) {      /* short branches */
         int8_t o = (int8_t)imm8();
-        if (branch(op)) PC = (uint16_t)(PC + o);
+        if (branch(op)) {
+            PC = (uint16_t)(PC + o);
+            if (op == 0x27 && o == -4)
+                poll = true;
+        }
         return c;
     }
     if (op >= 0x80) {
@@ -904,15 +949,51 @@ static VEC_RAM int irq_check(void)
     return 0;
 }
 
+/* The System ROM waits for a timer with BITA/BITB <$0D (the VIA's IFR) ;
+ * BEQ *-2: 7 cycles a round. After a round that found nothing, the rounds
+ * before the next change of IFR (a timer running out) find nothing either
+ * and change nothing but time: they are taken at once, as many as end
+ * before that change and before the end of the frame. The interrupt
+ * cannot come in between (IFR stays as it is), the shift register must be
+ * at rest. */
+static inline VEC_RAM uint8_t peek(uint16_t a)  /* memory without side effects; 0: I/O */
+{
+    if ((a & 0xe000) != 0xc000) return mem[a];
+    if (a & 0x800) return ram[a & 0x3ff];
+    return 0;
+}
+
+static VEC_RAM int poll_skip(int left)  /* the cycles to take at once, or 0 */
+{
+    if (DP != 0xd0 || srb < 8 || ((ifr & 0x80) && !(CC & CC_I)))
+        return 0;
+    uint8_t op = peek(PC);
+    if (peek((uint16_t)(PC + 1)) != 0x0d || (op != 0x95 && op != 0xd5))
+        return 0;
+    uint8_t m = op == 0x95 ? A : B;
+    if (!m || (m & ~0x60) || (ifr & m))
+        return 0;
+    int e = left - 1;                   /* cycles that may pass: before the frame's end, */
+    if (t1on && ((acr & 0x40) || t1int) && t1c < e)
+        e = t1c;                        /* ... before timer 1 runs out (cycle t1c + 1) */
+    if (t2on && !(acr & 0x20) && t2int && t2c < e)
+        e = t2c;
+    int k = e / 7;
+    if (k <= 0)
+        return 0;
+    CC = (uint8_t)((CC & ~(CC_N | CC_V)) | CC_Z);   /* what each BIT found */
+    return 7 * k;                       /* the caller runs them */
+}
+
 /* ---- the machine ------------------------------------------------------------------- */
 
 __attribute__((optimize("Os"))) bool vectrex_insert(const uint8_t *rom, uint32_t size)
 {
     if (!rom || size < 16 || size > 0x8000)
         return false;
-    memset(cart, 0xff, sizeof cart);
-    memcpy(cart, rom, size);
-    memcpy(bios, vectrex_bios, sizeof bios);
+    memset(mem, 0xff, 0xe000);
+    memcpy(mem, rom, size);
+    memcpy(mem + 0xe000, vectrex_bios, sizeof vectrex_bios);
     return true;
 }
 
@@ -942,7 +1023,7 @@ __attribute__((optimize("Os"))) void vectrex_reset(void)
     A = B = X = Y = U = S = 0;
     DP = 0;
     CC = CC_I | CC_F;
-    waiting = false;
+    waiting = poll = false;
     PC = rd16(0xfffe);
     nl[0] = nl[1] = 0;
     lw = 0;
@@ -958,11 +1039,35 @@ void vectrex_input(uint8_t buttons, int x, int y)
 
 uint8_t *vectrex_ram(void) { return ram; }
 
+uint8_t *vectrex_arena(uint32_t *size)
+{
+    *size = sizeof vb;
+    return (uint8_t *)&vb;
+}
+
 /* ---- the picture --------------------------------------------------------------------- */
 
-static uint8_t __attribute__((aligned(4))) pic[VEC_H][VEC_W];
 
-static inline void plot(int x, int y, unsigned c)
+/* per row: all its bytes ORed (0: black, it need not fade); core 1's */
+static uint8_t row_or[VEC_H];
+static uint8_t row_new[VEC_H];          /* lines were drawn into it */
+
+#if defined(__ARM_FEATURE_SIMD32)
+#include <arm_acle.h>
+#define QADD8(a, b) __uqadd8((a), (b))  /* four bytes, each saturated at 255 */
+#else
+static inline uint32_t QADD8(uint32_t a, uint32_t b)
+{
+    uint32_t r = 0;
+    for (int i = 0; i < 32; i += 8) {
+        uint32_t v = ((a >> i) & 0xff) + ((b >> i) & 0xff);
+        r |= (v > 255 ? 255 : v) << i;
+    }
+    return r;
+}
+#endif
+
+static inline VEC_RAM void plot(int x, int y, unsigned c)
 {
     if ((unsigned)x < VEC_W && (unsigned)y < VEC_H) {
         unsigned v = pic[y][x] + c;
@@ -979,6 +1084,30 @@ static VEC_RAM void draw_line(const vline_t *l)
     int sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
     int err = ddx - ddy;
     unsigned g = c / 3;                 /* a soft glow around the beam, like the tube */
+    int xl = x0 < x1 ? x0 : x1, xh = x0 ^ x1 ^ xl, yl = y0 < y1 ? y0 : y1, yh = y0 ^ y1 ^ yl;
+    for (int y = yl - 1 < 0 ? 0 : yl - 1; y <= yh + 1 && y < VEC_H; y++)
+        row_new[y] = 1;
+    if (xl >= 1 && xh <= VEC_W - 3 && yl >= 1 && yh <= VEC_H - 2) {
+        /* all inside: no checks, the row's three pixels (and one more
+         * that gets 0) in one go; saturated adds may come in any order */
+        uint8_t *p = &pic[y0][x0];
+        uint32_t pat = g | c << 8 | g << 16;
+        int py = sy * VEC_W;
+        for (;;) {
+            uint32_t w;
+            memcpy(&w, p - 1, 4);
+            w = QADD8(w, pat);
+            memcpy(p - 1, &w, 4);
+            p[-VEC_W] = (uint8_t)QADD8(p[-VEC_W], g);
+            p[VEC_W] = (uint8_t)QADD8(p[VEC_W], g);
+            if (x0 == x1 && y0 == y1)
+                break;
+            int e2 = 2 * err;
+            if (e2 > -ddy) { err -= ddy; x0 += sx; p += sx; }
+            if (e2 < ddx) { err += ddx; y0 += sy; p += py; }
+        }
+        return;
+    }
     for (;;) {
         plot(x0, y0, c);
         plot(x0 + 1, y0, g);
@@ -993,24 +1122,48 @@ static VEC_RAM void draw_line(const vline_t *l)
     }
 }
 
+static inline VEC_RAM uint8_t fold(uint32_t w)
+{
+    w |= w >> 16;
+    return (uint8_t)(w | w >> 8);
+}
+
 VEC_RAM bool vectrex_picture(void)
 {
     if (!handed)
         return false;
     __atomic_thread_fence(__ATOMIC_SEQ_CST);
-    /* the phosphor: what was there fades by half, the new lines on top */
-    uint32_t *w = (uint32_t *)pic;
-    for (int i = 0; i < VEC_H * VEC_W / 4; i++)
-        w[i] = (w[i] >> 1) & 0x7f7f7f7fu;
+    /* the phosphor: what was there fades by half (black rows stay black),
+     * the new lines on top */
+    for (int y = 0; y < VEC_H; y++) {
+        if (!row_or[y])
+            continue;
+        uint32_t *w = (uint32_t *)pic[y], o = 0;
+        for (int i = 0; i < VEC_W / 4; i++)
+            o |= w[i] = (w[i] >> 1) & 0x7f7f7f7fu;
+        row_or[y] = fold(o);
+    }
+    memset(row_new, 0, sizeof row_new);
     const vline_t *l = lines[lw ^ 1];
     for (int i = 0; i < hand_n; i++)
         draw_line(&l[i]);
+    for (int y = 0; y < VEC_H; y++) {
+        if (!row_new[y])
+            continue;
+        const uint32_t *w = (const uint32_t *)pic[y];
+        uint32_t o = 0;
+        for (int i = 0; i < VEC_W / 4; i++)
+            o |= w[i];
+        row_or[y] = fold(o);
+    }
     __atomic_thread_fence(__ATOMIC_SEQ_CST);
     handed = false;
     return true;
 }
 
-const uint8_t *vectrex_row(int y) { return pic[y]; }
+VEC_RAM uint8_t vectrex_row_or(int y) { return row_or[y]; }
+
+VEC_RAM const uint8_t *vectrex_row(int y) { return pic[y]; }
 
 VEC_RAM void vectrex_frame(int16_t *audio, int samples)
 {
@@ -1018,8 +1171,16 @@ VEC_RAM void vectrex_frame(int16_t *audio, int samples)
     while (left > 0) {
         int c = irq_check();
         c += step();
-        cycles(c);
-        left -= c;
+        for (;;) {                      /* (one call of cycles: it is inlined) */
+            cycles(c);
+            left -= c;
+            if (!poll)
+                break;
+            poll = false;
+            c = left > 0 ? poll_skip(left) : 0;
+            if (!c)
+                break;
+        }
     }
     /* the lines to core 1, if it is done with the last ones; else they
      * wait for the next frame's */

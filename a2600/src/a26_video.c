@@ -12,7 +12,7 @@
 #include "tia.h"
 #include "vectrex.h"
 
-static uint16_t pal565[128];            /* the TIA colours */
+static uint16_t pal565[256];            /* the TIA colours by register value (bit 0 unused) */
 
 #define WIN_H  240
 static int win_y0 = 26;                 /* first line shown: NTSC 26, PAL 42 */
@@ -41,8 +41,8 @@ static volatile bool core1_running, pause_req, pause_ack;
 
 static void make_pal565(void)
 {
-    for (int i = 0; i < 128; i++) {
-        uint32_t c = tia_palette[i];
+    for (int i = 0; i < 256; i++) {
+        uint32_t c = tia_palette[i >> 1];
         pal565[i] = PBC_RGB((c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff);
     }
 }
@@ -221,11 +221,7 @@ static void __not_in_flash_func(vec_core1)(void)
         bool batt = pbc_battwarn_rows();
         for (int y = 0; y < PBC_LCD_H; y++) {
             /* light: a value of 8 or more (below that the panel shows black) */
-            const uint32_t *w = (const uint32_t *)vectrex_row(y);
-            uint32_t any = 0;
-            for (int i = 0; i < PBC_LCD_W / 4; i++)
-                any |= w[i];
-            bool on = (any & 0xf8f8f8f8u) || (batt && y < 32);
+            bool on = (vectrex_row_or(y) & 0xf8) || (batt && y < 32);
             need[y] = on || lit[y];
             lit[y] = on;
         }

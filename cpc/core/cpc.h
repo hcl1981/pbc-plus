@@ -65,8 +65,12 @@ void cpc_type(const char *s, int delay);
 void cpc_tape_rewind(void);
 bool cpc_tape_busy(void);               /* the motor runs a tape */
 
-typedef void (*cpc_line_fn)(int y, const uint8_t *px);
-void cpc_frame(cpc_line_fn line, int16_t *audio, int n);
+/* Each shown line y: begin(y) says where its 640 pixels go (8-aligned;
+ * NULL: not wanted), the core draws them there, commit(y) hands them on.
+ * begin NULL: nothing is drawn (fast-forward). */
+typedef uint8_t *(*cpc_line_begin_fn)(int y);
+typedef void (*cpc_line_commit_fn)(int y);
+void cpc_frame(cpc_line_begin_fn begin, cpc_line_commit_fn commit, int16_t *audio, int n);
 
 #define CPC_FRAME_US 19968u
 

@@ -249,15 +249,24 @@ void m68k_set_reg(m68k_register_t regnum, unsigned int value)
 
 /* The VDP drives the IPL lines; the level is taken between instructions
  * when it is above the interrupt mask (m68k_run, or an SR change). */
-void m68k_set_irq(unsigned int int_level)
+/* PBC: these and the clock queries below in RAM: called per line and per
+ * sound chip access */
+#define M68K_RAM_FN __attribute__((section(".time_critical.m68k_irq")))
+
+M68K_RAM_FN void m68k_set_irq(unsigned int int_level)
 {
 	CPU_INT_LEVEL = int_level << 8;
 }
 
-void m68k_update_irq(unsigned int int_level)
+M68K_RAM_FN void m68k_update_irq(unsigned int int_level)
 {
 	CPU_INT_LEVEL |= int_level << 8;
 }
+
+/* m68ki_poll_skip() below: its state, and the slices counted */
+static unsigned int m68ki_slice;
+static unsigned int poll_pc = 1, poll_slice;
+static int poll_at;
 
 /* PBC: in RAM like the instruction table, so the dispatch loop never waits
  * for flash. */
@@ -279,6 +288,7 @@ void __attribute__((section(".time_critical.m68k_run"))) m68k_run(unsigned int c
 	}
 
 	m68ki_cpu.cycle_end = end;
+	m68ki_slice++;
 
 	while(m68ki_cpu.cycles < end)
 	{
@@ -298,13 +308,100 @@ void __attribute__((section(".time_critical.m68k_run"))) m68k_run(unsigned int c
 	}
 }
 
+/* PBC: waiting loops, taken in one step.
+ *
+ * Within one m68k_run() slice nothing but the 68000 changes its RAM:
+ * interrupts are taken at the start of a slice or when an instruction
+ * lowers the mask, the Z80 runs between slices, and DMA only starts on a
+ * VDP write. A loop that only tests a work RAM location and branches back
+ *     loop:  tst.b/w/l (xxx).w | tst.b/w/l (xxx).l
+ *            btst #n,(xxx).w   | cmpi.b/w #n,(xxx).w
+ *            bcc.s loop
+ * therefore goes round the same way until the end of the slice: same
+ * registers and flags each time, the same number of clocks. Its whole
+ * rounds that still start before the end are added at once; the last,
+ * partial one runs as usual. Registers, flags, PC and clock at the end of
+ * the slice are exactly as without (only an instruction trace would
+ * notice); games wait for the VBlank interrupt like this (Sonic 2, Streets
+ * of Rage 2: half of all the instructions in a level).
+ * Only once the branch has been taken twice in a row in the same slice:
+ * then the test ran in between and the branch followed what it read now.
+ * The first time it may follow flags from before an interrupt (RTE back
+ * to the branch), and the RAM may have changed since.
+ * Called by Bcc.S right after it branched back by 6 or 8 bytes: REG_PPC
+ * is the branch, REG_PC the loop's first instruction; the run loop still
+ * adds the branch's own clocks. */
+void __attribute__((section(".time_critical.m68k_run"))) m68ki_poll_skip(void)
+{
+	uint pc = REG_PC;
+	uint len = REG_PPC - pc;                /* bytes before the branch */
+	uint op = m68k_read_immediate_16(pc);
+	uint addr;
+
+	switch(op)
+	{
+		case 0x4a38: case 0x4a78: case 0x4ab8:  /* tst.b/w/l (xxx).w */
+			if(len != 4)
+				return;
+			addr = MAKE_INT_16(m68k_read_immediate_16(pc + 2));
+			break;
+		case 0x4a39: case 0x4a79: case 0x4ab9:  /* tst.b/w/l (xxx).l */
+			if(len != 6)
+				return;
+			addr = m68k_read_immediate_32(pc + 2);
+			break;
+		case 0x0838:                            /* btst #n,(xxx).w */
+		case 0x0c38: case 0x0c78:               /* cmpi.b/w #n,(xxx).w */
+			if(len != 6)
+				return;
+			addr = MAKE_INT_16(m68k_read_immediate_16(pc + 4));
+			break;
+		default:
+			return;
+	}
+	if(ADDRESS_68K(addr) < 0xff0000)        /* only work RAM */
+		return;
+
+	int branch = (int)m68ki_op_cycles(REG_IR);
+	int period = (int)m68ki_op_cycles(op) + branch;
+	int now = m68ki_cpu.cycles;
+	if(REG_PPC != poll_pc || m68ki_slice != poll_slice || now != poll_at + period)
+	{
+		poll_pc = REG_PPC;                  /* first time round: next time */
+		poll_slice = m68ki_slice;
+		poll_at = now;
+		return;
+	}
+	int left = m68ki_cpu.cycle_end - (now + branch);
+	if(left >= period)
+		m68ki_cpu.cycles += left - left % period;
+}
+
+/* DBF Dn,* (a delay loop): its rounds to come until the end of the slice,
+ * or until Dn runs out, at once. Called after it branched to itself and
+ * counted its clocks but for the base time the run loop adds. */
+void __attribute__((section(".time_critical.m68k_run"))) m68ki_dbf_skip(uint *r_dst)
+{
+	int base = (int)m68ki_op_cycles(REG_IR);
+	int period = base + CYC_DBCC_F_NOEXP * MUL;     /* one more round, taken */
+	int left = m68ki_cpu.cycle_end - (m68ki_cpu.cycles + base);
+	uint rounds = MASK_OUT_ABOVE_16(*r_dst);        /* taken ones still to come */
+	if(left < period || rounds == 0)
+		return;
+	uint k = (uint)(left / period);
+	if(k > rounds)
+		k = rounds;
+	*r_dst = MASK_OUT_BELOW_16(*r_dst) | (rounds - k);
+	m68ki_cpu.cycles += (int)k * period;
+}
+
 /* Master clocks left until the target of m68k_run() (VDP H counter) */
-int m68k_cycles_run(void)
+M68K_RAM_FN int m68k_cycles_run(void)
 {
 	return m68ki_cpu.cycle_end - m68ki_cpu.cycles;
 }
 
-int m68k_cycles_master(void)
+M68K_RAM_FN int m68k_cycles_master(void)
 {
 	return m68ki_cpu.cycles;
 }

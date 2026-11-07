@@ -9,14 +9,14 @@
 
 #define SMS_WIDTH 256
 #define SMS_HEIGHT 192
-#ifndef SMS_AUD_RATE   /* PicoBoy Color Plus: set to 22222 in CMakeLists.txt */
+#ifndef SMS_AUD_RATE   /* PicoBoy Color Plus: set to 45454 in CMakeLists.txt */
 #define SMS_AUD_RATE 44100
 #endif
 #define SMS_FPS 60
 // rendering
 static uint8_t screenCropX = 0;
 static uint16_t screenBufferLine[256];
-static uint8_t smsBufferLine[SMS_WIDTH];
+static uint8_t smsBufferLine[SMS_WIDTH] __attribute__((aligned(4)));   /* tms.c writes words */
 
 // FH - 2019-06-30: Added support for RGB444 in stead of RGB565
 static int palette444[32];
@@ -75,6 +75,10 @@ extern ay8910_t coleco_ay;              /* ... and its sound chip */
 extern uint8 coleco_ay_on;
 void coleco_memory_map(void);
 void coleco_sgm_reset(void);
+/* PBC: SG-1000/ColecoVision cartridge into the heap, see sms.c */
+int sms_cart_to_ram(int margin);
+/* PBC: render the samples up to the line being run (sms.c) */
+void sms_sound_sync(void);
 
 void cpu_reset(void);
 

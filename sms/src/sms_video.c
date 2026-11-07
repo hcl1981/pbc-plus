@@ -8,6 +8,7 @@
 #include "board.h"
 #include "color565.h"
 #include "display.h"
+#define FONT8X8_EXTERN
 #include "font8x8.h"
 #include "audio_pwm.h"
 #include "sms_video.h"
@@ -23,7 +24,19 @@
 #define GG_Y    24
 #define OUT_HMAX PBC_LCD_H
 
-static uint16_t __aligned(4) fb[2][SMS_W * SMS_HMAX];
+/* PBC: the frames as the core's 8-bit palette indices, one 256-byte row
+ * per line (Game Gear: its 160 pixels), and the palette each line was drawn
+ * with. Core 1 converts them to panel colours while it sends; core 0 used
+ * to do that for every pixel (about 5 % of its time), and the two buffers
+ * of panel words took 70 KB more. A palette is stored again only when it
+ * changed since the last line: pals[] holds at most one per line. */
+#define IX_W 256
+static uint8_t  __aligned(4) ix[2][IX_W * SMS_HMAX];
+static uint8_t  line_pal[2][SMS_HMAX];    /* index into pals[], or LINE_BLACK */
+#define LINE_BLACK 0xFF
+static uint16_t __aligned(4) pals[2][SMS_HMAX][32];
+static int      npal;               /* palettes stored in pals[back] */
+static bool     pal_changed;        /* pal[] differs from the last stored one */
 static int back;                    /* buffer core 0 draws into */
 static bool is_gg;
 static unsigned mode;               /* SMS_MODE_* or GG_MODE_* */
@@ -35,8 +48,8 @@ static uint16_t pal[32];
 static uint8_t sx_a[SMS_W], sx_b[SMS_W];
 static bool sx_plain;               /* plain 1:1 copy from sx_a[0] on */
 
-/* handshake with core 1 */
-static volatile const uint16_t *frame;
+/* handshake with core 1: the buffer index + 1, 0 = none */
+static volatile int  frame;
 static volatile int  frame_h;
 static volatile bool core1_ready;
 static int last_h = -1, last_w = -1; /* core 1: geometry of the last frame */
@@ -46,6 +59,9 @@ static volatile bool status_dirty;
 
 /* core 1: output -> source maps, rebuilt when the geometry changes */
 static uint16_t __aligned(4) rowbuf[2][PBC_LCD_W];
+/* core 1: the last two source rows converted to panel colours */
+static uint16_t __aligned(4) srcrow[2][SMS_W];
+static int srcrow_y[2], srcrow_last;
 static uint8_t gx_a[PBC_LCD_W], gx_b[PBC_LCD_W];
 static uint8_t gy_a[OUT_HMAX], gy_b[OUT_HMAX];
 
@@ -74,6 +90,7 @@ void __not_in_flash_func(sms_palette_sync)(int index)
     /* CRAM: --BBGGRR, two bits per channel */
     int c = vdp.cram[index];
     pal[index] = PBC_RGB((c & 3) * 85, ((c >> 2) & 3) * 85, ((c >> 4) & 3) * 85);
+    pal_changed = true;
 }
 
 void __not_in_flash_func(sms_palette_syncGG)(int index)
@@ -81,53 +98,113 @@ void __not_in_flash_func(sms_palette_syncGG)(int index)
     /* CRAM: GGGGRRRR ----BBBB, four bits per channel */
     int lo = vdp.cram[(index << 1) | 0], hi = vdp.cram[(index << 1) | 1];
     pal[index] = PBC_RGB((lo & 15) * 17, (lo >> 4) * 17, (hi & 15) * 17);
+    pal_changed = true;
 }
 
 void __not_in_flash_func(sms_palette_syncSG)(int index)
 {
     const uint8 *rgb = tms_palette_rgb[index & 15];
     pal[index] = PBC_RGB(rgb[0], rgb[1], rgb[2]);
+    pal_changed = true;
 }
 
 /* ---- line callback from the core (render.c), core 0 ---------------------- */
 
+/* n bytes (a multiple of 16) in words, here in RAM: memcpy() is in flash.
+ * The empty asm keeps GCC from turning the loop back into a memcpy call. */
+static inline void copy16(void *dst, const void *src, int n)
+{
+    uint32_t *d = dst;
+    const uint8_t *s = src;
+    for (int i = 0; i < n; i += 16, d += 4) {
+        uint32_t a, b, c, e;
+        memcpy(&a, s + i, 4);
+        memcpy(&b, s + i + 4, 4);
+        memcpy(&c, s + i + 8, 4);
+        memcpy(&e, s + i + 12, 4);
+        __asm__ ("" : "+r" (a), "+r" (b), "+r" (c), "+r" (e));
+        d[0] = a; d[1] = b; d[2] = c; d[3] = e;
+    }
+}
+
+/* Keep the line's indices and note its palette: stored again if it changed. */
+static inline void __not_in_flash_func(keep_line)(int y, const uint8_t *src, int n)
+{
+    if (pal_changed || !npal) {
+        copy16(pals[back][npal], pal, sizeof pal);
+        npal++;
+        pal_changed = false;
+    }
+    line_pal[back][y] = (uint8_t)(npal - 1);
+    copy16(ix[back] + y * IX_W, src, n);
+}
+
 void __not_in_flash_func(sms_render_line)(int line, const uint8_t *buffer)
 {
-    uint16_t *dst;
     if (is_gg) {
         int y = line - GG_Y;
         if (y < 0 || y >= GG_H)
             return;
-        dst = fb[back] + y * GG_W;
         if (!buffer) {
-            memset(dst, 0, GG_W * sizeof(uint16_t));
+            line_pal[back][y] = LINE_BLACK;
             return;
         }
-        const uint8_t *src = buffer + GG_X;
-        for (int i = 0; i < GG_W; i++)
-            dst[i] = pal[src[i] & 31];
+        keep_line(y, buffer + GG_X, GG_W);
     } else {
         if (line < 0 || line >= SMS_HMAX)
             return;
-        dst = fb[back] + line * SMS_W;
         if (!buffer) {
-            memset(dst, 0, SMS_W * sizeof(uint16_t));
+            line_pal[back][line] = LINE_BLACK;
             return;
         }
-        if (sx_plain) {
-            const uint8_t *src = buffer + sx_a[0];
-            for (int i = 0; i < SMS_W; i++)
-                dst[i] = pal[src[i] & 31];
-        } else {
-            /* horizontal scaling happens here, on the 256 indices */
-            for (int i = 0; i < SMS_W; i++) {
-                uint16_t a = pal[buffer[sx_a[i]] & 31];
-                dst[i] = sx_a[i] == sx_b[i] ? a : pbc_avg565(a, pal[buffer[sx_b[i]] & 31]);
-            }
-        }
+        keep_line(line, buffer, IX_W);
         if (line + 1 > lines_drawn)
             lines_drawn = line + 1;
     }
+}
+
+/* Core 1: source row y of buffer f in panel colours, as core 0 converted
+ * it before; Master System columns scaled here too. */
+static void __not_in_flash_func(convert_row)(int f, int y, uint16_t *dst)
+{
+    int w = is_gg ? GG_W : SMS_W;
+    int p = line_pal[f][y];
+    if (p == LINE_BLACK) {
+        memset(dst, 0, w * sizeof(uint16_t));
+        return;
+    }
+    const uint16_t *pl = pals[f][p];
+    const uint8_t *buffer = ix[f] + y * IX_W;
+    if (is_gg) {
+        for (int i = 0; i < GG_W; i++)
+            dst[i] = pl[buffer[i] & 31];
+    } else if (sx_plain) {
+        const uint8_t *src = buffer + sx_a[0];
+        for (int i = 0; i < SMS_W; i++)
+            dst[i] = pl[src[i] & 31];
+    } else {
+        for (int i = 0; i < SMS_W; i++) {
+            uint16_t a = pl[buffer[sx_a[i]] & 31];
+            dst[i] = sx_a[i] == sx_b[i] ? a : pbc_avg565(a, pl[buffer[sx_b[i]] & 31]);
+        }
+    }
+}
+
+/* Core 1: source row y converted, from the two kept ones if there; `keep`
+ * (a row the caller still uses) is not replaced. */
+static const uint16_t *__not_in_flash_func(source_row)(int f, int y, const uint16_t *keep)
+{
+    for (int i = 0; i < 2; i++)
+        if (srcrow_y[i] == y) {
+            srcrow_last = i;
+            return srcrow[i];
+        }
+    /* replace the one used longer ago, or the one that is not `keep` */
+    int i = keep ? (srcrow[0] == keep ? 1 : 0) : 1 - srcrow_last;
+    convert_row(f, y, srcrow[i]);
+    srcrow_y[i] = y;
+    srcrow_last = i;
+    return srcrow[i];
 }
 
 /* ---- core 0 -------------------------------------------------------------- */
@@ -164,11 +241,12 @@ bool sms_video_present(void)
 {
     int h = is_gg ? GG_H : (lines_drawn > 192 ? lines_drawn : 192);
     lines_drawn = 0;
+    npal = 0;                       /* the next frame stores its own palettes */
     if (frame)
         return false;               /* core 1 still busy: draw over it again */
     frame_h = h;
     __dmb();
-    frame = fb[back];
+    frame = back + 1;
     back ^= 1;                      /* core 1 now reads the other one */
     __sev();
     return true;
@@ -249,12 +327,12 @@ void __not_in_flash_func(sms_video_core1_main)(void)
     __dmb();
     core1_ready = true;
 
-    int src_w = 0, src_h = 0, out_w = 0, out_h = 0;
+    int src_h = 0, out_w = 0, out_h = 0;
     bool over = false;                      /* status goes over the picture */
 
     for (;;) {
-        const uint16_t *src = (const uint16_t *)frame;
-        if (!src) {
+        int f = frame - 1;
+        if (f < 0) {
             if (status_dirty && !over) {
                 status_dirty = false;
                 pbc_display_fill(0, PBC_LCD_H - 12, PBC_LCD_W, 8, PBC_BLACK);
@@ -268,7 +346,6 @@ void __not_in_flash_func(sms_video_core1_main)(void)
         out_size(h, &out_w, &out_h);
         if (out_h != last_h || out_w != last_w || h != src_h) {
             /* geometry changed: maps, borders, where the status goes */
-            src_w = is_gg ? GG_W : SMS_W;
             src_h = h;
             if (is_gg)
                 build_map(gx_a, gx_b, out_w, GG_W, 0);
@@ -281,7 +358,7 @@ void __not_in_flash_func(sms_video_core1_main)(void)
             status_dirty = status_text[0] != 0;
         }
         int x0 = (PBC_LCD_W - out_w) / 2, y0 = (PBC_LCD_H - out_h) / 2;
-        bool cols = is_gg && out_w != GG_W;     /* SMS columns are done on core 0 */
+        bool cols = is_gg && out_w != GG_W;     /* SMS columns: in convert_row() */
         bool text = over && status_text[0];
 
         pbc_battwarn_frame(x0, y0, out_w, out_h);
@@ -291,43 +368,36 @@ void __not_in_flash_func(sms_video_core1_main)(void)
         if (scan < 0)
             scan = pbc_scanlines_on();
         bool batt = pbc_battwarn_rows();
-        if (!cols && out_h == h && !text && !scan && !batt) {
-            pbc_display_send(src, src_w * h);   /* 1:1, one piece */
-        } else {
-            int b = 0;
-            for (int r = 0; r < out_h; r++) {
-                const uint16_t *ra = src + gy_a[r] * src_w, *rb = src + gy_b[r] * src_w;
-                const uint16_t *line;
-                bool ov = text && r >= OV_Y && r < OV_Y + OV_H;
-                if (cols || ra != rb) {
+        /* Row by row, converted from the indices into rowbuf[b] while the
+         * DMA sends the other one. Rows used again (vertical scaling)
+         * come from the two kept source rows. */
+        srcrow_y[0] = srcrow_y[1] = -1;
+        int b = 0;
+        for (int r = 0; r < out_h; r++) {
+            bool ov = text && r >= OV_Y && r < OV_Y + OV_H;
+            if (!cols && out_h == h) {
+                convert_row(f, r, rowbuf[b]);   /* 1:1: straight into it */
+            } else {
+                const uint16_t *ra = source_row(f, gy_a[r], NULL);
+                const uint16_t *rb = gy_b[r] == gy_a[r] ? ra : source_row(f, gy_b[r], ra);
+                if (cols || ra != rb)
                     scale_row(ra, rb, out_w, cols, rowbuf[b]);
-                    line = rowbuf[b];
-                } else if (ov) {
-                    memcpy(rowbuf[b], ra, out_w * sizeof(uint16_t));
-                    line = rowbuf[b];
-                } else {
-                    line = ra;                  /* send the stored row itself */
-                }
-                if (ov)
-                    overlay_row(rowbuf[b], r, out_w);
-                bool dim = scan && (r & 1), mark = batt && y0 + r >= 10 && y0 + r < 28;
-                if (dim || mark) {
-                    if (line != rowbuf[b])
-                        memcpy(rowbuf[b], line, out_w * sizeof(uint16_t));
-                    if (dim)
-                        pbc_scanline_dim(rowbuf[b], out_w);
-                    if (mark)
-                        pbc_battwarn_row(rowbuf[b], y0 + r, x0, out_w);
-                    line = rowbuf[b];
-                }
-                pbc_display_wait();             /* the DMA still sends the other one */
-                pbc_display_send(line, out_w);
-                b ^= 1;
+                else                            /* Master System: 240 wide */
+                    copy16(rowbuf[b], ra, out_w * sizeof(uint16_t));
             }
-            pbc_display_wait();
+            if (ov)
+                overlay_row(rowbuf[b], r, out_w);
+            if (scan && (r & 1))
+                pbc_scanline_dim(rowbuf[b], out_w);
+            if (batt && y0 + r >= 10 && y0 + r < 28)
+                pbc_battwarn_row(rowbuf[b], y0 + r, x0, out_w);
+            pbc_display_wait();             /* the DMA still sends the other one */
+            pbc_display_send(rowbuf[b], out_w);
+            b ^= 1;
         }
+        pbc_display_wait();
         pbc_display_end();
         __dmb();
-        frame = NULL;
+        frame = 0;
     }
 }

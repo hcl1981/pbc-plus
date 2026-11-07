@@ -200,10 +200,10 @@ int main(int argc, char **argv)
         else usage();
     }
 
-    static uint8_t rom[0x500000];
+    static uint8_t rom[0x800010];                  /* the CPU reads ROM up to 8 MB */
     FILE *f = fopen(rom_path, "rb");
     if (!f) { perror(rom_path); return 1; }
-    size_t n = fread(rom, 1, sizeof rom, f);
+    size_t n = fread(rom, 1, 0x500000, f);
     fclose(f);
     for (size_t i = 0; i + 1 < n; i += 2) {        /* byte-swapped, as rom_store.c */
         uint8_t t = rom[i]; rom[i] = rom[i + 1]; rom[i + 1] = t;

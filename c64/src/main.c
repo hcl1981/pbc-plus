@@ -394,14 +394,50 @@ static bool link_disk_agree(const char *path)
     return path && mine == other;
 }
 
-static const char *disk_menu(void)
+/* The game being played, for keeping its settings (main) */
+static const char *game_name;
+
+/* The keys "Press a key" offers: name and position in Frodo's key matrix
+ * (row, column; as C64_KEYS in settings.h). */
+static const struct { const char *name; uint8_t row, col; } tap_keys[] = {
+    { "RETURN", 0, 1 }, { "SPACE", 7, 4 }, { "RUN/STOP", 7, 7 },
+    { "F1", 0, 4 }, { "F3", 0, 5 }, { "F5", 0, 6 }, { "F7", 0, 3 },
+    { "0", 4, 3 }, { "1", 7, 0 }, { "2", 7, 3 }, { "3", 1, 0 }, { "4", 1, 3 },
+    { "5", 2, 0 }, { "6", 2, 3 }, { "7", 3, 0 }, { "8", 3, 3 }, { "9", 4, 0 },
+    { "A", 1, 2 }, { "B", 3, 4 }, { "C", 2, 4 }, { "D", 2, 2 }, { "E", 1, 6 },
+    { "F", 2, 5 }, { "G", 3, 2 }, { "H", 3, 5 }, { "I", 4, 1 }, { "J", 4, 2 },
+    { "K", 4, 5 }, { "L", 5, 2 }, { "M", 4, 4 }, { "N", 4, 7 }, { "O", 4, 6 },
+    { "P", 5, 1 }, { "Q", 7, 6 }, { "R", 2, 1 }, { "S", 1, 5 }, { "T", 2, 6 },
+    { "U", 3, 6 }, { "V", 3, 7 }, { "W", 1, 1 }, { "X", 2, 7 }, { "Y", 3, 1 },
+    { "Z", 1, 4 },
+};
+#define TAP_KEYS (int)(sizeof tap_keys / sizeof tap_keys[0])
+
+/* The game's port and key into its options: the next start and the
+ * launcher show them too. Not in link play (fixed options there). */
+static void settings_keep(void)
+{
+    if (pbc_link_active() || !game_name)
+        return;
+    settings_set_port(game_name, c64_input_port());
+    settings_set_key(game_name, c64_input_key());
+    settings_save();
+}
+
+/* The disks on the drive; the chosen one goes in. Returns the status line,
+ * or (const char *)-1 if A went back without a choice (in link play nothing
+ * has been sent then). */
+#define NO_CHOICE ((const char *)-1)
+
+static const char *disk_choose(void)
 {
     static DIR dir;
     static FILINFO fi;
     char (*files)[ROM_NAME_MAX] = malloc(DISK_LIST_MAX * sizeof *files);
     char (*shown)[ROM_NAME_MAX] = malloc(DISK_LIST_MAX * sizeof *shown);
-    const char **rows = malloc((DISK_LIST_MAX + 2) * sizeof *rows);
+    const char **rows = malloc(DISK_LIST_MAX * sizeof *rows);
     int n = 0;
+    const char *status = NO_CHOICE;
     if (files && shown && rows && f_opendir(&dir, "/") == FR_OK) {
         while (n < DISK_LIST_MAX && f_readdir(&dir, &fi) == FR_OK && fi.fname[0]) {
             if (fi.fattrib & (AM_DIR | AM_HID | AM_SYS) || fi.fname[0] == '.' ||
@@ -411,23 +447,8 @@ static const char *disk_menu(void)
         }
         f_closedir(&dir);
     }
-    const char *status = NULL;
-    static const char *const key_names[] = { C64_KEYS(C64_KEY_NAME) };
-    static char key_row[24], port_row[24];
-    if (!files || !shown || !rows) {
-        status = "No memory";
-        if (pbc_link_active())
-            link_swap(LINK_DISK_DONE);
-    } else {
+    if (files && shown && rows && n > 0) {
         qsort(files, (size_t)n, sizeof *files, by_name);
-        /* row 0: the key on Center + B, row 1 the port, then the disks */
-        snprintf(key_row, sizeof key_row, "Center + B: %s", key_names[c64_input_key()]);
-        rows[0] = key_row;
-        int top = 1;
-        if (!pbc_link_active()) {
-            snprintf(port_row, sizeof port_row, "Joystick: port %d", c64_input_port());
-            rows[top++] = port_row;
-        }
         int cur = -1;
         for (int i = 0; i < n; i++) {
             if (strcmp(files[i], disk_now) == 0)
@@ -436,26 +457,9 @@ static const char *disk_menu(void)
             char *dot = strrchr(shown[i], '.');
             if (dot)
                 *dot = 0;
-            rows[i + top] = shown[i];
+            rows[i] = shown[i];
         }
-        c64_video_wait_idle();
-        void (*idle)(void) = pbc_link_active() ? link_idle : NULL;
-        int sel = menu_pick_disk("Insert disk", rows, n + top, cur >= 0 ? cur + top : (n ? top : 0), idle);
-        if (sel == 1 && top == 2) {
-            c64_input_set_port(c64_input_port() == 1 ? 2 : 1);
-            snprintf(port_row, sizeof port_row, "Joystick: port %d", c64_input_port());
-            status = port_row;
-        }
-        if (sel == 0) {
-            int k = menu_pick_key("Center + B", key_names, C64_KEY_COUNT, c64_input_key(), idle);
-            if (k >= 0) {
-                c64_input_set_key(k);
-                snprintf(key_row, sizeof key_row, "Center + B: %s", key_names[k]);
-                status = key_row;
-            }
-        }
-        sel = sel >= top ? sel - top : -1;  /* index into files; -1: back, the key or the port */
-        pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
+        int sel = menu_pick_disk("Swap disk", rows, n, cur >= 0 ? cur : 0, pbc_link_active() ? link_idle : NULL);
         if (sel >= 0 && sel != cur) {
             char path[ROM_NAME_MAX + 2];
             snprintf(path, sizeof path, "/%s", files[sel]);
@@ -474,13 +478,99 @@ static const char *disk_menu(void)
             } else {
                 status = "Partner has no such disk";
             }
-        } else if (pbc_link_active()) {
-            link_swap(LINK_DISK_DONE);
         }
     }
     free(rows);
     free(shown);
     free(files);
+    return status;
+}
+
+/* Settings: the joystick port (not in link play: both must agree on it)
+ * and the key on Center + B; kept in the game's options. */
+static const char *settings_menu(void (*idle)(void))
+{
+    static const char *const key_names[] = { C64_KEYS(C64_KEY_NAME) };
+    static char port_row[24], key_row[24];
+    const char *status = NULL;
+    for (;;) {
+        const char *rows[3];
+        int n = 0, port_at = -1;
+        if (!pbc_link_active()) {
+            snprintf(port_row, sizeof port_row, "Joystick: port %d", c64_input_port());
+            port_at = n;
+            rows[n++] = port_row;
+        }
+        snprintf(key_row, sizeof key_row, "Center + B: %s", key_names[c64_input_key()]);
+        int key_at = n;
+        rows[n++] = key_row;
+        rows[n++] = "Back";
+        int r = menu_pick_key("Settings", rows, n, -1, idle);
+        if (r == port_at && r >= 0) {
+            c64_input_set_port(c64_input_port() == 1 ? 2 : 1);
+            settings_keep();
+            snprintf(port_row, sizeof port_row, "Joystick: port %d", c64_input_port());
+            status = port_row;
+        } else if (r == key_at) {
+            int k = menu_pick_key("Center + B", key_names, C64_KEY_COUNT, c64_input_key(), idle);
+            if (k >= 0) {
+                c64_input_set_key(k);
+                settings_keep();
+                snprintf(key_row, sizeof key_row, "Center + B: %s", key_names[k]);
+                status = key_row;
+            }
+        } else {
+            return status;
+        }
+    }
+}
+
+/* Center + A: swap the disk (disk games), settings, press a key once (not
+ * in link play), back to the game (also A). The game is paused meanwhile.
+ * Returns a status line to show, or NULL. In link play the partner waits
+ * (disk_wait) until this side says it is done. */
+static const char *disk_menu(void)
+{
+    static const char *tap_names[TAP_KEYS];
+    void (*idle)(void) = pbc_link_active() ? link_idle : NULL;
+    enum { R_DISK, R_SETTINGS, R_KEY, R_BACK };
+    const char *status = NULL;
+    c64_video_wait_idle();
+    for (;;) {
+        const char *rows[4];
+        int what[4], n = 0;
+        if (game_name && is_disk(game_name)) { rows[n] = "Swap disk"; what[n++] = R_DISK; }
+        rows[n] = "Settings";     what[n++] = R_SETTINGS;
+        if (!pbc_link_active()) { rows[n] = "Press a key"; what[n++] = R_KEY; }
+        rows[n] = "Back to game"; what[n++] = R_BACK;
+        int r = menu_pick_key("Commodore 64", rows, n, -1, idle);
+        if (r < 0 || what[r] == R_BACK)
+            break;
+        if (what[r] == R_DISK) {
+            const char *s = disk_choose();
+            if (s == NO_CHOICE)
+                continue;
+            pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
+            return s;                   /* the link heard the choice there */
+        }
+        if (what[r] == R_SETTINGS) {
+            const char *s = settings_menu(idle);
+            if (s)
+                status = s;
+            continue;
+        }
+        for (int i = 0; i < TAP_KEYS; i++)
+            tap_names[i] = tap_keys[i].name;
+        int k = menu_pick_key("Press a key", tap_names, TAP_KEYS, -1, idle);
+        if (k >= 0) {
+            c64_input_tap(tap_keys[k].row, tap_keys[k].col);
+            status = tap_keys[k].name;
+            break;
+        }
+    }
+    pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
+    if (pbc_link_active())
+        link_swap(LINK_DISK_DONE);
     return status;
 }
 
@@ -594,6 +684,7 @@ static void __attribute__((noreturn)) emulation_loop(const char *path, const cha
                      (unsigned long)stat_drawn,
                      (unsigned long)(stat_emulated * 100 / 50),
                      (unsigned long)(stat_busy_us * 100 / (now - stat_t0)));
+            pbc_test_stats((unsigned long)stat_drawn, (unsigned long)(stat_emulated * 100 / 50), (unsigned long)(stat_busy_us * 100 / (now - stat_t0)));
             c64_video_set_status(s);
             stat_t0 = now;
             stat_drawn = stat_emulated = 0;
@@ -718,6 +809,7 @@ int main(void)
     /* The volume stays mounted: Frodo reads and writes the disk image while
      * the game runs. */
 
+    game_name = game;                   /* the menu keeps its settings */
     own_roms = c64_roms_load();
     if (own_roms)
         c64_set_roms(c64_roms_basic(), c64_roms_kernal(), c64_roms_chargen());
@@ -786,6 +878,7 @@ int main(void)
     pbc_link_start(link_config(game, port, cart));
 #endif
     pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
+    c64_sid_enable(g_settings.sound && g_settings.volume > 0);
     srand(1);                       /* the C64 uses rand(): as the partner's */
     c64_init();
 #if PBC_MULTI

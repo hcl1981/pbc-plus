@@ -355,7 +355,7 @@ static bool coleco;
  *   Center + A + Up/Right/Down/Left   9 0 * #
  * A key counts once the buttons have stayed the same for three frames, so
  * the buttons of a chord pressed one after the other give no other key on
- * the way. */
+ * the way, and it is held for half a second after letting go (below). */
 static int coleco_keypad(void)
 {
     static uint32_t last;
@@ -367,14 +367,25 @@ static int coleco_keypad(void)
     } else if (same < 3) {
         same++;
     }
-    if (!(r & IN_CENTER) || same < 2)
-        return 0;
-    int d = (r & IN_UP) ? 0 : (r & IN_RIGHT) ? 1 : (r & IN_DOWN) ? 2 : (r & IN_LEFT) ? 3 : -1;
-    if (d < 0)
-        return 0;
-    if (r & IN_A) return 9 + d;
-    if (r & IN_B) return 5 + d;
-    return 1 + d;
+    /* A key stays down for half a second after the buttons let go: some
+     * games look at the keypad only now and then -- Donkey Kong after the
+     * last life about every third of a second, so a short * or # was
+     * missed. A new key takes over at once. */
+    static int held, held_frames;
+    int k = 0;
+    if ((r & IN_CENTER) && same >= 2) {
+        int d = (r & IN_UP) ? 0 : (r & IN_RIGHT) ? 1 : (r & IN_DOWN) ? 2 : (r & IN_LEFT) ? 3 : -1;
+        if (d >= 0)
+            k = (r & IN_A) ? 9 + d : (r & IN_B) ? 5 + d : 1 + d;
+    }
+    if (k) {
+        held = k;
+        held_frames = 30;
+    } else if (held_frames > 0) {
+        held_frames--;
+        k = held;
+    }
+    return k;
 }
 
 static uint16_t link_word(void)
@@ -393,7 +404,8 @@ static uint16_t link_word(void)
 /* The ColecoVision's BIOS: coleco.rom from the drive, or a small one of our
  * own that starts the cartridge at the address in its header and sends the
  * NMI and RST vectors to the jumps there, as the real one does -- enough for
- * games that do not call the BIOS's routines. */
+ * games that do not call the BIOS's routines. The rest of it is HALTs: a
+ * game that calls a routine stops there, and coleco_bios_check says so. */
 static uint8_t coleco_bios_buf[0x2000];
 
 static bool coleco_bios_load(void)
@@ -408,7 +420,7 @@ static bool coleco_bios_load(void)
         if (ok)
             return true;
     }
-    memset(coleco_bios_buf, 0xff, sizeof coleco_bios_buf);
+    memset(coleco_bios_buf, 0x76, sizeof coleco_bios_buf);    /* HALT */
     static const uint8_t start[] = {
         0xf3,                           /* DI */
         0x31, 0x00, 0x74,               /* LD SP,7400h */
@@ -427,7 +439,19 @@ static bool coleco_bios_load(void)
     return false;
 }
 
-static void __attribute__((noreturn)) emulation_loop(bool gg, bool show_stats)
+/* Our BIOS only: the CPU stuck in its HALTs (past the vectors, BIOS paged
+ * in) means the game wanted a routine of the real one. Once per game. */
+static void coleco_bios_check(void)
+{
+    static bool told;
+    unsigned pc = z80_get_pc();
+    if (told || pc < 0x69 || pc >= 0x2000 || cpu_readmap[0] != coleco_bios_buf)
+        return;
+    told = true;
+    sms_video_set_status("GAME NEEDS COLECO.ROM");
+}
+
+static void __attribute__((noreturn)) emulation_loop(bool gg, bool show_stats, bool own_bios)
 {
     /* 262 lines of 228 Z80 cycles at 3.579545 MHz: 59.92 Hz */
     const uint32_t period = 16688;
@@ -449,9 +473,11 @@ static void __attribute__((noreturn)) emulation_loop(bool gg, bool show_stats)
 
         uint64_t frame_start = time_us_64();
         sms_frame(0);
+        if (coleco && !own_bios)
+            coleco_bios_check();
 
-        static int16_t samples[512];
-        int n = snd.bufsize < 512 ? snd.bufsize : 512;
+        static int16_t samples[1024];
+        int n = snd.bufsize < 1024 ? snd.bufsize : 1024;
         for (int i = 0; i < n; i++)
             samples[i] = dc_block(((int32_t)snd.buffer[0][i] + snd.buffer[1][i]) / 2);
         audio_pwm_push(samples, n);
@@ -482,6 +508,7 @@ static void __attribute__((noreturn)) emulation_loop(bool gg, bool show_stats)
                      (unsigned long)stat_drawn,
                      (unsigned long)(stat_emulated * 100 / 60),
                      (unsigned long)(stat_busy_us * 100 / (now - stat_t0)));
+            pbc_test_stats((unsigned long)stat_drawn, (unsigned long)(stat_emulated * 100 / 60), (unsigned long)(stat_busy_us * 100 / (now - stat_t0)));
             sms_video_set_status(s);
             stat_t0 = now;
             stat_drawn = stat_emulated = 0;
@@ -591,7 +618,6 @@ int main(void)
     coleco = ext && (strcasecmp(ext, ".col") == 0 || strcasecmp(ext, ".rom") == 0 ||
                      strcasecmp(ext, ".bin") == 0);
     bool own_bios = coleco && coleco_bios_load();
-    (void)own_bios;
     bool saves = !coleco && !sg;          /* the drive stays mounted for them */
     if (!saves)
         fs_unmount();
@@ -630,6 +656,9 @@ int main(void)
     if (!snd.enabled || (!cachePtr && !IS_TMS_SYS) || !sms.ram)
         fatal("Out of memory", "for the emulator");
     system_reset();
+    /* SG-1000/ColecoVision: the cartridge (48/32 KB at most) into the heap,
+     * which these systems leave mostly free (no tile cache) */
+    sms_cart_to_ram(16 * 1024);
 
     pbc_link_start(pbc_link_hash(PBC_LINK_HASH_START ^ 2, rom_store_data(), rom_store_size()));
     if (saves && !pbc_link_active())    /* link play: same RAM on both, no saves */
@@ -640,5 +669,5 @@ int main(void)
 #if PBC_MULTI
     pbc_fade_in(false);             /* over the first frames */
 #endif
-    emulation_loop(gg, show_stats);
+    emulation_loop(gg, show_stats, own_bios);
 }

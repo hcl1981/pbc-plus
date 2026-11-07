@@ -25,21 +25,24 @@ enum { FC = 0x01, FZ = 0x02, FI = 0x04, FD = 0x08, FB = 0x10, FU = 0x20, FV = 0x
 #define CPU_FETCH(a) cpu_read(a)
 #endif
 #define FETCH()     CPU_FETCH((uint16_t)cpu.pc++)
+#ifndef CPU_DUMMY_PC                    /* the dummy read of the next byte; a2600.c: faster */
+#define CPU_DUMMY_PC() RD(cpu.pc)
+#endif
 #define SETNZ(v)    (cpu.p = (uint8_t)((cpu.p & ~(FN | FZ)) | ((v) & FN) | ((v) ? 0 : FZ)))
 
-static inline void push(uint8_t v) { WR(0x100 | cpu.s, v); cpu.s--; }
-static inline uint8_t pull(void) { cpu.s++; return RD(0x100 | cpu.s); }
+static inline CPU_RAM void push(uint8_t v) { WR(0x100 | cpu.s, v); cpu.s--; }
+static inline CPU_RAM uint8_t pull(void) { cpu.s++; return RD(0x100 | cpu.s); }
 
 /* ---- addressing: the effective address, with the cycles of each mode ---- */
 
-static inline uint16_t a_zp(void)  { return FETCH(); }
-static inline uint16_t a_zpx(void) { uint8_t z = FETCH(); RD(z); return (uint8_t)(z + cpu.x); }
-static inline uint16_t a_zpy(void) { uint8_t z = FETCH(); RD(z); return (uint8_t)(z + cpu.y); }
-static inline uint16_t a_abs(void) { uint16_t lo = FETCH(); return lo | (uint16_t)(FETCH() << 8); }
+static inline CPU_RAM uint16_t a_zp(void)  { return FETCH(); }
+static inline CPU_RAM uint16_t a_zpx(void) { uint8_t z = FETCH(); RD(z); return (uint8_t)(z + cpu.x); }
+static inline CPU_RAM uint16_t a_zpy(void) { uint8_t z = FETCH(); RD(z); return (uint8_t)(z + cpu.y); }
+static inline CPU_RAM uint16_t a_abs(void) { uint16_t lo = FETCH(); return lo | (uint16_t)(FETCH() << 8); }
 
 /* indexed: `always` for writes and read-modify-write (the dummy read
  * happens whether or not the page changes) */
-static inline uint16_t a_absi(uint8_t i, int always)
+static inline CPU_RAM uint16_t a_absi(uint8_t i, int always)
 {
     uint16_t lo = FETCH(), hi = (uint16_t)(FETCH() << 8);
     uint16_t a = (uint16_t)(hi + lo + i);
@@ -48,7 +51,7 @@ static inline uint16_t a_absi(uint8_t i, int always)
     return a;
 }
 
-static inline uint16_t a_indx(void)
+static inline CPU_RAM uint16_t a_indx(void)
 {
     uint8_t z = FETCH();
     RD(z);
@@ -57,7 +60,7 @@ static inline uint16_t a_indx(void)
     return lo | (uint16_t)(RD((uint8_t)(z + 1)) << 8);
 }
 
-static inline uint16_t a_indy(int always)
+static inline CPU_RAM uint16_t a_indy(int always)
 {
     uint8_t z = FETCH();
     uint16_t lo = RD(z), hi = (uint16_t)(RD((uint8_t)(z + 1)) << 8);
@@ -69,7 +72,7 @@ static inline uint16_t a_indy(int always)
 
 /* ---- arithmetic ---------------------------------------------------------- */
 
-static inline void adc(uint8_t m)
+static inline CPU_RAM void adc(uint8_t m)
 {
     unsigned c = cpu.p & FC;
     if (cpu.p & FD) {
@@ -94,7 +97,7 @@ static inline void adc(uint8_t m)
     }
 }
 
-static inline void sbc(uint8_t m)
+static inline CPU_RAM void sbc(uint8_t m)
 {
     unsigned c = cpu.p & FC;
     unsigned r = cpu.a - m - (1 - c);
@@ -118,29 +121,29 @@ static inline void sbc(uint8_t m)
     }
 }
 
-static inline void cmp(uint8_t r, uint8_t m)
+static inline CPU_RAM void cmp(uint8_t r, uint8_t m)
 {
     unsigned t = r - m;
     cpu.p = (uint8_t)((cpu.p & ~FC) | (r >= m ? FC : 0));
     SETNZ((uint8_t)t);
 }
 
-static inline uint8_t asl(uint8_t v) { cpu.p = (uint8_t)((cpu.p & ~FC) | (v >> 7)); v <<= 1; SETNZ(v); return v; }
-static inline uint8_t lsr(uint8_t v) { cpu.p = (uint8_t)((cpu.p & ~FC) | (v & 1)); v >>= 1; SETNZ(v); return v; }
-static inline uint8_t rol(uint8_t v) { uint8_t c = cpu.p & FC; cpu.p = (uint8_t)((cpu.p & ~FC) | (v >> 7)); v = (uint8_t)((v << 1) | c); SETNZ(v); return v; }
-static inline uint8_t ror(uint8_t v) { uint8_t c = cpu.p & FC; cpu.p = (uint8_t)((cpu.p & ~FC) | (v & 1)); v = (uint8_t)((v >> 1) | (c << 7)); SETNZ(v); return v; }
+static inline CPU_RAM uint8_t asl(uint8_t v) { cpu.p = (uint8_t)((cpu.p & ~FC) | (v >> 7)); v <<= 1; SETNZ(v); return v; }
+static inline CPU_RAM uint8_t lsr(uint8_t v) { cpu.p = (uint8_t)((cpu.p & ~FC) | (v & 1)); v >>= 1; SETNZ(v); return v; }
+static inline CPU_RAM uint8_t rol(uint8_t v) { uint8_t c = cpu.p & FC; cpu.p = (uint8_t)((cpu.p & ~FC) | (v >> 7)); v = (uint8_t)((v << 1) | c); SETNZ(v); return v; }
+static inline CPU_RAM uint8_t ror(uint8_t v) { uint8_t c = cpu.p & FC; cpu.p = (uint8_t)((cpu.p & ~FC) | (v & 1)); v = (uint8_t)((v >> 1) | (c << 7)); SETNZ(v); return v; }
 
-static inline void bit(uint8_t m)
+static inline CPU_RAM void bit(uint8_t m)
 {
     cpu.p = (uint8_t)((cpu.p & ~(FN | FV | FZ)) | (m & (FN | FV)) | ((cpu.a & m) ? 0 : FZ));
 }
 
-static inline void branch(int cond)
+static inline CPU_RAM void branch(int cond)
 {
     int8_t off = (int8_t)FETCH();
     if (!cond)
         return;
-    RD(cpu.pc);
+    CPU_DUMMY_PC();
     uint16_t t = (uint16_t)(cpu.pc + off);
     if ((t ^ cpu.pc) & 0xff00)
         RD((cpu.pc & 0xff00) | (t & 0xff));
@@ -152,8 +155,8 @@ static inline void branch(int cond)
 /* the undocumented combinations of a shift with an ALU operation */
 #define RMW2(addr, op, then) do { uint16_t a_ = (addr); uint8_t v_ = RD(a_); WR(a_, v_); v_ = op(v_); WR(a_, v_); then; } while (0)
 
-static inline uint8_t dec(uint8_t v) { v--; SETNZ(v); return v; }
-static inline uint8_t inc(uint8_t v) { v++; SETNZ(v); return v; }
+static inline CPU_RAM uint8_t dec(uint8_t v) { v--; SETNZ(v); return v; }
+static inline CPU_RAM uint8_t inc(uint8_t v) { v++; SETNZ(v); return v; }
 
 void cpu_reset(void)
 {
@@ -208,17 +211,17 @@ CPU_RAM void cpu_step(void)
     case 0x94: WR(a_zpx(), cpu.y); break;
     case 0x8c: WR(a_abs(), cpu.y); break;
     /* ---- transfers ---- */
-    case 0xaa: RD(cpu.pc); cpu.x = cpu.a; SETNZ(cpu.x); break;
-    case 0xa8: RD(cpu.pc); cpu.y = cpu.a; SETNZ(cpu.y); break;
-    case 0x8a: RD(cpu.pc); cpu.a = cpu.x; SETNZ(cpu.a); break;
-    case 0x98: RD(cpu.pc); cpu.a = cpu.y; SETNZ(cpu.a); break;
-    case 0xba: RD(cpu.pc); cpu.x = cpu.s; SETNZ(cpu.x); break;
-    case 0x9a: RD(cpu.pc); cpu.s = cpu.x; break;
+    case 0xaa: CPU_DUMMY_PC(); cpu.x = cpu.a; SETNZ(cpu.x); break;
+    case 0xa8: CPU_DUMMY_PC(); cpu.y = cpu.a; SETNZ(cpu.y); break;
+    case 0x8a: CPU_DUMMY_PC(); cpu.a = cpu.x; SETNZ(cpu.a); break;
+    case 0x98: CPU_DUMMY_PC(); cpu.a = cpu.y; SETNZ(cpu.a); break;
+    case 0xba: CPU_DUMMY_PC(); cpu.x = cpu.s; SETNZ(cpu.x); break;
+    case 0x9a: CPU_DUMMY_PC(); cpu.s = cpu.x; break;
     /* ---- stack ---- */
-    case 0x48: RD(cpu.pc); push(cpu.a); break;
-    case 0x08: RD(cpu.pc); push(cpu.p | FB | FU); break;
-    case 0x68: RD(cpu.pc); RD(0x100 | cpu.s); cpu.a = pull(); SETNZ(cpu.a); break;
-    case 0x28: RD(cpu.pc); RD(0x100 | cpu.s); cpu.p = (uint8_t)((pull() & ~FB) | FU); break;
+    case 0x48: CPU_DUMMY_PC(); push(cpu.a); break;
+    case 0x08: CPU_DUMMY_PC(); push(cpu.p | FB | FU); break;
+    case 0x68: CPU_DUMMY_PC(); RD(0x100 | cpu.s); cpu.a = pull(); SETNZ(cpu.a); break;
+    case 0x28: CPU_DUMMY_PC(); RD(0x100 | cpu.s); cpu.p = (uint8_t)((pull() & ~FB) | FU); break;
     /* ---- ALU ---- */
 #define ALU(base, OPX) \
     case base + 0x09: m = FETCH(); OPX; break; \
@@ -246,10 +249,10 @@ CPU_RAM void cpu_step(void)
     case 0x24: bit(RD(a_zp())); break;
     case 0x2c: bit(RD(a_abs())); break;
     /* ---- increments ---- */
-    case 0xe8: RD(cpu.pc); cpu.x++; SETNZ(cpu.x); break;
-    case 0xc8: RD(cpu.pc); cpu.y++; SETNZ(cpu.y); break;
-    case 0xca: RD(cpu.pc); cpu.x--; SETNZ(cpu.x); break;
-    case 0x88: RD(cpu.pc); cpu.y--; SETNZ(cpu.y); break;
+    case 0xe8: CPU_DUMMY_PC(); cpu.x++; SETNZ(cpu.x); break;
+    case 0xc8: CPU_DUMMY_PC(); cpu.y++; SETNZ(cpu.y); break;
+    case 0xca: CPU_DUMMY_PC(); cpu.x--; SETNZ(cpu.x); break;
+    case 0x88: CPU_DUMMY_PC(); cpu.y--; SETNZ(cpu.y); break;
     case 0xe6: RMW(a_zp(), inc); break;
     case 0xf6: RMW(a_zpx(), inc); break;
     case 0xee: RMW(a_abs(), inc); break;
@@ -260,7 +263,7 @@ CPU_RAM void cpu_step(void)
     case 0xde: RMW(a_absi(cpu.x, 1), dec); break;
     /* ---- shifts ---- */
 #define SHIFT(base, fn) \
-    case base + 0x0a: RD(cpu.pc); cpu.a = fn(cpu.a); break; \
+    case base + 0x0a: CPU_DUMMY_PC(); cpu.a = fn(cpu.a); break; \
     case base + 0x06: RMW(a_zp(), fn); break; \
     case base + 0x16: RMW(a_zpx(), fn); break; \
     case base + 0x0e: RMW(a_abs(), fn); break; \
@@ -288,16 +291,16 @@ CPU_RAM void cpu_step(void)
         break;
     }
     case 0x60: {
-        RD(cpu.pc);
+        CPU_DUMMY_PC();
         RD(0x100 | cpu.s);
         uint16_t lo = pull();
         cpu.pc = (uint16_t)(lo | (pull() << 8));
-        RD(cpu.pc);
+        CPU_DUMMY_PC();
         cpu.pc++;
         break;
     }
     case 0x40: {
-        RD(cpu.pc);
+        CPU_DUMMY_PC();
         RD(0x100 | cpu.s);
         cpu.p = (uint8_t)((pull() & ~FB) | FU);
         uint16_t lo = pull();
@@ -324,18 +327,18 @@ CPU_RAM void cpu_step(void)
     case 0xd0: branch(!(cpu.p & FZ)); break;
     case 0xf0: branch(cpu.p & FZ); break;
     /* ---- flags ---- */
-    case 0x18: RD(cpu.pc); cpu.p &= (uint8_t)~FC; break;
-    case 0x38: RD(cpu.pc); cpu.p |= FC; break;
-    case 0x58: RD(cpu.pc); cpu.p &= (uint8_t)~FI; break;
-    case 0x78: RD(cpu.pc); cpu.p |= FI; break;
-    case 0xb8: RD(cpu.pc); cpu.p &= (uint8_t)~FV; break;
-    case 0xd8: RD(cpu.pc); cpu.p &= (uint8_t)~FD; break;
-    case 0xf8: RD(cpu.pc); cpu.p |= FD; break;
-    case 0xea: RD(cpu.pc); break;
+    case 0x18: CPU_DUMMY_PC(); cpu.p &= (uint8_t)~FC; break;
+    case 0x38: CPU_DUMMY_PC(); cpu.p |= FC; break;
+    case 0x58: CPU_DUMMY_PC(); cpu.p &= (uint8_t)~FI; break;
+    case 0x78: CPU_DUMMY_PC(); cpu.p |= FI; break;
+    case 0xb8: CPU_DUMMY_PC(); cpu.p &= (uint8_t)~FV; break;
+    case 0xd8: CPU_DUMMY_PC(); cpu.p &= (uint8_t)~FD; break;
+    case 0xf8: CPU_DUMMY_PC(); cpu.p |= FD; break;
+    case 0xea: CPU_DUMMY_PC(); break;
 
     /* ---- undocumented ---- */
     /* NOPs of all lengths */
-    case 0x1a: case 0x3a: case 0x5a: case 0x7a: case 0xda: case 0xfa: RD(cpu.pc); break;
+    case 0x1a: case 0x3a: case 0x5a: case 0x7a: case 0xda: case 0xfa: CPU_DUMMY_PC(); break;
     case 0x80: case 0x82: case 0x89: case 0xc2: case 0xe2: FETCH(); break;
     case 0x04: case 0x44: case 0x64: RD(a_zp()); break;
     case 0x14: case 0x34: case 0x54: case 0x74: case 0xd4: case 0xf4: RD(a_zpx()); break;
@@ -395,7 +398,7 @@ CPU_RAM void cpu_step(void)
         cpu.jammed = 1;
         break;
     default:                                              /* the rest: as a NOP */
-        RD(cpu.pc);
+        CPU_DUMMY_PC();
         break;
     }
 }

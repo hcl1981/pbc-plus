@@ -12,7 +12,7 @@ ist dasselbe wie bei [`../nes`](../nes/) und [`../c64`](../c64/):
 | ROM von SD-Karte, in PSRAM oder Flash | ROM im **Flash**, SMS Plus blendet seine 16-KB-Seiten direkt per XIP ein |
 | SD-Karten-Menü, USB-Laufwerk der SD-Karte | **USB-Stick-Modus** in eine FatFs-Partition im Flash (aus [PicoBoyGB](../picoboygb/)) |
 | HDMI | **ST7789**: Master System 240 Pixel breit 1:1, Game Gear 1,5× auf 240×216, auf Kern 1 per DMA |
-| Ton über HDMI/I2S | Ton über den **PWM-Lautsprecher** (GP15), 22 222 Hz, Timer auf Kern 1 |
+| Ton über HDMI/I2S | Ton über den **PWM-Lautsprecher** (GP15), 45 454 Hz, Timer auf Kern 1 |
 | Batteriespeicher | als **`<Spielname>.sav`** neben der ROM auf dem Laufwerk, wie bei `../gbc` |
 | Spielstände (Savestates), SG-1000-Menü | entfallen; zwei Controller nur im Link-Spiel von PBCemu ([`../docs/LINKSPIEL.md`](../docs/LINKSPIEL.md)) |
 
@@ -76,16 +76,19 @@ müssen dasselbe RAM haben, und das Stocken risse die Verbindung. SG-1000 und Co
 
 ## Bild
 
-SMS Plus liefert jede Bildzeile als 8-Bit-Palettenindizes. Sie wird sofort mit
-der Palette, die in genau dieser Zeile gilt, in Panel-Farben umgerechnet –
-Palettenwechsel mitten im Bild bleiben also erhalten – und in einen von zwei
-Bildpuffern geschrieben. Kern 1 schickt das fertige Bild, während Kern 0 das
-nächste in den anderen Puffer emuliert.
+SMS Plus liefert jede Bildzeile als 8-Bit-Palettenindizes. Kern 0 legt sie so,
+wie sie sind, in einen von zwei Bildpuffern, dazu die Palette, die in genau
+dieser Zeile gilt – neu abgelegt nur, wenn sie sich seit der letzten Zeile
+geändert hat. Palettenwechsel mitten im Bild bleiben also erhalten. Kern 1
+rechnet das fertige Bild Zeile für Zeile in Panel-Farben um und schickt es,
+während Kern 0 das nächste in den anderen Puffer emuliert. Bis November 2026
+rechnete Kern 0 jedes Pixel selbst um (gut 5 % seiner Zeit); das Ergebnis
+ist Pixel für Pixel dasselbe (auf dem PC mit allen Anzeigemodi,
+Statuszeile, Scanlines und Batteriewarnung verglichen).
 
 * **Master System** (256×192, im 224-Zeilen-Modus mehr): Links und rechts fallen
   je 8 Spalten weg – die linken blenden viele Spiele ohnehin aus. Übrig bleiben
-  240 Pixel, 1:1 und senkrecht mittig. Kern 1 schickt das Bild ohne
-  Umrechnung in einem Stück per DMA.
+  240 Pixel, 1:1 und senkrecht mittig.
 * **Game Gear** (160×144): 1,5× auf 240×216. Aus je zwei Quellpixeln a und b
   werden drei: a, der Mittelwert von a und b, und b – waagerecht wie senkrecht.
   So fällt nichts weg und Kanten bleiben scharf.
@@ -102,9 +105,8 @@ Gerät ein anderer **Anzeigemodus** wählen:
 Kein Modus verzerrt: waagerecht und senkrecht gilt derselbe Faktor.
 
 Beim Skalieren wird das nächste Quellpixel genommen oder, wenn das Zielpixel
-zwischen zwei fällt, deren Mittelwert. Master-System-Spalten werden schon auf
-Kern 0 beim Umrechnen der Zeile skaliert (der Bildpuffer bleibt 240 breit),
-alles andere auf Kern 1 beim Senden.
+zwischen zwei fällt, deren Mittelwert. Alles auf Kern 1 beim Senden:
+Master-System-Spalten beim Umrechnen der Zeile, dann der Rest.
 
 **Leistungsanzeige** (z. B. `60fps 100% CPU71%`: gezeichnete Bilder pro
 Sekunde, Tempo gegenüber dem Original, Auslastung von Kern 0): im Verbund im
@@ -114,33 +116,60 @@ links oben im Bild, wenn darunter kein Platz ist (Zoom 1.25x bei Spielen mit
 
 ## Ton
 
-PSG (SN76489) und – bei japanischen Master-System-Spielen – der FM-Chip YM2413
-laufen mit 22 222 Hz, der Rate des Lautsprecher-Timers aus `../nes`. Wie bei
+PSG (SN76489) läuft mit 45 454 Hz (bis November 2026: 22 222 Hz, dumpfer), der Rate des
+Lautsprecher-Timers aus `../nes`. Wie bei
 `../c64` läuft dieser Timer auf Kern 1. Ein Gleichanteilfilter aus
 pico-smsplus entfernt den Versatz des PSG, links und rechts werden gemittelt.
 
+**Kein FM-Ton:** pico-smsplus brachte die FM-Einheit (YM2413, emu2413) mit,
+schaltete sie aber nie ein (`sms.use_fm` stand fest auf 0); auch japanische
+Spiele spielten nur den PSG-Ton. Seit November 2026 ist sie ganz entfernt
+(gut 11 KB Flash, etwa 10 KB RAM); die Ports F0–F2 verhalten sich wie
+vorher, Spielstände behalten ihre 64 Byte dafür (Nullen).
+
+Die Samples eines Bildes entstehen nicht mehr in 262 kleinen Stücken nach
+jeder Zeile, sondern erst, wenn das Spiel einen Tonchip beschreibt (PSG,
+Stereo-Port des Game Gear, AY): dann die bis zur laufenden Zeile, mit
+den Registern, wie sie bis dahin waren; der Rest am Ende des Bildes
+(`sms_sound_sync()` in `sms.c`). Das sind dieselben Samples, auch für die
+Sprachausgabe über die Lautstärke-Register. Einen stummen PSG-Kanal
+(Lautstärke 15) rechnet `sn76496.c` nicht mehr Sample für Sample durch,
+sondern stellt seinen Zähler in einem Schritt dorthin, wo er sonst gelandet
+wäre; bei Periode 0 oder 1 waren das mehrere Durchläufe je Sample.
+
 ## Speicher
 
-Zwei Bildpuffer in Panel-Farben (je 240×224×2 Byte) belegen 210 KB. Der Kern
-holt sich über `malloc` Tile-Cache, Arbeitsspeicher, Batterie-RAM und den
-FM-Chip, zusammen etwa 80 KB; dafür bleiben gut 140 KB Heap. Das ROM selbst
-kostet kein RAM.
+Zwei Bildpuffer mit Palettenindizes (je 256×224 Byte) und die Paletten der
+Zeilen belegen 140 KB (bis November 2026 in Panel-Farben 210 KB). Der Kern
+holt sich über `malloc` Tile-Cache, Arbeitsspeicher und Batterie-RAM,
+zusammen etwa 80 KB; dafür bleiben gut 210 KB Heap. Das ROM selbst
+kostet kein RAM – außer bei SG-1000 und ColecoVision: deren Modul (höchstens
+48 bzw. 32 KB) wird nach dem Start in den Heap kopiert, den diese Systeme
+ohne Tile-Cache kaum brauchen (`sms_cart_to_ram()`, mit 16 KB Reserve).
 
 ### Was im RAM läuft
 
 Das ROM wird direkt aus dem Flash gelesen; Flash und Emulatorcode teilen sich
 einen Cache von nur 16 KB. Der Kern läuft deshalb aus dem RAM (rund 80 KB):
-Z80 (redcode/Z80 samt Befehlstabellen, siehe unten), Speicher- und
-Port-Zugriffe, VDP, Zeichenroutinen, PSG und die Zeilenausgabe in
-`src/sms_video.c`. Im übernommenen RP2350-Port war das
+Z80 (redcode/Z80 samt Befehlstabellen, siehe unten) mit seiner Anbindung
+(`z80_execute`, IN/OUT in `z80_redcode.c`), Speicher- und Port-Zugriffe,
+VDP, Zeichenroutinen (auch die des Game Gear, die bis November 2026 im
+Flash lag), PSG, die Zeilenausgabe in `src/sms_video.c` und die Warte-
+schleifen von Kern 1 auf den Display-DMA (`src/display.c`): aus dem Flash
+holte Kern 1 dort ständig Befehle über denselben XIP-Cache, aus dem Kern 0
+das ROM liest. Im übernommenen RP2350-Port war das
 abgeschaltet (`in_ram` in `core/smsplus/shared.h` war leer), alles lief aus
 dem Flash.
 
 Die 64-KB-Tabelle `lut.h`, aus der für jedes deckende Sprite-Pixel an
 zufälliger Stelle gelesen wurde, ist durch eine Rechnung von fünf Zeilen
 ersetzt (`sprite_over_bg()` in `render.c`, für alle 65536 Eingaben gleiches
-Ergebnis, auf dem PC geprüft). Die kleinen Tabellen der FM-Klangerzeugung
-(YM2413) liegen ebenfalls im RAM.
+Ergebnis, auf dem PC geprüft).
+
+Der Hintergrund im Mode 4 schreibt seine Pixel wortweise auch an ungerade
+Adressen (der Cortex-M33 kann das mit LDR/STR; `ALIGN_DWORD` in `render.c`
+ist aus) und fragt den Kachel-Cache bei einem Treffer ohne Funktionsaufruf
+ab, bei angeschnittenen Spalten einmal statt je Pixel.
 
 Nebenbei behoben: Doppelt große Sprites (Register 1, Bit 0) lasen in der
 unteren Hälfte die falsche Kachel, 8×16-Sprites dabei sogar über das Ende der
@@ -195,7 +224,7 @@ core/smsplus/       SMS Plus aus pico-smsplus
 ```
 
 Am Kern geändert: `SMS_AUD_RATE` in `sms.h` lässt sich von außen setzen
-(hier 22 222 Hz statt 44 100); `sms.save` merkt sich in Bit 1, ob ein
+(hier 45 454 Hz statt 44 100); `sms.save` merkt sich in Bit 1, ob ein
 Spiel die obere Hälfte des Batterie-RAMs benutzt hat (`sms.c`).
 
 ## Offene Punkte
@@ -219,7 +248,10 @@ Bytes (AA 55 oder 55 AA) und zeigt sie nur bei der ColecoVision.
 Coleco und liegt nicht bei. Fehlt es, nimmt der Emulator ein eigenes
 Mini-BIOS: es startet das Modul an der Adresse in seinem Kopf und leitet NMI
 und RST-Vektoren wie das echte weiter. Das reicht für Spiele, die keine
-BIOS-Routinen aufrufen; die meisten älteren brauchen das echte.
+BIOS-Routinen aufrufen; die meisten älteren brauchen das echte (Donkey Kong
+etwa ruft sie gleich im ersten Bild). Der Rest des Mini-BIOS ist HALT: ruft
+ein Spiel eine Routine, bleibt es dort stehen, und unten auf dem Bildschirm
+steht „GAME NEEDS COLECO.ROM“ statt nur Schwarz.
 
 **Super Game Module** (Opcode Games): viele neuere Homebrews brauchen es. Es
 schaltet sich ein, sobald ein Spiel seine Ports benutzt, ohne Einstellung:
@@ -243,7 +275,11 @@ noch nicht.
 | Mitte + A + Hoch/Rechts/Runter/Links | 9, 0, `*`, `#` |
 
 Eine Ziffer zählt, sobald die Tasten drei Bilder lang (50 ms) gleich
-bleiben; solange Mitte gedrückt ist, bewegt der Joystick nichts.
+bleiben; solange Mitte gedrückt ist, bewegt der Joystick nichts. Nach dem
+Loslassen bleibt die Ziffer noch eine halbe Sekunde gedrückt: Manche Spiele
+fragen das Ziffernfeld nur selten ab – Donkey Kong nach dem letzten Leben
+etwa alle Drittelsekunde –, sonst ging ein kurzer Druck auf `*` oder `#`
+verloren (das Spiel schien zu hängen).
 
 Am PC mit dem echten BIOS und fünf Homebrews getestet (Space Trainer,
 Breakout, Slither, Frogs and Flies, Kaboom), auf dem Gerät mit Breakout:
@@ -271,4 +307,3 @@ Action) fehlen.
   folgt jetzt dem Sega-Chip (16-Bit-Register, Abgriffe 0 und 3).
 * `core/smsplus/ay8910.[ch]`: AY-3-8910 fürs Super Game Module, Kopie aus
   `../msx` (eigener Code für den PicoBoy, GPL-3.0-or-later).
-* `core/smsplus/emu2413/`: emu2413, © 2020 Mitsutaka Okazaki (Vermerk im Dateikopf; upstream steht emu2413 unter MIT).

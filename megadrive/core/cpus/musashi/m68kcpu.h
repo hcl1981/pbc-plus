@@ -396,6 +396,10 @@ static inline unsigned int m68ki_op_cycles(unsigned int ir)
 	return m68ki_decode(ir)->cycles;
 }
 
+/* PBC: waiting loops taken in one step (m68kcpu.c) */
+void m68ki_poll_skip(void);
+void m68ki_dbf_skip(uint *r_dst);
+
 /* Musashi's CYC_INSTRUCTION_IR, in 68000 clocks */
 #define CYC_INSTRUCTION_IR (m68ki_op_cycles(REG_IR) / MUL)
 

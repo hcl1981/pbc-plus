@@ -50,6 +50,10 @@
  */
 
 #include "sysdeps.h"
+#include <cstdlib>
+#if defined(__arm__) && __has_include(<reent.h>)
+#include <reent.h>
+#endif
 
 #include "CPUC64.h"
 #include "rp2350/openroms_syms.h"
@@ -275,6 +279,27 @@ C64_HOT(MOS6510_new_config) void MOS6510::new_config()
 
 
 /*
+ *  PBC: rand() for the open-bus bits (colour RAM, I/O 1/2), inline. It is
+ *  newlib's rand() itself -- the same 64-bit LCG on the same state in the
+ *  reent structure, so srand(1) and every other rand() caller see the very
+ *  same sequence (the link partners depend on it) -- but in RAM instead of
+ *  a call through a veneer into the flash. Elsewhere: rand().
+ */
+
+#if defined(__arm__) && defined(_NEWLIB_VERSION) && !defined(_REENT_SMALL) && defined(_REENT_RAND_NEXT)
+static inline int open_bus_rand()
+{
+	struct _reent *r = _REENT;
+	unsigned long long next = _REENT_RAND_NEXT(r) * 6364136223846793005ULL + 1;
+	_REENT_RAND_NEXT(r) = next;
+	return (int)((next >> 32) & RAND_MAX);
+}
+#else
+#define open_bus_rand rand
+#endif
+
+
+/*
  *  Read a byte from I/O / ROM space
  */
 
@@ -316,17 +341,17 @@ inline C64_HOT(MOS6510_read_byte_io) uint8_t MOS6510::read_byte_io(uint16_t adr)
 					case 0x9:
 					case 0xa:
 					case 0xb:
-						return color_ram[adr & 0x03ff] | (rand() & 0xf0);
+						return color_ram[adr & 0x03ff] | (open_bus_rand() & 0xf0);
 					case 0xc:	// CIA 1
 						return the_cia1->ReadRegister(adr & 0x0f);
 					case 0xd:	// CIA 2
 						return the_cia2->ReadRegister(adr & 0x0f);
 					case 0xe:	// Cartridge I/O 1 (or open)
-						return the_cart->ReadIO1(adr & 0xff, rand());
+						return the_cart->ReadIO1(adr & 0xff, open_bus_rand());
 					case 0xf:	// Cartridge I/O 2 (or open)
 						// Full $DF00-$DFFF access for cartridges
 						// EasyFlash needs all 256 bytes of RAM at this location
-						return the_cart->ReadIO2(adr & 0xff, rand());
+						return the_cart->ReadIO2(adr & 0xff, open_bus_rand());
 				}
 			} else if (char_in) {
 				return char_rom[adr & 0x0fff];

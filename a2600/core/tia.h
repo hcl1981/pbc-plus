@@ -19,7 +19,7 @@
 
 #define TIA_WIDTH 160
 
-/* a finished line of 160 colour indices (0..127, NTSC palette); `blank`:
+/* a finished line of 160 colour register values (bit 0 unused); `blank`:
  * the beam was off (VBLANK) the whole line */
 typedef void (*tia_line_fn)(const uint8_t *pixels, bool blank);
 
@@ -33,6 +33,7 @@ void tia_end_line(tia_line_fn out);
 /* VSYNC on (frame start) since the last call */
 bool tia_vsync_started(void);
 bool tia_vsync(void);
+bool tia_vsync_pending(void);          /* the same, without clearing it */
 /* WSYNC was written: the CPU waits for the end of the line */
 bool tia_wsync(void);
 extern uint8_t tia_wsync_req;          /* the same as a flag */

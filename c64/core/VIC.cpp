@@ -742,7 +742,7 @@ C64_HOT(MOS6569_WriteRegister) void MOS6569::WriteRegister(uint16_t adr, uint8_t
  *  CIA VA14/15 has changed
  */
 
-void MOS6569::ChangedVA(uint16_t new_va)
+C64_HOT(MOS6569_ChangedVA) void MOS6569::ChangedVA(uint16_t new_va)
 {
 	cia_vabase = new_va << 14;
 	WriteRegister(0x18, vbase); // Force update of memory pointers
@@ -1183,22 +1183,55 @@ inline C64_HOT(MOS6569_el_mc_idle) void MOS6569::el_mc_idle(uint8_t *p, uint8_t 
 }
 
 
+// Clear 24 or 48 bytes of spr_coll_buf (unaligned word stores, no call)
+static inline void clear_coll_span(uint8_t *q, bool wide)
+{
+	const uint32_t z = 0;
+	memcpy(q, &z, 4); memcpy(q + 4, &z, 4); memcpy(q + 8, &z, 4);
+	memcpy(q + 12, &z, 4); memcpy(q + 16, &z, 4); memcpy(q + 20, &z, 4);
+	if (wide) {
+		memcpy(q + 24, &z, 4); memcpy(q + 28, &z, 4); memcpy(q + 32, &z, 4);
+		memcpy(q + 36, &z, 4); memcpy(q + 40, &z, 4); memcpy(q + 44, &z, 4);
+	}
+}
+
 inline C64_HOT(MOS6569_el_sprites) void MOS6569::el_sprites(uint8_t *chunky_ptr)
 {
 	unsigned spr_coll = 0, gfx_coll = 0;
+
+	/* PBC: a sprite whose row is all transparent changes nothing (no
+	 * pixels, no collisions), so it is skipped. spr_coll_buf is read and
+	 * written only under the sprites that draw: just their spans are
+	 * cleared, before any of them draws (was: all 384 bytes, per line). */
+	uint32_t sdata_row[8];
+	unsigned draw = 0;
+	for (unsigned snum = 0; snum < 8; ++snum) {
+		uint8_t sbit = 1 << snum;
+		if ((sprite_on & sbit) && mx[snum] < DISPLAY_X-32) {
+			bool wide = (mxe & sbit) != 0;
+			if (wide && mx[snum] >= DISPLAY_X-56)
+				continue;
+			const uint8_t *sdatap = get_physical(matrix_base[0x3f8 + snum] << 6 | mc[snum]);
+			uint32_t sdata = (*sdatap << 24) | (*(sdatap+1) << 16) | (*(sdatap+2) << 8);
+			if (sdata == 0)
+				continue;
+			sdata_row[snum] = sdata;
+			draw |= sbit;
+			clear_coll_span(spr_coll_buf + mx[snum] + 8, wide);
+		}
+	}
 
 	// Draw each active sprite
 	for (unsigned snum = 0; snum < 8; ++snum) {
 		uint8_t sbit = 1 << snum;
 
 		// Is sprite visible?
-		if ((sprite_on & sbit) && mx[snum] < DISPLAY_X-32) {
+		if (draw & sbit) {
 			uint8_t *p = chunky_ptr + mx[snum] + 8;
 			uint8_t *q = spr_coll_buf + mx[snum] + 8;
 
 			// Fetch sprite data and mask
-			const uint8_t *sdatap = get_physical(matrix_base[0x3f8 + snum] << 6 | mc[snum]);
-			uint32_t sdata = (*sdatap << 24) | (*(sdatap+1) << 16) | (*(sdatap+2) << 8);
+			uint32_t sdata = sdata_row[snum];
 
 			uint8_t color = spr_color[snum];
 
@@ -1210,9 +1243,6 @@ inline C64_HOT(MOS6569_el_sprites) void MOS6569::el_sprites(uint8_t *chunky_ptr)
 			fore_mask = (fore_mask << sshift) | (fmbp[4] >> (8-sshift));
 
 			if (mxe & sbit) {		// X-expanded
-				if (mx[snum] >= DISPLAY_X-56)
-					continue;
-
 				// Fetch extra sprite mask
 				uint32_t sdata_l = 0, sdata_r = 0;
 				uint32_t fore_mask_r = (fmbp[4] << 24) | (fmbp[5] << 16) | (fmbp[6] << 8);
@@ -1762,8 +1792,7 @@ C64_HOT(MOS6569_EmulateLine) unsigned MOS6569::EmulateLine(int & retCyclesLeft)
 
 			// Draw sprites
 			if (sprite_on) {
-				// Clear sprite collision buffer
-				memset(spr_coll_buf, 0, DISPLAY_X);
+				// (el_sprites() clears the collision buffer where needed)
 				el_sprites(chunky_ptr);
 			}
 

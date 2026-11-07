@@ -83,7 +83,7 @@ target_compile_definitions(pbc_gbc PRIVATE
     # Peanut-GB with the Game Boy Color extension; minigb_apu at the rate
     # of the speaker timer (src/audio_pwm.h)
     PEANUT_FULL_GBC_SUPPORT=1
-    AUDIO_SAMPLE_RATE=22222
+    AUDIO_SAMPLE_RATE=45454
 )
 
 target_compile_options(pbc_gbc PRIVATE

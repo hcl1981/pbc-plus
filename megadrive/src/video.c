@@ -36,7 +36,7 @@ void video_palette_freeze(void)
 const uint8_t *hdmi_line_lut[HDMI_MAX_LINES];
 uint8_t hdmi_identity_lut[256];
 
-void graphics_set_palette(uint8_t i, uint32_t color888)
+void __not_in_flash_func(graphics_set_palette)(uint8_t i, uint32_t color888)
 {
     pbc_palette[i] = pbc_rgb24(color888);
 }
@@ -54,7 +54,9 @@ static int src_w = 0, src_h = 0;          /* 0: geometry not built yet */
 static int out_h = 168, out_y = 56;
 static int mode;                           /* VIDEO_FIT, VIDEO_CROP */
 static int status_y = PBC_LCD_H - 22;
-static uint16_t xa[OUT_W], xb[OUT_W];
+static int x_first;                        /* crop: first source pixel */
+static int x_scale;                        /* X_* below */
+enum { X_CROP, X_H40, X_H32 };
 static uint16_t ya[OUT_H_MAX], yb[OUT_H_MAX];
 static volatile bool need_clear = true;
 
@@ -124,12 +126,13 @@ static void build_geometry(int w, int h)
     switch (mode) {
     case VIDEO_CROP:                        /* the middle 240 pixels, unscaled */
         out_h = h;
-        map_identity(xa, xb, OUT_W, (w - OUT_W) / 2);
+        x_scale = X_CROP;
+        x_first = (w - OUT_W) / 2;
         map_identity(ya, yb, out_h, 0);
         break;
     default:
         out_h = h40 ? h * 3 / 4 : h * 15 / 16;
-        build_map(xa, xb, OUT_W, w, h40);
+        x_scale = h40 ? X_H40 : X_H32;
         build_map(ya, yb, out_h, h, h40);
         break;
     }
@@ -156,7 +159,7 @@ void video_frame_begin(int w, int h)
     frame_seq = frame_seq + 1;
 }
 
-void video_line_done(int line)
+void __not_in_flash_func(video_line_done)(int line)
 {
     __dmb();
     lines_ready = line + 1;
@@ -169,30 +172,85 @@ void video_set_status(const char *s)
     status_dirty = true;
 }
 
+/* A source pixel through its line's palette mapping. */
+#define PX(r, l, i) pal[(l)[(r)[i]]]
+
+/* One output row from source row ra (and rb, averaged with it, unless it
+ * is the same row). Horizontally (build_map): H40 takes groups of 4 -> 3
+ * as a | (b+c)/2 | d, H32 groups of 16 -> 15 with pixels 7 and 8 averaged,
+ * crop the middle 240 pixels as they are. An output pixel made of a single
+ * source pixel needs no averaging: pbc_avg565(p, p) == p. */
+static inline __attribute__((always_inline)) void
+convert_one(uint16_t *out, const uint8_t *ra, const uint8_t *la, const uint16_t *pal)
+{
+    switch (x_scale) {
+    case X_H40:
+        for (int x = 0; x < OUT_W; x += 3, ra += 4) {
+            out[x] = PX(ra, la, 0);
+            out[x + 1] = pbc_avg565(PX(ra, la, 1), PX(ra, la, 2));
+            out[x + 2] = PX(ra, la, 3);
+        }
+        break;
+    case X_H32:
+        for (int x = 0; x < OUT_W; x += 15, ra += 16) {
+            for (int i = 0; i < 7; i++)
+                out[x + i] = PX(ra, la, i);
+            out[x + 7] = pbc_avg565(PX(ra, la, 7), PX(ra, la, 8));
+            for (int i = 8; i < 15; i++)
+                out[x + i] = PX(ra, la, i + 1);
+        }
+        break;
+    default:
+        ra += x_first;
+        for (int x = 0; x < OUT_W; x++)
+            out[x] = PX(ra, la, x);
+        break;
+    }
+}
+
+static inline __attribute__((always_inline)) void
+convert_two(uint16_t *out, const uint8_t *ra, const uint8_t *la,
+            const uint8_t *rb, const uint8_t *lb, const uint16_t *pal)
+{
+    switch (x_scale) {
+    case X_H40:
+        for (int x = 0; x < OUT_W; x += 3, ra += 4, rb += 4) {
+            out[x] = pbc_avg565(PX(ra, la, 0), PX(rb, lb, 0));
+            out[x + 1] = pbc_avg565(pbc_avg565(PX(ra, la, 1), PX(ra, la, 2)),
+                                    pbc_avg565(PX(rb, lb, 1), PX(rb, lb, 2)));
+            out[x + 2] = pbc_avg565(PX(ra, la, 3), PX(rb, lb, 3));
+        }
+        break;
+    case X_H32:
+        for (int x = 0; x < OUT_W; x += 15, ra += 16, rb += 16) {
+            for (int i = 0; i < 7; i++)
+                out[x + i] = pbc_avg565(PX(ra, la, i), PX(rb, lb, i));
+            out[x + 7] = pbc_avg565(pbc_avg565(PX(ra, la, 7), PX(ra, la, 8)),
+                                    pbc_avg565(PX(rb, lb, 7), PX(rb, lb, 8)));
+            for (int i = 8; i < 15; i++)
+                out[x + i] = pbc_avg565(PX(ra, la, i + 1), PX(rb, lb, i + 1));
+        }
+        break;
+    default:
+        ra += x_first;
+        rb += x_first;
+        for (int x = 0; x < OUT_W; x++)
+            out[x] = pbc_avg565(PX(ra, la, x), PX(rb, lb, x));
+        break;
+    }
+}
+
 static void __not_in_flash_func(convert_row)(int r, uint16_t *out)
 {
     const uint8_t *base = &video_screen[0][0];
     int y0 = ya[r], y1 = yb[r];
-    const uint8_t *ra = base + y0 * src_w;
-    const uint8_t *la = hdmi_line_lut[y0];
     const uint16_t *pal = video_pal;
 
-    if (y0 == y1) {
-        for (int x = 0; x < OUT_W; x++) {
-            uint16_t p = pal[la[ra[xa[x]]]];
-            uint16_t q = pal[la[ra[xb[x]]]];
-            out[x] = pbc_avg565(p, q);
-        }
-    } else {
-        const uint8_t *rb = base + y1 * src_w;
-        const uint8_t *lb = hdmi_line_lut[y1];
-        for (int x = 0; x < OUT_W; x++) {
-            int i0 = xa[x], i1 = xb[x];
-            uint16_t top = pbc_avg565(pal[la[ra[i0]]], pal[la[ra[i1]]]);
-            uint16_t bot = pbc_avg565(pal[lb[rb[i0]]], pal[lb[rb[i1]]]);
-            out[x] = pbc_avg565(top, bot);
-        }
-    }
+    if (y0 == y1)
+        convert_one(out, base + y0 * src_w, hdmi_line_lut[y0], pal);
+    else
+        convert_two(out, base + y0 * src_w, hdmi_line_lut[y0],
+                    base + y1 * src_w, hdmi_line_lut[y1], pal);
 }
 
 void __not_in_flash_func(video_service)(void)

@@ -215,6 +215,17 @@ const char * Nes_Emu::load_ines_data( const void* data, long size )
 	return set_cart( &private_cart );
 }
 
+void Nes_Emu::move_prg( void* ram )
+{
+	uint8_t const* old = private_cart.prg();
+	long size = private_cart.prg_size();
+	// the 2 bytes behind it too: the CPU reads an instruction's operands
+	// from the opcode's page, past the end of the last bank
+	memcpy( ram, old, size + 2 );
+	private_cart.move_prg( (uint8_t*) ram );
+	emu.rebase_code( old, size, (uint8_t const*) ram );
+}
+
 const char * Nes_Emu::save_battery_ram( Auto_File_Writer out )
 {
 	RETURN_ERR( out.open() );

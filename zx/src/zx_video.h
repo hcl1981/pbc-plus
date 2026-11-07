@@ -2,7 +2,7 @@
  *
  * There is no frame buffer. The core hands over each of the 280 lines (44
  * of border, the 192 of the screen, 44 of border) as colour indices, 256
- * wide; core 0 only copies them into a small ring, core 1 turns them into
+ * wide; core 0 draws them straight into a small ring, core 1 turns them into
  * 240 panel pixels while the line before goes out, and lays the status
  * text over the lower border. The picture fills the panel's height.
  *
@@ -21,8 +21,10 @@ enum { ZX_MODE_FIT, ZX_MODE_CROP, ZX_MODES };
 /* Core 0, before core 1 starts. */
 void zx_video_init(unsigned mode);
 
-/* Core 0: a finished line (zx_frame's callback). */
-void zx_video_line(int y, const uint8_t *pixels);
+/* Core 0, zx_frame's callbacks: where line y goes (a ring slot, NULL if
+ * not shown now), and that it is drawn there. */
+uint8_t *zx_video_line_begin(int y);
+void zx_video_line_commit(int y);
 
 /* Core 1 entry point. */
 void zx_video_core1_main(void);

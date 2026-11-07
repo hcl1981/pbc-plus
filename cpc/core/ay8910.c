@@ -15,18 +15,20 @@
 
 #ifdef PBC_ON_DEVICE
 #define AY_RAM __attribute__((section(".time_critical.ay")))
+#define AY_TAB(n) __attribute__((section(".data.ay_" n)))    /* tables in RAM: read per sample */
 #else
 #define AY_RAM
+#define AY_TAB(n)
 #endif
 
 /* 16 levels, 3 dB per two steps (the chip's logarithmic DAC) */
-static const uint16_t vol_tab[16] = {
+static uint16_t vol_tab[16] AY_TAB("vol") = {
     0, AY_MAX / 128, AY_MAX / 90, AY_MAX / 64, AY_MAX / 45, AY_MAX / 32, AY_MAX / 23, AY_MAX / 16,
     AY_MAX / 11, AY_MAX / 8, (AY_MAX * 10) / 57, AY_MAX / 4, (AY_MAX * 10) / 28, AY_MAX / 2,
     (AY_MAX * 10) / 14, AY_MAX,
 };
 
-static const uint8_t reg_mask[16] = {
+static uint8_t reg_mask[16] AY_TAB("mask") = {
     0xff, 0x0f, 0xff, 0x0f, 0xff, 0x0f, 0x1f, 0xff,
     0x1f, 0x1f, 0x1f, 0xff, 0xff, 0x0f, 0xff, 0xff,
 };
@@ -58,12 +60,12 @@ void ay_reset(ay8910_t *ay)
     env_start(ay);
 }
 
-void ay_write_addr(ay8910_t *ay, uint8_t v)
+AY_RAM void ay_write_addr(ay8910_t *ay, uint8_t v)
 {
     ay->addr = v & 15;
 }
 
-void ay_write_data(ay8910_t *ay, uint8_t v)
+AY_RAM void ay_write_data(ay8910_t *ay, uint8_t v)
 {
     int r = ay->addr;
     ay->reg[r] = v & reg_mask[r];
@@ -71,7 +73,7 @@ void ay_write_data(ay8910_t *ay, uint8_t v)
         env_start(ay);
 }
 
-uint8_t ay_read_data(ay8910_t *ay, ay_port_read_t port_a)
+AY_RAM uint8_t ay_read_data(ay8910_t *ay, ay_port_read_t port_a)
 {
     int r = ay->addr;
     if (r == 14)

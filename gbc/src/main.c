@@ -261,6 +261,7 @@ static uint8_t bank0[0x4000];          /* bank 0 is read constantly: keep it in 
 static uint8_t cart_ram[CART_RAM_MAX];
 static uint32_t save_size;
 static volatile bool save_dirty;
+static bool save_touched;              /* cart RAM changed during this frame */
 static uint64_t save_first_change, save_last_change;
 
 uint8_t __not_in_flash_func(gb_rom_read)(struct gb_s *g, const uint_fast32_t addr)
@@ -282,11 +283,7 @@ void __not_in_flash_func(gb_cart_ram_write)(struct gb_s *g, const uint_fast32_t 
     if (addr >= CART_RAM_MAX || cart_ram[addr] == v)
         return;
     cart_ram[addr] = v;
-    if (!save_dirty) {
-        save_dirty = true;
-        save_first_change = time_us_64();
-    }
-    save_last_change = time_us_64();
+    save_touched = true;                /* the time is taken in save_poll */
 }
 
 void gb_error(struct gb_s *g, const enum gb_error_e e, const uint16_t addr)
@@ -342,6 +339,7 @@ static inline uint16_t cgb_to_panel(uint16_t c)
  * partner's game clocks, its byte arrives in cable_answer (while this side
  * polls the line, every scanline) and the waiting transfer ends with it. */
 #if PBC_MULTI
+static bool cable_on;                   /* pbc_cable_begin done: poll the line */
 static volatile bool cable_in_ready;
 static volatile uint8_t cable_in;
 static bool cable_out_ok;
@@ -384,22 +382,19 @@ static enum gb_serial_rx_ret_e cable_rx(struct gb_s *g, uint8_t *rx)
 void __not_in_flash_func(lcd_draw_line)(struct gb_s *g, const uint8_t *pixels, const uint_fast8_t line)
 {
 #if PBC_MULTI
-    pbc_cable_poll();                   /* the partner may be clocking a byte */
+    if (cable_on)
+        pbc_cable_poll();               /* the partner may be clocking a byte */
 #endif
     uint16_t *row = video_back() + line * GB_W;
     if (g->cgb.cgbMode) {
-        /* Palettes can change between lines; convert only the entries that
-         * changed since the last line (usually none). */
-        static uint16_t seen[64], lut[64];
-        static bool valid;
-        for (int i = 0; i < 64; i++) {
-            uint16_t c = g->cgb.fixPalette[i];
-            if (c != seen[i] || !valid) {
-                seen[i] = c;
-                lut[i] = cgb_to_panel(c);
-            }
+        /* Palettes can change between lines; the core flags each change
+         * (writes to FF69/FF6B), convert them all again only then. */
+        static uint16_t lut[64];
+        if (g->cgb.palDirty) {
+            g->cgb.palDirty = 0;
+            for (int i = 0; i < 64; i++)
+                lut[i] = cgb_to_panel(g->cgb.fixPalette[i]);
         }
-        valid = true;
         for (int x = 0; x < GB_W; x++)
             row[x] = lut[pixels[x] & 63];
     } else if (sgb_colour) {
@@ -456,6 +451,16 @@ static void save_write(void)
 
 static void save_poll(void)
 {
+    /* once per frame: first and last change to the frame's end */
+    if (save_touched) {
+        uint64_t t = time_us_64();
+        save_touched = false;
+        if (!save_dirty) {
+            save_dirty = true;
+            save_first_change = t;
+        }
+        save_last_change = t;
+    }
     if (!save_dirty || !save_size)
         return;
     uint64_t now = time_us_64();
@@ -466,10 +471,10 @@ static void save_poll(void)
 static void __attribute__((noreturn)) emulation_loop(void)
 {
     uint64_t next_frame = time_us_64();
-    /* minigb_apu renders AUDIO_SAMPLES (= 372 at 22222 Hz) stereo frames per
+    /* minigb_apu renders AUDIO_SAMPLES (= 761 at 45454 Hz) stereo frames per
      * Game Boy frame; it is a floating-point expression, hence the margin. */
-    static int16_t stereo[2 * 400];
-    static int16_t mono[400];
+    static int16_t stereo[2 * 800];
+    static int16_t mono[800];
     const unsigned n = AUDIO_SAMPLES;
 
     audio_pwm_set_volume(g_settings.sound ? g_settings.volume : 0);
@@ -491,7 +496,8 @@ static void __attribute__((noreturn)) emulation_loop(void)
         uint64_t frame_start = time_us_64();
         gb_run_frame(&gb);
 #if PBC_MULTI
-        pbc_cable_poll();               /* also with the screen off: no scanlines then */
+        if (cable_on)
+            pbc_cable_poll();           /* also with the screen off: no scanlines then */
 #endif
 
         audio_callback(NULL, stereo, n * 2 * sizeof stereo[0]);
@@ -522,6 +528,7 @@ static void __attribute__((noreturn)) emulation_loop(void)
                      (unsigned long)stat_drawn,
                      (unsigned long)(stat_emulated * 100 / 60),
                      (unsigned long)(stat_busy_us * 100 / (now - stat_t0)));
+            pbc_test_stats((unsigned long)stat_drawn, (unsigned long)(stat_emulated * 100 / 60), (unsigned long)(stat_busy_us * 100 / (now - stat_t0)));
             video_set_status(s);
             stat_t0 = now;
             stat_drawn = stat_emulated = 0;
@@ -639,10 +646,13 @@ int main(void)
     audio_init();
     if (gb_init(&gb, gb_rom_read, gb_cart_ram_read, gb_cart_ram_write, gb_error, NULL) != GB_INIT_NO_ERROR)
         fatal("Cannot start game:", "unsupported cartridge");
+    /* the core reads ROM straight from these, as gb_rom_read does */
+    gb_set_rom_map(&gb, bank0, rom, rom_len);
     gb_init_lcd(&gb, lcd_draw_line);
 #if PBC_MULTI
     if (launch->key & 0x10) {           /* the game's option: link cable over USB-C */
         pbc_cable_begin(cable_answer);
+        cable_on = true;
         gb_init_serial(&gb, cable_tx, cable_rx);
     }
 #endif

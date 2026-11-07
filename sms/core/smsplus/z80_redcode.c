@@ -26,6 +26,16 @@
 #define MAME_Z80_PC 1
 #define MAME_Z80_SP 2
 
+/* PBC: what runs per line or per IN/OUT instruction in RAM, like the core
+ * (z80_run) and cpu_readport/cpu_writeport around it; from flash every OUT
+ * to the VDP went through the XIP cache that the game ROM needs. */
+#ifdef PICO_BOARD
+#include <pico.h>
+#define Z80_GLUE_RAM(name) __not_in_flash_func(name)
+#else
+#define Z80_GLUE_RAM(name) name
+#endif
+
 extern int cpu_readport(int port);
 extern void cpu_writeport(int port, int data);
 
@@ -43,7 +53,7 @@ static int nmi_state, debt;
 /* The cycles left in this slice at the end of the I/O instruction being
  * executed (redcode counts an instruction's cycles once it is done, MAME
  * before; IN/OUT take 11 or 12). */
-static void update_icount(void)
+static inline void update_icount(void)
 {
     z80_ICount = (int)(cpu.cycle_limit - cpu.cycles) - 11;
 }
@@ -62,14 +72,14 @@ static void wr(void *context, zuint16 address, zuint8 value)
     cpu_writemem16(address, value);
 }
 
-static zuint8 in(void *context, zuint16 port)
+static zuint8 Z80_GLUE_RAM(in)(void *context, zuint16 port)
 {
     (void)context;
     update_icount();
     return (zuint8)cpu_readport(port & 0xFF);
 }
 
-static void out(void *context, zuint16 port, zuint8 value)
+static void Z80_GLUE_RAM(out)(void *context, zuint16 port, zuint8 value)
 {
     (void)context;
     update_icount();
@@ -77,7 +87,7 @@ static void out(void *context, zuint16 port, zuint8 value)
 }
 
 /* the data bus during the interrupt acknowledge (IM 2 / IM 0) */
-static zuint8 inta(void *context, zuint16 address)
+static zuint8 Z80_GLUE_RAM(inta)(void *context, zuint16 address)
 {
     (void)context;
     (void)address;
@@ -119,19 +129,24 @@ void z80_set_reg(int regnum, unsigned val)
         Z80_SP(cpu) = (zuint16)val;
 }
 
+unsigned z80_get_pc(void)
+{
+    return Z80_PC(cpu);
+}
+
 void z80_set_irq_callback(int (*callback)(int))
 {
     irq_callback = callback;
 }
 
-void z80_set_irq_line(int irqline, int state)
+void Z80_GLUE_RAM(z80_set_irq_line)(int irqline, int state)
 {
     (void)irqline;
     z80_int(&cpu, state != CLEAR_LINE);
 }
 
 /* edge-triggered: SMS Plus pulses it for PAUSE */
-void z80_set_nmi_line(int state)
+void Z80_GLUE_RAM(z80_set_nmi_line)(int state)
 {
     if (state != CLEAR_LINE && nmi_state == CLEAR_LINE)
         z80_nmi(&cpu);
@@ -140,7 +155,7 @@ void z80_set_nmi_line(int state)
 
 /* Runs about `cycles` T-states; what the last instruction ran over is
  * taken off the next slice. Returns the T-states run. */
-int z80_execute(int cycles)
+int Z80_GLUE_RAM(z80_execute)(int cycles)
 {
     int want = cycles - debt;
     if (want <= 0) {                    /* a long instruction paid it already */

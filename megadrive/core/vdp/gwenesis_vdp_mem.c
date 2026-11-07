@@ -116,7 +116,7 @@ static int     pal_alt_next;            /* next free spare entry */
 static int     pal_split_line;          /* last scanline written in this state */
 static uint64_t pal_burst_mask;         /* entries written in this state */
 
-const uint8_t *vdp_palette_current_lut(void) { return pal_lut[pal_state]; }
+const uint8_t *__not_in_flash_func(vdp_palette_current_lut)(void) { return pal_lut[pal_state]; }
 
 /* Called once per frame, before any line is drawn. */
 void vdp_palette_frame_begin(void) {
@@ -394,7 +394,7 @@ unsigned short gwenesis_vdp_hvcounter() {
 }
 
 //static inline __attribute__((always_inline))
-bool vblank(void) {
+bool __not_in_flash_func(vblank)(void) {   /* PBC: RAM, games poll the status */
     int vc = gwenesis_vdp_vcounter();
     //  printf("vc=%d,REG1_DISP_ENABLED=%d,VBLAN?%d\n",vc,REG1_DISP_ENABLED,
     // mode_pal?((vc >= 0xF0) && (vc < 0x1FF)):((vc >= 0xE0) && (vc < 0x1FF)));
@@ -494,6 +494,27 @@ void __not_in_flash_func(gwenesis_vdp_vram_write)(unsigned int address, unsigned
     }
 }
 
+/* PBC: the same for the DMA loops, with the SAT window taken out of the
+ * registers once per transfer (a byte store to VRAM may alias them, so
+ * the compiler reloaded them for every byte). */
+static inline __attribute__((always_inline))
+void vram_write_sat(unsigned int address, unsigned int value, unsigned int sat, unsigned int sat_size) {
+    RASTER_NOTE_VRAM();
+    VRAM[address] = value;
+    if (address - sat < sat_size) {
+        SAT_CACHE[address - sat] = value;
+        gwenesis_vdp_sprite_cache_dirty();   /* per-line sprite lists are stale */
+    }
+}
+
+/* PBC: the FIFO after a DMA from 68000 memory: the last four words pushed
+ * (the loops only keep the source address). */
+static void dma_fifo_tail(unsigned int src_addr, int n, bool ram) {
+    int k = n > 4 ? n - 4 : 0;
+    for (src_addr += 2 * k; k < n; k++, src_addr += 2)
+        push_fifo(ram ? FETCH16RAM(src_addr) : FETCH16ROM(src_addr));
+}
+
 static inline __attribute__((always_inline))
 unsigned short status_register_r(void) {
     unsigned short status = gwenesis_vdp_status; // & 0xF800;
@@ -574,14 +595,19 @@ void gwenesis_vdp_dma_fill(unsigned short value) {
         */
 
     switch (code_reg & 0xF) {
-        case 0x1:
+        case 0x1: {
+            const unsigned int sat = REG5_SAT_ADDRESS, sat_size = REG5_SAT_SIZE;
+            const unsigned int inc = REG15_DMA_INCREMENT;
+            unsigned short a = address_reg;
+            src_addr_low += dma_length;
             do {
-                gwenesis_vdp_vram_write((address_reg ^ 1) & 0xFFFF, value >> 8);
-                address_reg += REG15_DMA_INCREMENT;
-                src_addr_low++;
+                vram_write_sat((a ^ 1) & 0xFFFF, value >> 8, sat, sat_size);
+                a += inc;
             }
             while (--dma_length);
+            address_reg = a;
             break;
+        }
         case 0x3: // undocumented and buggy, see vdpfifotesting
             do {
                 uint8_t addr = (address_reg & 0x7f) >> 1;
@@ -655,17 +681,22 @@ void gwenesis_vdp_dma_m68k() {
     /* Source is 68K RAM */
     if (src_addr & 0x800000) {
         switch (code_reg & 0xF) {
-            case 0x1: // dest is VRAM
+            case 0x1: { // dest is VRAM
+                const unsigned int sat = REG5_SAT_ADDRESS, sat_size = REG5_SAT_SIZE;
+                const unsigned int inc = REG15_DMA_INCREMENT;
+                unsigned short a = address_reg;
+                dma_fifo_tail(src_addr, dma_length, true);
                 do {
                     value = FETCH16RAM(src_addr);
-                    push_fifo(value);
-                    gwenesis_vdp_vram_write((address_reg) & 0xFFFF, value >> 8);
-                    gwenesis_vdp_vram_write((address_reg ^ 1) & 0xFFFF, value & 0xFF);
-                    address_reg += REG15_DMA_INCREMENT;
+                    vram_write_sat(a, value >> 8, sat, sat_size);
+                    vram_write_sat(a ^ 1, value & 0xFF, sat, sat_size);
+                    a += inc;
                     src_addr += 2;
                 }
                 while (--dma_length);
+                address_reg = a;
                 break;
+            }
 
             case 0x3: // dest is CRAM
                 do {
@@ -705,18 +736,22 @@ void gwenesis_vdp_dma_m68k() {
         // unsigned int dma_source_address = (dma_source_high | dma_source_low) << 1;
 
         switch (code_reg & 0xF) {
-            case 0x1: // dest is VRAM
-
+            case 0x1: { // dest is VRAM
+                const unsigned int sat = REG5_SAT_ADDRESS, sat_size = REG5_SAT_SIZE;
+                const unsigned int inc = REG15_DMA_INCREMENT;
+                unsigned short a = address_reg;
+                dma_fifo_tail(src_addr, dma_length, false);
                 do {
                     value = FETCH16ROM(src_addr);
-                    push_fifo(value);
-                    gwenesis_vdp_vram_write((address_reg) & 0xFFFF, value >> 8);
-                    gwenesis_vdp_vram_write((address_reg ^ 1) & 0xFFFF, value & 0xFF);
-                    address_reg += REG15_DMA_INCREMENT;
+                    vram_write_sat(a, value >> 8, sat, sat_size);
+                    vram_write_sat(a ^ 1, value & 0xFF, sat, sat_size);
+                    a += inc;
                     src_addr += 2;
                 }
                 while (--dma_length);
+                address_reg = a;
                 break;
+            }
 
             case 0x3: // dest is CRAM
 
@@ -774,14 +809,18 @@ void gwenesis_vdp_dma_copy() {
     unsigned short src_addr_low = REG21_DMA_SRCADDR_LOW;
     //vdpm_log(__FUNCTION__,"length:%x src:%x",dma_length,src_addr_low);
 
+    const unsigned int sat = REG5_SAT_ADDRESS, sat_size = REG5_SAT_SIZE;
+    const unsigned int inc = REG15_DMA_INCREMENT;
+    unsigned short a = address_reg;
     do {
         unsigned short value = VRAM[src_addr_low ^ 1];
-        gwenesis_vdp_vram_write((address_reg ^ 1) & 0xFFFF, value);
+        vram_write_sat((a ^ 1) & 0xFFFF, value, sat, sat_size);
 
-        address_reg += REG15_DMA_INCREMENT;
+        a += inc;
         src_addr_low++;
     }
     while (--dma_length);
+    address_reg = a;
 
     // Update DMA source address after end of transfer
     gwenesis_vdp_regs[21] = src_addr_low & 0xFF;
@@ -1022,7 +1061,7 @@ unsigned int gwenesis_vdp_read_memory_8(unsigned int address) {
  *
  ******************************************************************************/
 //static inline
-unsigned int gwenesis_vdp_read_memory_16(unsigned int address) {
+unsigned int __not_in_flash_func(gwenesis_vdp_read_memory_16)(unsigned int address) {  /* PBC: RAM */
     address &= 0x1F;
 
     if (address < 0X4)

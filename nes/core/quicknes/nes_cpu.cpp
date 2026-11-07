@@ -85,6 +85,17 @@ void Nes_Cpu::map_code( nes_addr_t start, unsigned size, const void* data )
 		gg_remap( start, size );
 }
 
+void Nes_Cpu::rebase_code( void const* from, long size, void const* to )
+{
+	uintptr_t begin = (uintptr_t) from;
+	for ( int i = 0; i < page_count + 1; i++ )
+	{
+		uintptr_t p = (uintptr_t) (code_map [i] + (unsigned) i * page_size);
+		if ( p - begin < (uintptr_t) size )
+			set_code_page( i, (uint8_t const*) to + (p - begin) );
+	}
+}
+
 // ---- Game Genie (PBC) -------------------------------------------------------
 //
 // The ROM is read in place from flash and cannot be patched. Like the real
@@ -200,6 +211,19 @@ void Nes_Cpu::gg_remap( unsigned start, unsigned size )
 #define READ_PROG( addr )   (code_map [(addr) >> page_bits] [addr])
 #define READ_PROG16( addr ) GET_LE16( &READ_PROG( addr ) )
 
+// PBC: cpu_read() inline for RAM (below $2000, also the $10000+ of an
+// indexed address past $FFFF) and ROM (from $8000), the same expressions
+// as at its start. Used only where it pays, at the read of the arithmetic
+// instructions' operand: every site costs flash.
+#define READ_FAST( addr ) \
+	(!((addr) & 0xE000) ? READ_LOW( (addr) & 0x7FF ) : \
+	(addr) > 0x7FFF ? READ_PROG( addr ) : READ( addr ))
+
+// PBC: the dummy read of an indexed store (STA abs,X/Y) is skipped in RAM
+// and ROM, where reading has no effect; only I/O needs the call.
+#define DUMMY_READ( addr ) \
+	{ if ( ((addr) & 0xE000) && (addr) <= 0x7FFF ) READ( addr ); }
+
 #define SET_SP( v )     (sp = ((v) + 1) | 0x100)
 #define GET_SP()        ((sp - 1) & 0xFF)
 #define PUSH( v )       ((sp = (sp - 1) | 0x100), WRITE_LOW( sp, v ))
@@ -252,6 +276,11 @@ Nes_Cpu::result_t __attribute__((section(".time_critical.Nes_Cpu_run"))) Nes_Cpu
 	long clock_count = this->clock_count;
 	uint8_t* const low_mem = this->low_mem;
 #endif
+	// PBC: the clock table's address in a register or stack slot. As a
+	// literal, GCC put it in a pool with a branch around it, taken on
+	// every instruction.
+	unsigned char const* clocks = clock_table;
+	__asm__ ( "" : "+r" (clocks) );
 
 	// registers
 	unsigned pc = r.pc;
@@ -308,7 +337,7 @@ loop:
 	if ( clock_count >= clock_limit )
 		goto stop;
 	
-	clock_count += clock_table [opcode];
+	clock_count += clocks [opcode];
 	unsigned data;
 	data = page [pc];
 	
@@ -371,7 +400,7 @@ ind##op: {                              \
 case op + 0x08: /* abs */               \
 	ADD_PAGE                            \
 ptr##op:                                \
-	data = READ( data );                \
+	data = READ_FAST( data );           \
 case op + 0x04: /* imm */               \
 imm##op:                                \
 
@@ -493,7 +522,7 @@ imm##op:                                \
 	sta_ind_common: {
 		int temp = data;
 		ADD_PAGE
-		READ( data - ( temp & 0x100 ) );
+		DUMMY_READ( data - ( temp & 0x100 ) );
 		goto sta_ptr;
 	}
 	case 0x8D: // STA abs

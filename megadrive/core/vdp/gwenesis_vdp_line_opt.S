@@ -1,6 +1,22 @@
 /*
  * Optimized VDP line rendering for ARM Cortex-M33
  * Renders entire tile rows in assembly for maximum performance
+ *
+ * PBC (November 2026): the eight pixels of a tile row are made as two
+ * words with the DSP instructions instead of one byte at a time:
+ *   - the pattern word (VRAM bytes b0..b3, PIX0 = b0 bits 7:4, PIX1 = b0
+ *     bits 3:0, ...) is spread into PIX0..PIX3 and PIX4..PIX7, one pixel
+ *     per byte (and/orr with shifts, pkhbt/pkhtb); horizontal flip
+ *     reverses them (rev, words swapped)
+ *   - USUB8 against 0x01010101 sets the GE flag of every byte whose pixel
+ *     is not transparent, SEL then takes pixel|attributes there and the
+ *     background (plane B) or what is already in the line (plane A,
+ *     window) elsewhere
+ *   - plane A of low priority must not cover a plane B pixel of high
+ *     priority: UQSUB8 first takes 0x10 off its pixels there, which
+ *     leaves 0 (transparent)
+ * The bytes in the line come out as before; the stores are words, which
+ * may be unaligned (fine on the M33).
  */
 
     .syntax unified
@@ -14,6 +30,35 @@
 
 /* Constants */
     .equ PIXATTR_HIPRI, 0x80
+
+/*
+ * Attribute byte of a tile, by name bits 15:13 (priority, palette):
+ * palette << 4 | priority << 7, in all four bytes
+ */
+    .balign 4
+attr_word:
+    .word 0x00000000, 0x10101010, 0x20202020, 0x30303030
+    .word 0x80808080, 0x90909090, 0xA0A0A0A0, 0xB0B0B0B0
+
+/*
+ * TILE_PIXELS: pattern in r3 -> PIX0..PIX3 in r11, PIX4..PIX7 in r3 (one
+ * per byte), horizontally flipped if the flags say NE. Uses lr.
+ */
+    .macro TILE_PIXELS
+    and     lr, r3, #0x000F000F     @ PIX1, PIX5 (bits 3:0, 19:16)
+    and     r11, r3, #0x00F000F0    @ PIX0, PIX4 (bits 7:4, 23:20)
+    orr     lr, r11, lr, lsl #12
+    lsr     lr, lr, #4              @ a = PIX0 PIX1 PIX4 PIX5
+    and     r11, r3, #0xF000F000    @ PIX2, PIX6
+    and     r3, r3, #0x0F000F00     @ PIX3, PIX7 (already in place)
+    orr     r3, r3, r11, lsr #12    @ b = PIX2 PIX3 PIX6 PIX7
+    pkhbt   r11, lr, r3, lsl #16    @ PIX0 PIX1 PIX2 PIX3
+    pkhtb   r3, r3, lr, asr #16     @ PIX4 PIX5 PIX6 PIX7
+    ittt    ne                      @ horizontal flip:
+    revne   lr, r3                  @   PIX7 PIX6 PIX5 PIX4
+    revne   r3, r11                 @   PIX3 PIX2 PIX1 PIX0
+    movne   r11, lr
+    .endm
 
 /*
  * draw_line_b_simple_asm - Simplified Plane B renderer
@@ -34,260 +79,82 @@
  *   [sp+36] = ntw_mask
  *   [sp+40] = background color
  *   [sp+44] = tile count
+ *
+ * Registers in the loop:
+ *   r0 = VRAM, r1 = name table row, r2 = col, r4 = ntw_mask,
+ *   r5 = background in all four bytes, r6 = tiles left, r7 = scr,
+ *   r8 = paty * 4, r9 = (7 - paty) * 4, r10 = 0x01010101,
+ *   r3, r11, r12, lr = scratch
  */
     .global draw_line_b_simple_asm
     .thumb_func
     .type draw_line_b_simple_asm, %function
 draw_line_b_simple_asm:
     push    {r4-r11, lr}
-    
-    /* Load stack parameters */
+
     ldr     r4, [sp, #36]           @ r4 = ntw_mask
     ldr     r5, [sp, #40]           @ r5 = background
     ldr     r6, [sp, #44]           @ r6 = tile_count
-    
-    /* Setup registers:
-     * r0 = VRAM base (cached for pattern access)
-     * r1 = VRAM + nt_row_offset (for nametable access)
-     * r2 = col
-     * r3 = scratch
-     * r4 = ntw_mask
-     * r5 = background
-     * r6 = tile_count (loop counter)
-     * r7 = scr pointer
-     * r8 = paty * 4
-     * r9 = 28 (for vflip: 7*4)
-     * r10 = background word (bg|bg|bg|bg)
-     * r11, r12, lr = scratch
-     *
-     * Input r0 = scr, r3 = paty - need to save before overwriting r0
-     */
-    mov     r7, r0                  @ r7 = scr pointer (save before loading VRAM)
-    lsl     r8, r3, #2              @ r8 = paty * 4 for pattern offset
-    mov     r9, #28                 @ r9 = 28 for vflip calc (7*4)
-    ldr     r0, =VRAM               @ r0 = VRAM base (cached before loop)
-    
-    /* Pre-calculate background word for fast fill */
-    orr     r10, r5, r5, lsl #8
-    orr     r10, r10, r10, lsl #16  @ r10 = bg|bg|bg|bg for 32-bit store
 
-.Ltile_loop:
-    /* Fetch tile name from nametable (big-endian 16-bit) */
-    /* Address = r1 + col*2 */
-    add     r11, r1, r2, lsl #1     @ r11 = nametable address
-    ldrb    r3, [r11, #0]           @ high byte
-    ldrb    r12, [r11, #1]          @ low byte
-    orr     r11, r12, r3, lsl #8    @ r11 = name = (high << 8) | low
-    
-    /* Extract tile index and calculate pattern base address */
-    ubfx    r12, r11, #0, #11       @ tile_index = name & 0x7FF
-    lsl     r12, r12, #5            @ tile_addr = index * 32 bytes
-    
-    /* Handle vertical flip: pattern row = vflip ? (7-paty) : paty */
-    tst     r11, #0x1000            @ test vflip bit
+    mov     r7, r0                  @ r7 = scr
+    lsl     r8, r3, #2              @ r8 = paty * 4
+    rsb     r9, r8, #28             @ r9 = (7 - paty) * 4
+    ldr     r0, =VRAM
+    mov     r10, #0x01010101
+    and     r5, r5, #0xFF
+    mul     r5, r5, r10             @ r5 = bg|bg|bg|bg
+
+.Lb_tile_loop:
+    /* tile name, big-endian in VRAM */
+    ldrh    r11, [r1, r2, lsl #1]
+    rev16   r11, r11
+    /* pattern row: tile * 32 + row * 4, row flipped vertically */
+    ubfx    r12, r11, #0, #11
+    tst     r11, #0x1000
     ite     eq
-    addeq   r12, r12, r8            @ + paty*4 (no flip)
-    addne   r12, r12, r9            @ + 28 (flip: row 7)
-    it      ne
-    subne   r12, r12, r8            @ - paty*4 (flip: 28 - paty*4)
-    
-    /* Load pattern data from VRAM (r0 = VRAM base, cached) */
-    ldr     lr, [r0, r12]           @ lr = pattern data (4 bytes = 8 pixels)
-    
-    /* Extract attributes: palette (bits 14:13) + priority (bit 15) */
-    ubfx    r12, r11, #13, #2       @ palette = (name >> 13) & 3
-    lsl     r12, r12, #4            @ shift to bits 5:4 position
-    tst     r11, #0x8000            @ test priority bit
-    it      ne
-    orrne   r12, r12, #PIXATTR_HIPRI    @ set priority flag
-    
-    /* Check horizontal flip */
-    tst     r11, #0x0800
-    bne     .Lflip
-    
-    /* === No horizontal flip - draw 8 pixels in order === */
-    /* Pattern pixel layout (Genesis VDP):
-     * Byte 0: PIX0 (bits 7:4), PIX1 (bits 3:0)
-     * Byte 1: PIX2 (bits 7:4), PIX3 (bits 3:0)
-     * Byte 2: PIX4 (bits 7:4), PIX5 (bits 3:0)
-     * Byte 3: PIX6 (bits 7:4), PIX7 (bits 3:0)
-     * In little-endian 32-bit load:
-     * lr = [Byte3][Byte2][Byte1][Byte0] = bits 31:0
-     * PIX0 = bits 7:4,   PIX1 = bits 3:0
-     * PIX2 = bits 15:12, PIX3 = bits 11:8
-     * PIX4 = bits 23:20, PIX5 = bits 19:16
-     * PIX6 = bits 31:28, PIX7 = bits 27:24
-     */
-    
-    /* Fast path: all transparent (pattern == 0) */
-    cmp     lr, #0
-    beq     .Lbackground
-    
-    /* PIX0 = bits 7:4 -> scr[0] */
-    ubfx    r3, lr, #4, #4
-    cmp     r3, #0
-    itee    eq
-    strbeq  r5, [r7, #0]            @ transparent: store background
-    orrne   r3, r3, r12             @ opaque: combine with attrs
-    strbne  r3, [r7, #0]
-    
-    /* PIX1 = bits 3:0 -> scr[1] */
-    ubfx    r3, lr, #0, #4
-    cmp     r3, #0
-    itee    eq
-    strbeq  r5, [r7, #1]
-    orrne   r3, r3, r12
-    strbne  r3, [r7, #1]
-    
-    /* PIX2 = bits 15:12 -> scr[2] */
-    ubfx    r3, lr, #12, #4
-    cmp     r3, #0
-    itee    eq
-    strbeq  r5, [r7, #2]
-    orrne   r3, r3, r12
-    strbne  r3, [r7, #2]
-    
-    /* PIX3 = bits 11:8 -> scr[3] */
-    ubfx    r3, lr, #8, #4
-    cmp     r3, #0
-    itee    eq
-    strbeq  r5, [r7, #3]
-    orrne   r3, r3, r12
-    strbne  r3, [r7, #3]
-    
-    /* PIX4 = bits 23:20 -> scr[4] */
-    ubfx    r3, lr, #20, #4
-    cmp     r3, #0
-    itee    eq
-    strbeq  r5, [r7, #4]
-    orrne   r3, r3, r12
-    strbne  r3, [r7, #4]
-    
-    /* PIX5 = bits 19:16 -> scr[5] */
-    ubfx    r3, lr, #16, #4
-    cmp     r3, #0
-    itee    eq
-    strbeq  r5, [r7, #5]
-    orrne   r3, r3, r12
-    strbne  r3, [r7, #5]
-    
-    /* PIX6 = bits 31:28 -> scr[6] */
-    ubfx    r3, lr, #28, #4
-    cmp     r3, #0
-    itee    eq
-    strbeq  r5, [r7, #6]
-    orrne   r3, r3, r12
-    strbne  r3, [r7, #6]
-    
-    /* PIX7 = bits 27:24 -> scr[7] */
-    ubfx    r3, lr, #24, #4
-    cmp     r3, #0
-    itee    eq
-    strbeq  r5, [r7, #7]
-    orrne   r3, r3, r12
-    strbne  r3, [r7, #7]
-    
-    b       .Lnext_tile
+    addeq   r12, r8, r12, lsl #5
+    addne   r12, r9, r12, lsl #5
+    ldr     r3, [r0, r12]
+    cbz     r3, .Lb_background      @ all transparent
 
-.Lbackground:
-    /* Fill 8 pixels with background color using byte stores (safe for unaligned) */
-    strb    r5, [r7, #0]
-    strb    r5, [r7, #1]
-    strb    r5, [r7, #2]
-    strb    r5, [r7, #3]
-    strb    r5, [r7, #4]
-    strb    r5, [r7, #5]
-    strb    r5, [r7, #6]
-    strb    r5, [r7, #7]
-    b       .Lnext_tile
+    ldr     r12, =attr_word
+    lsr     lr, r11, #13
+    ldr     r12, [r12, lr, lsl #2]  @ r12 = attributes, four times
+    tst     r11, #0x0800            @ horizontal flip (flags survive TILE_PIXELS)
+    TILE_PIXELS
 
-.Lflip:
-    /* === Horizontal flip - draw 8 pixels in reverse order === */
-    
-    /* Fast path: all transparent */
-    cmp     lr, #0
-    beq     .Lbackground
-    
-    /* PIX7 -> scr[0] */
-    ubfx    r3, lr, #24, #4
-    cmp     r3, #0
-    itee    eq
-    strbeq  r5, [r7, #0]
-    orrne   r3, r3, r12
-    strbne  r3, [r7, #0]
-    
-    /* PIX6 -> scr[1] */
-    ubfx    r3, lr, #28, #4
-    cmp     r3, #0
-    itee    eq
-    strbeq  r5, [r7, #1]
-    orrne   r3, r3, r12
-    strbne  r3, [r7, #1]
-    
-    /* PIX5 -> scr[2] */
-    ubfx    r3, lr, #16, #4
-    cmp     r3, #0
-    itee    eq
-    strbeq  r5, [r7, #2]
-    orrne   r3, r3, r12
-    strbne  r3, [r7, #2]
-    
-    /* PIX4 -> scr[3] */
-    ubfx    r3, lr, #20, #4
-    cmp     r3, #0
-    itee    eq
-    strbeq  r5, [r7, #3]
-    orrne   r3, r3, r12
-    strbne  r3, [r7, #3]
-    
-    /* PIX3 -> scr[4] */
-    ubfx    r3, lr, #8, #4
-    cmp     r3, #0
-    itee    eq
-    strbeq  r5, [r7, #4]
-    orrne   r3, r3, r12
-    strbne  r3, [r7, #4]
-    
-    /* PIX2 -> scr[5] */
-    ubfx    r3, lr, #12, #4
-    cmp     r3, #0
-    itee    eq
-    strbeq  r5, [r7, #5]
-    orrne   r3, r3, r12
-    strbne  r3, [r7, #5]
-    
-    /* PIX1 -> scr[6] */
-    ubfx    r3, lr, #0, #4
-    cmp     r3, #0
-    itee    eq
-    strbeq  r5, [r7, #6]
-    orrne   r3, r3, r12
-    strbne  r3, [r7, #6]
-    
-    /* PIX0 -> scr[7] */
-    ubfx    r3, lr, #4, #4
-    cmp     r3, #0
-    itee    eq
-    strbeq  r5, [r7, #7]
-    orrne   r3, r3, r12
-    strbne  r3, [r7, #7]
+    usub8   lr, r11, r10            @ GE: pixel not transparent
+    orr     r11, r11, r12
+    sel     r11, r11, r5            @ pixel | attributes, else background
+    usub8   lr, r3, r10
+    orr     r3, r3, r12
+    sel     r3, r3, r5
+    str     r11, [r7, #0]
+    str     r3, [r7, #4]
 
-.Lnext_tile:
-    /* Advance to next tile */
+.Lb_next_tile:
     add     r7, r7, #8              @ scr += 8
     add     r2, r2, #1              @ col++
     and     r2, r2, r4              @ col &= ntw_mask
     subs    r6, r6, #1              @ tile_count--
-    bne     .Ltile_loop
-    
+    bne     .Lb_tile_loop
+
     pop     {r4-r11, pc}
+
+.Lb_background:
+    str     r5, [r7, #0]
+    str     r5, [r7, #4]
+    b       .Lb_next_tile
+
+    .ltorg
     .size draw_line_b_simple_asm, .-draw_line_b_simple_asm
 
 
 /*
  * draw_line_a_simple_asm - Simplified Plane A renderer
  *
- * Plane A is drawn OVER Plane B, only non-transparent pixels are written.
+ * Plane A is drawn OVER Plane B, only non-transparent pixels are written;
+ * a low-priority tile leaves high-priority plane B pixels alone.
  * Optimized for the common case: no per-column scrolling, constant vertical scroll.
  *
  * C signature:
@@ -303,347 +170,87 @@ draw_line_b_simple_asm:
  * Stack (after push, sp+36):
  *   [sp+36] = ntw_mask
  *   [sp+40] = tile count
+ *
+ * Registers as in draw_line_b_simple_asm, r5 = scratch.
  */
     .global draw_line_a_simple_asm
     .thumb_func
     .type draw_line_a_simple_asm, %function
 draw_line_a_simple_asm:
     push    {r4-r11, lr}
-    
-    /* Load stack parameters */
+
     ldr     r4, [sp, #36]           @ r4 = ntw_mask
     ldr     r6, [sp, #40]           @ r6 = tile_count
-    
-    /* Setup registers:
-     * r0 = not used after init (we use r7 for scr)
-     * r1 = VRAM + nt_row_offset (for nametable access)
-     * r2 = col
-     * r3 = paty (overwritten, saved to r8)
-     * r4 = ntw_mask
-     * r5 = VRAM base (cached)
-     * r6 = tile_count (loop counter)
-     * r7 = scr pointer
-     * r8 = paty * 4
-     * r9 = 28 (for vflip: 7*4)
-     * r10, r11, r12, lr = scratch
-     */
-    mov     r7, r0                  @ r7 = scr pointer
-    lsl     r8, r3, #2              @ r8 = paty * 4 for pattern offset
-    mov     r9, #28                 @ r9 = 28 for vflip calc (7*4)
-    ldr     r5, =VRAM               @ r5 = VRAM base (cached for pattern access)
+
+    mov     r7, r0                  @ r7 = scr
+    lsl     r8, r3, #2              @ r8 = paty * 4
+    rsb     r9, r8, #28             @ r9 = (7 - paty) * 4
+    ldr     r0, =VRAM
+    mov     r10, #0x01010101
 
 .La_tile_loop:
-    /* Fetch tile name from nametable (big-endian 16-bit) */
-    add     r10, r1, r2, lsl #1     @ r10 = nametable address
-    ldrb    r3, [r10, #0]           @ high byte
-    ldrb    r11, [r10, #1]          @ low byte
-    orr     r10, r11, r3, lsl #8    @ r10 = name = (high << 8) | low
-    
-    /* Extract tile index and calculate pattern base address */
-    ubfx    r11, r10, #0, #11       @ tile_index = name & 0x7FF
-    lsl     r11, r11, #5            @ tile_addr = index * 32 bytes
-    
-    /* Handle vertical flip: pattern row = vflip ? (7-paty) : paty */
-    tst     r10, #0x1000            @ test vflip bit
+    ldrh    r11, [r1, r2, lsl #1]
+    rev16   r11, r11
+    ubfx    r12, r11, #0, #11
+    tst     r11, #0x1000
     ite     eq
-    addeq   r11, r11, r8            @ + paty*4 (no flip)
-    addne   r11, r11, r9            @ + 28 (flip: row 7)
-    it      ne
-    subne   r11, r11, r8            @ - paty*4 (flip: 28 - paty*4)
-    
-    /* Load pattern data from VRAM */
-    ldr     lr, [r5, r11]           @ lr = pattern data (4 bytes = 8 pixels)
-    
-    /* Skip if entirely transparent */
-    cmp     lr, #0
-    beq     .La_next_tile
-    
-    /* Extract attributes: palette (bits 14:13) + priority (bit 15) */
-    ubfx    r11, r10, #13, #2       @ palette = (name >> 13) & 3
-    lsl     r11, r11, #4            @ shift to bits 5:4 position
-    tst     r10, #0x8000            @ test priority bit
-    it      ne
-    orrne   r11, r11, #PIXATTR_HIPRI    @ set priority flag
-    
-    /* Check horizontal flip */
-    tst     r10, #0x0800
-    bne     .La_flip
-    
-    /* === No horizontal flip - draw 8 pixels in order (overlay) === */
-    /* Only write non-transparent pixels, respecting priority */
-    
-    /* Check if this tile is high priority */
-    tst     r11, #PIXATTR_HIPRI
-    bne     .La_nf_hipri
-    
-    /* Low priority Plane A - check Plane B priority before overwriting */
-    /* PIX0 = bits 7:4 -> scr[0] */
-    ubfx    r3, lr, #4, #4
+    addeq   r12, r8, r12, lsl #5
+    addne   r12, r9, r12, lsl #5
+    ldr     r3, [r0, r12]
     cmp     r3, #0
-    beq     .La_nf_p1
-    ldrb    r12, [r7, #0]
+    beq     .La_next_tile           @ all transparent: nothing to draw
+
+    ldr     r12, =attr_word
+    lsr     lr, r11, #13
+    ldr     r12, [r12, lr, lsl #2]
+    tst     r11, #0x0800
+    TILE_PIXELS
+
     tst     r12, #PIXATTR_HIPRI
-    bne     .La_nf_p1
-    orr     r3, r3, r11
-    strb    r3, [r7, #0]
-.La_nf_p1:
-    ubfx    r3, lr, #0, #4
-    cmp     r3, #0
-    beq     .La_nf_p2
-    ldrb    r12, [r7, #1]
-    tst     r12, #PIXATTR_HIPRI
-    bne     .La_nf_p2
-    orr     r3, r3, r11
-    strb    r3, [r7, #1]
-.La_nf_p2:
-    ubfx    r3, lr, #12, #4
-    cmp     r3, #0
-    beq     .La_nf_p3
-    ldrb    r12, [r7, #2]
-    tst     r12, #PIXATTR_HIPRI
-    bne     .La_nf_p3
-    orr     r3, r3, r11
-    strb    r3, [r7, #2]
-.La_nf_p3:
-    ubfx    r3, lr, #8, #4
-    cmp     r3, #0
-    beq     .La_nf_p4
-    ldrb    r12, [r7, #3]
-    tst     r12, #PIXATTR_HIPRI
-    bne     .La_nf_p4
-    orr     r3, r3, r11
-    strb    r3, [r7, #3]
-.La_nf_p4:
-    ubfx    r3, lr, #20, #4
-    cmp     r3, #0
-    beq     .La_nf_p5
-    ldrb    r12, [r7, #4]
-    tst     r12, #PIXATTR_HIPRI
-    bne     .La_nf_p5
-    orr     r3, r3, r11
-    strb    r3, [r7, #4]
-.La_nf_p5:
-    ubfx    r3, lr, #16, #4
-    cmp     r3, #0
-    beq     .La_nf_p6
-    ldrb    r12, [r7, #5]
-    tst     r12, #PIXATTR_HIPRI
-    bne     .La_nf_p6
-    orr     r3, r3, r11
-    strb    r3, [r7, #5]
-.La_nf_p6:
-    ubfx    r3, lr, #28, #4
-    cmp     r3, #0
-    beq     .La_nf_p7
-    ldrb    r12, [r7, #6]
-    tst     r12, #PIXATTR_HIPRI
-    bne     .La_nf_p7
-    orr     r3, r3, r11
-    strb    r3, [r7, #6]
-.La_nf_p7:
-    ubfx    r3, lr, #24, #4
-    cmp     r3, #0
-    beq     .La_next_tile
-    ldrb    r12, [r7, #7]
-    tst     r12, #PIXATTR_HIPRI
-    bne     .La_next_tile
-    orr     r3, r3, r11
-    strb    r3, [r7, #7]
-    b       .La_next_tile
-    
-.La_nf_hipri:
-    /* High priority - always overwrite */
-    ubfx    r3, lr, #4, #4
-    cmp     r3, #0
-    itt     ne
-    orrne   r3, r3, r11
-    strbne  r3, [r7, #0]
-    
-    ubfx    r3, lr, #0, #4
-    cmp     r3, #0
-    itt     ne
-    orrne   r3, r3, r11
-    strbne  r3, [r7, #1]
-    
-    ubfx    r3, lr, #12, #4
-    cmp     r3, #0
-    itt     ne
-    orrne   r3, r3, r11
-    strbne  r3, [r7, #2]
-    
-    ubfx    r3, lr, #8, #4
-    cmp     r3, #0
-    itt     ne
-    orrne   r3, r3, r11
-    strbne  r3, [r7, #3]
-    
-    ubfx    r3, lr, #20, #4
-    cmp     r3, #0
-    itt     ne
-    orrne   r3, r3, r11
-    strbne  r3, [r7, #4]
-    
-    ubfx    r3, lr, #16, #4
-    cmp     r3, #0
-    itt     ne
-    orrne   r3, r3, r11
-    strbne  r3, [r7, #5]
-    
-    ubfx    r3, lr, #28, #4
-    cmp     r3, #0
-    itt     ne
-    orrne   r3, r3, r11
-    strbne  r3, [r7, #6]
-    
-    ubfx    r3, lr, #24, #4
-    cmp     r3, #0
-    itt     ne
-    orrne   r3, r3, r11
-    strbne  r3, [r7, #7]
-    
+    bne     .La_hipri
+
+    /* low priority: not over a high-priority pixel of plane B */
+    ldr     lr, [r7, #0]
+    and     r5, lr, #0x80808080
+    lsr     r5, r5, #3              @ 0x10 under a priority pixel
+    uqsub8  r5, r11, r5             @ ... which makes this pixel 0
+    usub8   r5, r5, r10             @ GE: draw
+    orr     r11, r11, r12
+    sel     r11, r11, lr
+    str     r11, [r7, #0]
+    ldr     lr, [r7, #4]
+    and     r5, lr, #0x80808080
+    lsr     r5, r5, #3
+    uqsub8  r5, r3, r5
+    usub8   r5, r5, r10
+    orr     r3, r3, r12
+    sel     r3, r3, lr
+    str     r3, [r7, #4]
     b       .La_next_tile
 
-.La_flip:
-    /* === Horizontal flip - draw 8 pixels in reverse order === */
-    
-    /* Check if this tile is high priority */
-    tst     r11, #PIXATTR_HIPRI
-    bne     .La_f_hipri
-    
-    /* Low priority - check Plane B priority before overwriting */
-    /* PIX7 -> scr[0] */
-    ubfx    r3, lr, #24, #4
-    cmp     r3, #0
-    beq     .La_f_p1
-    ldrb    r12, [r7, #0]
-    tst     r12, #PIXATTR_HIPRI
-    bne     .La_f_p1
-    orr     r3, r3, r11
-    strb    r3, [r7, #0]
-.La_f_p1:
-    ubfx    r3, lr, #28, #4
-    cmp     r3, #0
-    beq     .La_f_p2
-    ldrb    r12, [r7, #1]
-    tst     r12, #PIXATTR_HIPRI
-    bne     .La_f_p2
-    orr     r3, r3, r11
-    strb    r3, [r7, #1]
-.La_f_p2:
-    ubfx    r3, lr, #16, #4
-    cmp     r3, #0
-    beq     .La_f_p3
-    ldrb    r12, [r7, #2]
-    tst     r12, #PIXATTR_HIPRI
-    bne     .La_f_p3
-    orr     r3, r3, r11
-    strb    r3, [r7, #2]
-.La_f_p3:
-    ubfx    r3, lr, #20, #4
-    cmp     r3, #0
-    beq     .La_f_p4
-    ldrb    r12, [r7, #3]
-    tst     r12, #PIXATTR_HIPRI
-    bne     .La_f_p4
-    orr     r3, r3, r11
-    strb    r3, [r7, #3]
-.La_f_p4:
-    ubfx    r3, lr, #8, #4
-    cmp     r3, #0
-    beq     .La_f_p5
-    ldrb    r12, [r7, #4]
-    tst     r12, #PIXATTR_HIPRI
-    bne     .La_f_p5
-    orr     r3, r3, r11
-    strb    r3, [r7, #4]
-.La_f_p5:
-    ubfx    r3, lr, #12, #4
-    cmp     r3, #0
-    beq     .La_f_p6
-    ldrb    r12, [r7, #5]
-    tst     r12, #PIXATTR_HIPRI
-    bne     .La_f_p6
-    orr     r3, r3, r11
-    strb    r3, [r7, #5]
-.La_f_p6:
-    ubfx    r3, lr, #0, #4
-    cmp     r3, #0
-    beq     .La_f_p7
-    ldrb    r12, [r7, #6]
-    tst     r12, #PIXATTR_HIPRI
-    bne     .La_f_p7
-    orr     r3, r3, r11
-    strb    r3, [r7, #6]
-.La_f_p7:
-    ubfx    r3, lr, #4, #4
-    cmp     r3, #0
-    beq     .La_next_tile
-    ldrb    r12, [r7, #7]
-    tst     r12, #PIXATTR_HIPRI
-    bne     .La_next_tile
-    orr     r3, r3, r11
-    strb    r3, [r7, #7]
-    b       .La_next_tile
-
-.La_f_hipri:
-    /* High priority - always overwrite */
-    ubfx    r3, lr, #24, #4
-    cmp     r3, #0
-    itt     ne
-    orrne   r3, r3, r11
-    strbne  r3, [r7, #0]
-    
-    ubfx    r3, lr, #28, #4
-    cmp     r3, #0
-    itt     ne
-    orrne   r3, r3, r11
-    strbne  r3, [r7, #1]
-    
-    ubfx    r3, lr, #16, #4
-    cmp     r3, #0
-    itt     ne
-    orrne   r3, r3, r11
-    strbne  r3, [r7, #2]
-    
-    ubfx    r3, lr, #20, #4
-    cmp     r3, #0
-    itt     ne
-    orrne   r3, r3, r11
-    strbne  r3, [r7, #3]
-    
-    ubfx    r3, lr, #8, #4
-    cmp     r3, #0
-    itt     ne
-    orrne   r3, r3, r11
-    strbne  r3, [r7, #4]
-    
-    ubfx    r3, lr, #12, #4
-    cmp     r3, #0
-    itt     ne
-    orrne   r3, r3, r11
-    strbne  r3, [r7, #5]
-    
-    ubfx    r3, lr, #0, #4
-    cmp     r3, #0
-    itt     ne
-    orrne   r3, r3, r11
-    strbne  r3, [r7, #6]
-    
-    ubfx    r3, lr, #4, #4
-    cmp     r3, #0
-    itt     ne
-    orrne   r3, r3, r11
-    strbne  r3, [r7, #7]
+.La_hipri:
+    /* high priority: every non-transparent pixel */
+    ldr     lr, [r7, #0]
+    usub8   r5, r11, r10
+    orr     r11, r11, r12
+    sel     r11, r11, lr
+    str     r11, [r7, #0]
+    ldr     lr, [r7, #4]
+    usub8   r5, r3, r10
+    orr     r3, r3, r12
+    sel     r3, r3, lr
+    str     r3, [r7, #4]
 
 .La_next_tile:
-    /* Advance to next tile */
     add     r7, r7, #8              @ scr += 8
     add     r2, r2, #1              @ col++
     and     r2, r2, r4              @ col &= ntw_mask
     subs    r6, r6, #1              @ tile_count--
     bne     .La_tile_loop
-    
+
     pop     {r4-r11, pc}
+
+    .ltorg
     .size draw_line_a_simple_asm, .-draw_line_a_simple_asm
 
 
@@ -651,6 +258,7 @@ draw_line_a_simple_asm:
  * draw_window_line_asm - Window plane renderer
  *
  * Window plane has no scrolling - tiles are rendered sequentially.
+ * Every non-transparent pixel is written, whatever is below.
  *
  * C signature:
  *   void draw_window_line_asm(uint8_t* scr, uint8_t* vram_nt, uint32_t paty, uint32_t tile_count);
@@ -660,177 +268,57 @@ draw_line_a_simple_asm:
  *   r1 = VRAM + window nametable offset
  *   r2 = paty (0-7)
  *   r3 = tile count
+ *
+ * Registers: r0 = VRAM, r1 = name (advances by 2), r6 = tiles left,
+ * r7 = scr, r8/r9 = row offsets, r10 = 0x01010101, rest scratch.
  */
     .global draw_window_line_asm
     .thumb_func
     .type draw_window_line_asm, %function
 draw_window_line_asm:
     push    {r4-r11, lr}
-    
-    /* Setup registers:
-     * r0 = not used after init
-     * r1 = VRAM + nt_offset (advances by 2 each tile)
-     * r2 = paty (saved to r8)
-     * r3 = tile_count (loop counter in r6)
-     * r4 = VRAM base (for pattern access)
-     * r5 = scratch
-     * r6 = tile_count
-     * r7 = scr pointer
-     * r8 = paty * 4
-     * r9 = 28 (for vflip)
-     * r10, r11, r12, lr = scratch
-     */
-    mov     r7, r0                  @ r7 = scr pointer
+
+    mov     r7, r0                  @ r7 = scr
     mov     r6, r3                  @ r6 = tile_count
     lsl     r8, r2, #2              @ r8 = paty * 4
-    mov     r9, #28                 @ r9 = 28 for vflip calc
-    ldr     r4, =VRAM               @ r4 = VRAM base
+    rsb     r9, r8, #28             @ r9 = (7 - paty) * 4
+    ldr     r0, =VRAM
+    mov     r10, #0x01010101
 
 .Lw_tile_loop:
-    /* Fetch tile name from nametable (big-endian 16-bit) */
-    ldrb    r2, [r1, #0]            @ high byte
-    ldrb    r5, [r1, #1]            @ low byte
-    orr     r10, r5, r2, lsl #8     @ r10 = name = (high << 8) | low
-    
-    /* Extract tile index and calculate pattern base address */
-    ubfx    r11, r10, #0, #11       @ tile_index = name & 0x7FF
-    lsl     r11, r11, #5            @ tile_addr = index * 32 bytes
-    
-    /* Handle vertical flip */
-    tst     r10, #0x1000            @ test vflip bit
+    ldrh    r11, [r1], #2
+    rev16   r11, r11
+    ubfx    r12, r11, #0, #11
+    tst     r11, #0x1000
     ite     eq
-    addeq   r11, r11, r8            @ + paty*4 (no flip)
-    addne   r11, r11, r9            @ + 28 (flip: row 7)
-    it      ne
-    subne   r11, r11, r8            @ - paty*4 (flip: 28 - paty*4)
-    
-    /* Load pattern data from VRAM */
-    ldr     lr, [r4, r11]           @ lr = pattern data
-    
-    /* Skip if entirely transparent */
-    cmp     lr, #0
-    beq     .Lw_next_tile
-    
-    /* Extract attributes */
-    ubfx    r11, r10, #13, #2       @ palette
-    lsl     r11, r11, #4
-    tst     r10, #0x8000            @ priority
-    it      ne
-    orrne   r11, r11, #PIXATTR_HIPRI
-    
-    /* Check horizontal flip */
-    tst     r10, #0x0800
-    bne     .Lw_flip
-    
-    /* === No horizontal flip === */
-    ubfx    r2, lr, #4, #4
-    cmp     r2, #0
-    itt     ne
-    orrne   r2, r2, r11
-    strbne  r2, [r7, #0]
-    
-    ubfx    r2, lr, #0, #4
-    cmp     r2, #0
-    itt     ne
-    orrne   r2, r2, r11
-    strbne  r2, [r7, #1]
-    
-    ubfx    r2, lr, #12, #4
-    cmp     r2, #0
-    itt     ne
-    orrne   r2, r2, r11
-    strbne  r2, [r7, #2]
-    
-    ubfx    r2, lr, #8, #4
-    cmp     r2, #0
-    itt     ne
-    orrne   r2, r2, r11
-    strbne  r2, [r7, #3]
-    
-    ubfx    r2, lr, #20, #4
-    cmp     r2, #0
-    itt     ne
-    orrne   r2, r2, r11
-    strbne  r2, [r7, #4]
-    
-    ubfx    r2, lr, #16, #4
-    cmp     r2, #0
-    itt     ne
-    orrne   r2, r2, r11
-    strbne  r2, [r7, #5]
-    
-    ubfx    r2, lr, #28, #4
-    cmp     r2, #0
-    itt     ne
-    orrne   r2, r2, r11
-    strbne  r2, [r7, #6]
-    
-    ubfx    r2, lr, #24, #4
-    cmp     r2, #0
-    itt     ne
-    orrne   r2, r2, r11
-    strbne  r2, [r7, #7]
-    
-    b       .Lw_next_tile
+    addeq   r12, r8, r12, lsl #5
+    addne   r12, r9, r12, lsl #5
+    ldr     r3, [r0, r12]
+    cbz     r3, .Lw_next_tile
 
-.Lw_flip:
-    /* === Horizontal flip === */
-    ubfx    r2, lr, #24, #4
-    cmp     r2, #0
-    itt     ne
-    orrne   r2, r2, r11
-    strbne  r2, [r7, #0]
-    
-    ubfx    r2, lr, #28, #4
-    cmp     r2, #0
-    itt     ne
-    orrne   r2, r2, r11
-    strbne  r2, [r7, #1]
-    
-    ubfx    r2, lr, #16, #4
-    cmp     r2, #0
-    itt     ne
-    orrne   r2, r2, r11
-    strbne  r2, [r7, #2]
-    
-    ubfx    r2, lr, #20, #4
-    cmp     r2, #0
-    itt     ne
-    orrne   r2, r2, r11
-    strbne  r2, [r7, #3]
-    
-    ubfx    r2, lr, #8, #4
-    cmp     r2, #0
-    itt     ne
-    orrne   r2, r2, r11
-    strbne  r2, [r7, #4]
-    
-    ubfx    r2, lr, #12, #4
-    cmp     r2, #0
-    itt     ne
-    orrne   r2, r2, r11
-    strbne  r2, [r7, #5]
-    
-    ubfx    r2, lr, #0, #4
-    cmp     r2, #0
-    itt     ne
-    orrne   r2, r2, r11
-    strbne  r2, [r7, #6]
-    
-    ubfx    r2, lr, #4, #4
-    cmp     r2, #0
-    itt     ne
-    orrne   r2, r2, r11
-    strbne  r2, [r7, #7]
+    ldr     r12, =attr_word
+    lsr     lr, r11, #13
+    ldr     r12, [r12, lr, lsl #2]
+    tst     r11, #0x0800
+    TILE_PIXELS
+
+    ldr     lr, [r7, #0]
+    usub8   r5, r11, r10
+    orr     r11, r11, r12
+    sel     r11, r11, lr
+    str     r11, [r7, #0]
+    ldr     lr, [r7, #4]
+    usub8   r5, r3, r10
+    orr     r3, r3, r12
+    sel     r3, r3, lr
+    str     r3, [r7, #4]
 
 .Lw_next_tile:
-    /* Advance to next tile */
     add     r7, r7, #8              @ scr += 8
-    add     r1, r1, #2              @ nt += 2 (next tile in window)
     subs    r6, r6, #1              @ tile_count--
     bne     .Lw_tile_loop
-    
-    pop     {r4-r11, pc}
-    .size draw_window_line_asm, .-draw_window_line_asm
 
-    .end
+    pop     {r4-r11, pc}
+
+    .ltorg
+    .size draw_window_line_asm, .-draw_window_line_asm

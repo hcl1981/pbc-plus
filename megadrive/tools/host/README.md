@@ -41,3 +41,34 @@ den alten Kern geprüft.
 Gefunden damit: die Interrupt-Reihenfolge und die halbe Palettenzeile
 an der Wasseroberfläche in Sonic 2 (siehe `../../README.md`). 1500 Bilder
 dauern weniger als eine Sekunde.
+
+## Zwei Stände vergleichen (`cmp/`)
+
+Für Optimierungen, die nichts ändern dürfen. `hostcmp` lässt den Kern wie
+`mdhost` laufen, dazu den Ton wie auf dem Gerät (Kern 0 protokolliert,
+`src/ym_core1.c` spielt in die zweite YM2612-Kopie und den PSG ein) und
+den Skalierer (`src/video.c`), und gibt je Bild Prüfsummen aus: Bild am
+Display, VDP-Puffer, YM2612, PSG, Lautsprecher, 68000- und Z80-RAM,
+VRAM/CRAM/VSRAM/Register und den CPU-Zustand nach jedem Zeitabschnitt.
+
+```bash
+rsync -a --exclude 'build*' megadrive/ /tmp/alt/   # Stand vorher sichern
+# ... ändern ...
+mkdir /tmp/v && cd /tmp/v && .../tools/host/cmp/cmp.sh /tmp/alt 6000
+```
+
+`cmp.sh` baut beide Stände (`hb.sh`) und vergleicht Sonic 2, Streets of
+Rage 2 und Gunstar Heroes (`ROMS=Ordner`) mit Eingaben, Zufallstests für
+die VDP-Ports (`-F`) und den Zeilenzeichner (`-L`), den Skalierer
+(`vtest.c`) und die YM2612-Synthese (`ymfuzz.c`); jede Zeile muss `SAME`
+sagen.
+
+Der PC-Bau nimmt die C-Fassung der VDP-Zeilenroutinen. Für die
+ARM-Assembler-Teile und um zu zählen, was ein Kern tut: `ab.sh STAND BIN`
+baut `hostcmp` für den Cortex-M33 mit den Schaltern der Firmware,
+`armrun.py` (Python mit `unicorn`, `pyelftools`) lässt es darauf laufen und
+gibt Befehle pro Bild nach Teil aus (68000, Z80, Zeilen, Skalierer, Ton
+auf Kern 1; `HC_DETAIL=N` je Funktion) und eine Prüfsumme über alle Bilder.
+`armbench.sh BIN...` macht das für die drei Spiele. Flash-Wartezeiten sind
+nicht nachgebildet. Am PC und auf dem M33 kommen dieselben Prüfsummen heraus
+(`HC_FOLD=1`).

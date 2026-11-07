@@ -135,18 +135,29 @@ static void __not_in_flash_func(build_sprite_lists)(const vdc_ctx_t *ctx, uint64
 	}
 }
 
+/* PBC: one bit plane byte spread to the nibbles as the decode below wants
+ * them (bit 7 -> nibble 1, 3 -> 0, 6 -> 3, 2 -> 2, 5 -> 5, 1 -> 4, 4 -> 7,
+ * 0 -> 6), plane p shifted by p: four loads instead of ~45 instructions per
+ * tile row. Filled in gfx_init, in RAM. */
+static uint32_t plane_tab[256];
+
+static inline uint32_t plane_bits(uint32_t M)
+{
+	return ((M & 0x88) >> 3) | ((M & 0x44) << 6) | ((M & 0x22) << 15) | ((M & 0x11) << 24);
+}
+
 /*
 	Draw background tiles between two lines
 */
-static void __no_inline_not_in_flash_func(draw_tiles)(const vdc_ctx_t *ctx, uint8_t *screen_buffer, int Y1, int Y2, int scroll_x, int scroll_y)
+static void __no_inline_not_in_flash_func(draw_tiles)(const vdc_ctx_t *ctx, uint8_t *screen_buffer, int Y1, int Y2, int scroll_x, int scroll_y, bool solid)
 {
 	TRACE_GFX("Rendering tiles on lines %3d - %3d\tScroll: (%3d,%3d)\n", Y1, Y2, scroll_x, scroll_y);
 
-	uint32_t _bg_w[] = { 32, 64, 128, 128 };
-	uint32_t _bg_h[] = { 32, 64 };
+	/* PBC: 32, 64, 128, 128 and 32, 64, computed (the tables were copied
+	 * from flash onto the stack on every call) */
 
-	uint32_t bg_w = _bg_w[(CTX_REG(ctx, MWR).W >> 4) & 3]; // Bits 5-4 select the width
-	uint32_t bg_h = _bg_h[(CTX_REG(ctx, MWR).W >> 6) & 1]; // Bit 6 selects the height
+	uint32_t bg_w = 32u << MIN((CTX_REG(ctx, MWR).W >> 4) & 3, 2); // Bits 5-4 select the width
+	uint32_t bg_h = 32u << ((CTX_REG(ctx, MWR).W >> 6) & 1); // Bit 6 selects the height
 
 	int num_tiles = MIN(CTX_SCREEN_WIDTH(ctx) / 8 + 1, XBUF_WIDTH / 8 + 1);
 	int x;
@@ -171,11 +182,15 @@ static void __no_inline_not_in_flash_func(draw_tiles)(const vdc_ctx_t *ctx, uint
 			uint8_t *P = PP;
 
 			for (int i = 0; i < h; i++, P += XBUF_WIDTH, C += 2) {
-				uint32_t J, L, M;
+				uint32_t J, L;
 
 				J = C[0] | C[1] | C[16] | C[17];
 
-				if (!J)
+				/* solid (gfx_run: no sprite behind the tiles, the line not
+				 * cleared): transparent pixels get colour 0 of the palette,
+				 * which pce.c keeps equal to the backdrop for all 16, i.e.
+				 * what the clearing wrote; all 8 pixels as two words */
+				if (!J && !solid)
 					continue;
 
 				if (P + 8 >= framebuffer_bottom) {
@@ -186,14 +201,15 @@ static void __no_inline_not_in_flash_func(draw_tiles)(const vdc_ctx_t *ctx, uint
 					continue;
 				}
 
-				M = C[0];
-				L = ((M & 0x88) >> 3) | ((M & 0x44) << 6) | ((M & 0x22) << 15) | ((M & 0x11) << 24);
-				M = C[1];
-				L |= ((M & 0x88) >> 2) | ((M & 0x44) << 7) | ((M & 0x22) << 16) | ((M & 0x11) << 25);
-				M = C[16];
-				L |= ((M & 0x88) >> 1) | ((M & 0x44) << 8) | ((M & 0x22) << 17) | ((M & 0x11) << 26);
-				M = C[17];
-				L |= ((M & 0x88) >> 0) | ((M & 0x44) << 9) | ((M & 0x22) << 18) | ((M & 0x11) << 27);
+				L = plane_tab[C[0]] | plane_tab[C[1]] << 1 | plane_tab[C[16]] << 2 | plane_tab[C[17]] << 3;
+
+				if (solid) {
+					uint32_t a = (uint32_t)PAL(1) | (uint32_t)PAL(3) << 8 | (uint32_t)PAL(5) << 16 | (uint32_t)PAL(7) << 24;
+					uint32_t b = (uint32_t)PAL(0) | (uint32_t)PAL(2) << 8 | (uint32_t)PAL(4) << 16 | (uint32_t)PAL(6) << 24;
+					memcpy(P, &a, 4);           /* unaligned word stores */
+					memcpy(P + 4, &b, 4);
+					continue;
+				}
 
 				if (J & 0x80) P[0] = PAL(1);
 				if (J & 0x40) P[1] = PAL(3);
@@ -234,7 +250,7 @@ static void __not_in_flash_func(draw_sprite)(uint8_t *P, const uint16_t *C, int 
 	for (int i = 0; i < height; i++, C += inc, P += XBUF_WIDTH) {
 
 		uint32_t J = C[0] | C[16] | C[32] | C[48];
-		uint32_t L1, L2, L, M;
+		uint32_t L1, L2, L;
 
 		if (!J)
 			continue;
@@ -248,18 +264,11 @@ static void __not_in_flash_func(draw_sprite)(uint8_t *P, const uint16_t *C, int 
 			continue;
 		}
 
-		M = C[0];
-		L1 = ((M & 0x88) >> 3) | ((M & 0x44) << 6) | ((M & 0x22) << 15) | ((M & 0x11) << 24);
-		L2 = ((M & 0x8800) >> 11) | ((M & 0x4400) >> 2) | ((M & 0x2200) << 7) | ((M & 0x1100) << 16);
-		M = C[16];
-		L1 |= ((M & 0x88) >> 2) | ((M & 0x44) << 7) | ((M & 0x22) << 16) | ((M & 0x11) << 25);
-		L2 |= ((M & 0x8800) >> 10) | ((M & 0x4400) >> 1) | ((M & 0x2200) << 8) | ((M & 0x1100) << 17);
-		M = C[32];
-		L1 |= ((M & 0x88) >> 1) | ((M & 0x44) << 8) | ((M & 0x22) << 17) | ((M & 0x11) << 26);
-		L2 |= ((M & 0x8800) >> 9) | ((M & 0x4400) >> 0) | ((M & 0x2200) << 9) | ((M & 0x1100) << 18);
-		M = C[48];
-		L1 |= ((M & 0x88) >> 0) | ((M & 0x44) << 9) | ((M & 0x22) << 18) | ((M & 0x11) << 27);
-		L2 |= ((M & 0x8800) >> 8) | ((M & 0x4400) << 1) | ((M & 0x2200) << 10) | ((M & 0x1100) << 19);
+		/* low bytes the right 8 pixels, high bytes the left (plane_tab) */
+		L1 = plane_tab[C[0] & 0xFF] | plane_tab[C[16] & 0xFF] << 1
+		   | plane_tab[C[32] & 0xFF] << 2 | plane_tab[C[48] & 0xFF] << 3;
+		L2 = plane_tab[C[0] >> 8] | plane_tab[C[16] >> 8] << 1
+		   | plane_tab[C[32] >> 8] << 2 | plane_tab[C[48] >> 8] << 3;
 
 		if (hflip) {
 			L = L2;
@@ -378,6 +387,23 @@ static void __not_in_flash_func(draw_sprite)(uint8_t *P, const uint16_t *C, int 
 }
 
 
+/* PBC: does a sprite with priority 0 (behind the tiles) touch these lines?
+ * (by the line lists, without the finer checks of draw_sprites: when in
+ * doubt, yes) */
+static bool __not_in_flash_func(prio0_sprites)(const vdc_ctx_t *ctx, const uint64_t *bitmask_per_line, int Y1, int Y2)
+{
+	uint64_t m = 0;
+	for (int y = (Y1 < 0 ? 0 : Y1); y < Y2 && y < XBUF_HEIGHT; y++)
+		m |= bitmask_per_line[y];
+	while (m) {
+		int n = 63 - __builtin_clzll(m);
+		m &= ~((uint64_t)1 << n);
+		if (!((ctx->spram[n].attr >> 7) & 1))
+			return true;
+	}
+	return false;
+}
+
 /*
 	Draw sprites between two lines
 */
@@ -402,8 +428,11 @@ static void __not_in_flash_func(draw_sprites)(const vdc_ctx_t *ctx, const uint64
 	// We iterate sprites in reverse order because earlier sprites have
 	// higher priority and therefore must overwrite later sprites.
 
-	for (int n = 63; n >= 0; n--) {
-		if (!((bitmask >> n) & 1)) continue;
+	/* PBC: only the set bits, highest first as before (was all 64, with a
+	 * 64-bit shift each, twice a line) */
+	while (bitmask) {
+		int n = 63 - __builtin_clzll(bitmask);
+		bitmask &= ~((uint64_t)1 << n);
 
 		const sprite_t *spr = &ctx->spram[n];
 		uint32_t attr = spr->attr;
@@ -523,11 +552,11 @@ static struct {
 static void __not_in_flash_func(draw_tiles_sgx_line)(const vdc_ctx_t *ctx,
 	uint8_t *col, uint8_t *flg, uint8_t *spr, int Y, int scroll_x, int scroll_y)
 {
-	uint32_t _bg_w[] = { 32, 64, 128, 128 };
-	uint32_t _bg_h[] = { 32, 64 };
+	/* PBC: 32, 64, 128, 128 and 32, 64, computed (the tables were copied
+	 * from flash onto the stack on every call) */
 
-	uint32_t bg_w = _bg_w[(CTX_REG(ctx, MWR).W >> 4) & 3];
-	uint32_t bg_h = _bg_h[(CTX_REG(ctx, MWR).W >> 6) & 1];
+	uint32_t bg_w = 32u << MIN((CTX_REG(ctx, MWR).W >> 4) & 3, 2);
+	uint32_t bg_h = 32u << ((CTX_REG(ctx, MWR).W >> 6) & 1);
 
 	int num_tiles = MIN(CTX_SCREEN_WIDTH(ctx) / 8 + 1, XBUF_WIDTH / 8 + 1);
 
@@ -1107,6 +1136,12 @@ static void __not_in_flash_func(render_lines)(int min_line, int max_line)
 	// Clamp to XBUF_WIDTH: wide modes (up to 512px) would overflow the single-line buffer.
 	// We only display 320px, so rendering up to XBUF_WIDTH (368) covers everything visible.
 	size_t screen_width = MIN(IO_VDC_SCREEN_WIDTH, XBUF_WIDTH);
+	/* PBC: with the background on, no sprite behind it on these lines and
+	 * room for the tiles' overhang, the tiles write every pixel (draw_tiles,
+	 * solid) and the clearing is not needed */
+	bool solid = (gfx_context.control & 0x80) && screen_width + 8 <= XBUF_WIDTH &&
+	             !((gfx_context.control & 0x40) && prio0_sprites(VDC1_CTX, sprite_bitmask_per_line, min_line, max_line));
+	if (!solid)
 	for (int y = min_line; y < max_line; y++) {
 		memset(screen_buffer + (y * XBUF_WIDTH), PCE.Palette[0], screen_width);
 	}
@@ -1118,7 +1153,7 @@ static void __not_in_flash_func(render_lines)(int min_line, int max_line)
 
 	// Draw the background tiles
 	if (gfx_context.control & 0x80) {
-		draw_tiles(VDC1_CTX, screen_buffer, min_line, max_line, gfx_context.scroll_x, gfx_context.scroll_y);
+		draw_tiles(VDC1_CTX, screen_buffer, min_line, max_line, gfx_context.scroll_x, gfx_context.scroll_y, solid);
 	}
 
 	// Draw regular sprites
@@ -1133,6 +1168,8 @@ static void __not_in_flash_func(render_lines)(int min_line, int max_line)
 int
 gfx_init(void)
 {
+	for (int i = 0; i < 256; i++)
+		plane_tab[i] = plane_bits((uint32_t)i);
 	gfx_reset(true);
 	return 0;
 }

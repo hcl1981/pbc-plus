@@ -53,8 +53,12 @@ auf einer Diskette kein Programm, bleibt BASIC stehen.
 | Mitte + B | RETURN (andere Taste: Einstellungen des Spiels im Starter oder Menü) |
 | Mitte + A | Menü |
 
-**Menü:** Joystick-Art, Neustart, Band zurückspulen (sonst Reset),
-**Diskette wechseln** („Insert disk“: alle CPC-Disketten des Laufwerks; die
+**Menü** (Mitte + A, wie bei C64, ZX und MSX aufgebaut): „Swap disk“ (bei
+Diskettenspielen) oder „Rewind tape“ (bei Bändern), „Settings“ (Joystick-Art
+und Taste auf Mitte + B; gelten sofort und werden beim Spiel gespeichert,
+außer im Link-Spiel), „Press a key“ und ganz unten „Back to game“ (oder A).
+Kein Neustart-Punkt mehr: RESET und das Spiel neu starten. Im Einzelnen:
+**Diskette wechseln** („Swap disk“: alle CPC-Disketten des Laufwerks; die
 gewählte wird in den Flash kopiert und eingelegt, ohne Neustart; im
 Link-Spiel nur, wenn beide sie haben, beide kopieren Stück für Stück im
 Gleichschritt), welche
@@ -95,7 +99,6 @@ mittleren 240 Mode-1-Pixel). Mode 2 (80 Zeichen) ist so nur grob lesbar.
 * Kein CPC Plus/GX4000, keine Erweiterungs-ROMs, kein Laufwerk B.
 * Geschriebenes auf Diskette geht verloren (das Abbild liegt im Flash).
 * Kopierschutze, die die Zeitabläufe des Controllers prüfen.
-* Die Einstellungen im Menü merkt er sich nicht.
 
 ## Aufbau
 
@@ -107,9 +110,16 @@ mittleren 240 Mode-1-Pixel). Mode 2 (80 Zeichen) ist so nur grob lesbar.
 | `core/ay8910.c` | AY-3-8912 (aus `../msx`) |
 | `core/roms.S` | bindet die ROMs aus `roms/` ein |
 | `src/main.c` | Start, Spielschleife, Menü, Schnellvorlauf beim Laden, Link-Spiel |
-| `src/cpc_video.c` | die 280 Zeilen über einen Ring an Kern 1, der sie auf 240 Pixel umrechnet |
+| `src/cpc_video.c` | der Kern zeichnet die 280 Zeilen direkt in einen Ring, Kern 1 rechnet sie auf 240 Pixel um |
 | `src/cpc_input.c` | Tasten → Joystick und Tastatur, im Link-Spiel Spieler 2 auf Joystick 1 |
 | übrige `src/`, `fatfs/` | Plattform aus `../zx` |
+
+Für die Geschwindigkeit laufen Betriebssystem, BASIC und AMSDOS aus
+Kopien im RAM (48 KB) statt aus dem Flash, ebenso die Ein- und Ausgabe
+(IN/OUT) samt AY und die Tabellen des AY. Ändert sich eine Farbe, entsteht
+die Tabelle Byte → acht Pixel aus 16 fertigen Wörtern. *Fit width* mittelt
+mit gepackten Farben (eine Tabelle, eine Multiplikation je Pixel; dasselbe
+Ergebnis, für alle Farbkombinationen geprüft).
 
 ## Lizenz
 

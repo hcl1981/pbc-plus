@@ -72,7 +72,7 @@ set_source_files_properties(${CORE}/roms.S PROPERTIES
 # straight from the core's 8 KB page map, writes through its handler, code
 # and tables in RAM.
 set_source_files_properties(${REDCODE}/Z80.c ${CORE}/cpc.c PROPERTIES
-    COMPILE_DEFINITIONS "Z80_STATIC;Z80_WITH_LOCAL_HEADER;Z80_PBC_MAP;Z80_PBC_READMAP=cpc_readmap;Z80_PBC_WRITE=cpc_write;Z80_PBC_RAM=\".time_critical.redcode\";Z80_PBC_RAM_TABLES")
+    COMPILE_DEFINITIONS "Z80_STATIC;Z80_WITH_LOCAL_HEADER;Z80_PBC_MAP;Z80_PBC_READMAP=cpc_readmap;Z80_PBC_WRITE=cpc_write;Z80_PBC_RAM=\".time_critical.redcode\";Z80_PBC_RAM_TABLES;Z80_PBC_ROUND4")
 
 target_include_directories(pbc_cpc PRIVATE
     src

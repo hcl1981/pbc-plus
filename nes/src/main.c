@@ -429,6 +429,7 @@ static void __attribute__((noreturn)) emulation_loop(void)
                          (unsigned long)(stat_drawn * 1000000ull / span),
                          (unsigned long)(stat_emulated * (uint64_t)period * 100 / span),
                          (unsigned long)(stat_busy_us * 100 / span));
+                pbc_test_stats((unsigned long)(stat_drawn * 1000000ull / span), (unsigned long)(stat_emulated * (uint64_t)period * 100 / span), (unsigned long)(stat_busy_us * 100 / span));
                 video_set_status(s);
                 stat_t0 = now;
                 stat_drawn = stat_emulated = 0;
@@ -538,6 +539,13 @@ int main(void)
     pbc_link_start(pbc_link_hash(PBC_LINK_HASH_START ^ 1, rom_store_data(), rom_store_size()));
     cheats_load(rom);               /* after the link start: not in link play */
     save_load(rom);
+    /* Last of all, with what the heap has left: the PRG into RAM, if it
+     * fits with 8 KB to spare (games with CHR RAM, or small ones). Then
+     * the game's code no longer competes with the emulator's for the
+     * 16 KB XIP cache. Nothing allocates while the game runs (the core 0
+     * stack lies above the heap, behind its guard); a 256 KB PRG with CHR
+     * RAM (Mega Man 2) leaves about 11 KB by calculation. */
+    qnes_prg_to_ram(8 * 1024);
     pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
     multicore_launch_core1(video_core1_main);
 #if PBC_MULTI

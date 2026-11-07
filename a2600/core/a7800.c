@@ -37,7 +37,7 @@ static int sg_banks, sg_base;
 static bool pokey4000;                  /* POKEY at 4000h-7FFFh */
 static uint16_t pokey_lo;               /* or at 450h / 440h (0: none) */
 static int pokey_acc;                   /* MARIA clocks not yet run by POKEY */
-static const uint8_t open_bus[0x1000] = { [0 ... 0xfff] = 0xff };
+static uint8_t open_bus[0x1000];       /* 0xff (a7800_insert); const it took 4 KB of flash */
 
 static int clk;                         /* clocks into the line */
 static int line_no, lines_total;
@@ -102,6 +102,7 @@ static void activision_select(int n)
 
 bool a7800_insert(const uint8_t *r, uint32_t n)
 {
+    memset(open_bus, 0xff, sizeof open_bus);
     uint16_t type = 0;
     pal = false;
     pokey4000 = false;
@@ -180,7 +181,7 @@ static void map_cart(void)
 /* ---- the RIOT ------------------------------------------------------------------------ */
 
 /* the timer runs at 1.19 MHz: a tick every 6 clocks */
-static inline uint32_t riot_ticks(void) { return (frame_clk + (uint32_t)clk - tim_start) / 6; }
+static inline A78_RAM uint32_t riot_ticks(void) { return (frame_clk + (uint32_t)clk - tim_start) / 6; }
 
 static uint8_t riot_read(uint16_t a)
 {
@@ -252,7 +253,7 @@ static void riot_write(uint16_t a, uint8_t v)
 static A78_RAM uint8_t a78_read(uint16_t a);
 static A78_RAM void a78_write(uint16_t a, uint8_t v);
 
-static inline uint8_t mem_read(uint16_t a)     /* MARIA's view: no I/O, no time */
+static inline A78_RAM uint8_t mem_read(uint16_t a)     /* MARIA's view: no I/O, no time */
 {
     if (a >= 0x4000)
         return page[(a >> 12) - 4][a & 0xfff];
@@ -402,7 +403,7 @@ static void nmi(void)
 static uint8_t line_buf[A78_WIDTH];
 static int dma_clk;                     /* this line's DMA */
 
-static inline uint8_t colour(int palette, int c)
+static inline A78_RAM uint8_t colour(int palette, int c)
 {
     return maria[0x01 + palette * 4 + (c - 1)];
 }
@@ -415,6 +416,17 @@ static A78_RAM void draw_byte(int x, uint8_t b, int palette)
     uint8_t bg = maria[0x00];
 #define PUT(px, c) do { int _x = (px) & 0x1ff; if (_x < A78_WIDTH) line_buf[_x] = (c); } while (0)
     if (rm == 0 && !wm) {               /* 160A: four pixels, two bits */
+        int xx = x & 0xff;
+        if (xx <= 156) {                /* all four on the line: no wrap, no clip */
+            const uint8_t *pc = maria + palette * 4;    /* pc[v] = colour(palette, v) */
+            uint8_t *d = line_buf + xx * 2;
+            for (int i = 0; i < 4; i++, d += 2) {
+                int v = (b >> (6 - 2 * i)) & 3;
+                if (v) d[0] = d[1] = pc[v];
+                else if (kangaroo) d[0] = d[1] = bg;
+            }
+            return;
+        }
         for (int i = 0; i < 4; i++) {
             int v = (b >> (6 - 2 * i)) & 3;
             int px = ((x + i) & 0xff) * 2;
@@ -462,7 +474,7 @@ static A78_RAM void draw_byte(int x, uint8_t b, int palette)
 }
 
 /* pixels per byte, in 160-wide columns */
-static inline int byte_cols(void)
+static inline A78_RAM int byte_cols(void)
 {
     int rm = maria[0x1c] & 3;
     return rm == 0 ? (wm ? 2 : 4) : 4;
@@ -517,14 +529,20 @@ static A78_RAM void maria_line(void)
         int width = (-(int)pw) & 0x1f;
         if (!width) width = 32;
         int cols = byte_cols();
+        /* a byte of 0 draws nothing, except with kangaroo or in 320D */
+        uint8_t m = maria[0x1c];
+        bool keep0 = (m & 4) || ((m & 3) != 0 && (m & 3) != 3 && !wm);
         if (!ind) {
             uint16_t a = (uint16_t)(((hi + offset) & 0xff) << 8 | b0);
             if ((h16 && (a & 0x1000)) || (h8 && (a & 0x0800))) {
                 dma_clk += 3 * width;
                 continue;
             }
-            for (int i = 0; i < width; i++)
-                draw_byte(hpos + i * cols, mem_read((uint16_t)(a + i)), palette);
+            for (int i = 0; i < width; i++) {
+                uint8_t g = mem_read((uint16_t)(a + i));
+                if (g || keep0)
+                    draw_byte(hpos + i * cols, g, palette);
+            }
             dma_clk += 3 * width;
         } else {
             uint16_t list = (uint16_t)(hi << 8 | b0);
@@ -537,10 +555,14 @@ static A78_RAM void maria_line(void)
                     x += cols * (two ? 2 : 1);
                     continue;
                 }
-                draw_byte(x, mem_read(a), palette);
+                uint8_t g = mem_read(a);
+                if (g || keep0)
+                    draw_byte(x, g, palette);
                 x += cols;
                 if (two) {
-                    draw_byte(x, mem_read((uint16_t)(a + 1)), palette);
+                    g = mem_read((uint16_t)(a + 1));
+                    if (g || keep0)
+                        draw_byte(x, g, palette);
                     x += cols;
                 }
             }
@@ -581,7 +603,6 @@ __attribute__((optimize("Os"))) void a7800_reset(void)     /* once: small, not f
 
 A78_RAM void a7800_frame(a78_line_fn line, int16_t *audio, int samples)
 {
-    static uint8_t out[A78_WIDTH];
     audio_n = 0;
     tia_set_fire(0, a26_joy[0] & (A26_FIRE | A26_FIRE2));
     tia_set_fire(1, a26_joy[1] & (A26_FIRE | A26_FIRE2));
@@ -608,9 +629,7 @@ A78_RAM void a7800_frame(a78_line_fn line, int16_t *audio, int samples)
         }
         int y = line_no - FIRST_SHOWN - 1;
         if (line && y >= 0 && y < A78_LINES) {
-            for (int i = 0; i < A78_WIDTH; i++)
-                out[i] = line_buf[i] >> 1;
-            line(y, out);
+            line(y, line_buf);          /* colour values as they are: pal565 has 256 */
         }
         wsync = false;
         while (clk < LINE_CLK && !wsync)

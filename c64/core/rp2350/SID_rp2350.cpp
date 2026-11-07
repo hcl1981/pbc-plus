@@ -56,9 +56,9 @@ enum {
 #include "../SID_wave_tables.h"
 
 // RP2350 Audio configuration
-// PicoBoy Color Plus: the speaker timer runs at 22222 Hz (src/audio_pwm.h);
-// rendering the SID at that rate also halves its cost.
-constexpr int SAMPLE_FREQ = 22222;          // Target sample frequency
+// PicoBoy Color Plus: the speaker timer runs at 45454 Hz (src/audio_pwm.h);
+// the SID is rendered at that rate (until 2026-11 at 22222 Hz, half the cost).
+constexpr int SAMPLE_FREQ = 45454;          // Target sample frequency
 #ifdef NTSC
 constexpr uint32_t SID_FREQ = 1022727;      // SID frequency (NTSC)
 #else
@@ -150,7 +150,7 @@ private:
 };
 
 // EG tables
-const int16_t MOS6581::EGDivTable[16] = {
+C64_HOT_DATA const int16_t MOS6581::EGDivTable[16] = {
     9, 32, 63, 95, 149, 220, 267, 313,
     392, 977, 1954, 3126, 3906, 11720, 19531, 31251
 };
@@ -248,26 +248,20 @@ void MOS6581::ResumeSound()
 
 void MOS6581::set_wave_tables(int sid_type)
 {
-    if (sid_type == SIDTYPE_DIGITAL_8580) {
-        TriSawTable = TriSawTable_8580;
-        TriRectTable = TriRectTable_8580;
-        SawRectTable = SawRectTable_8580;
-        TriSawRectTable = TriSawRectTable_8580;
-    } else {
-        TriSawTable = TriSawTable_6581;
-        TriRectTable = TriRectTable_6581;
-        SawRectTable = SawRectTable_6581;
-        TriSawRectTable = TriSawRectTable_6581;
-    }
+    (void)sid_type;                     // PBC: only the 6581 tables are built in
+    TriSawTable = TriSawTable_6581;
+    TriRectTable = TriRectTable_6581;
+    SawRectTable = SawRectTable_6581;
+    TriSawRectTable = TriSawRectTable_6581;
 }
 
-uint8_t MOS6581::v3_random()
+C64_HOT(MOS6581_v3_random) uint8_t MOS6581::v3_random()
 {
     v3_random_seed = v3_random_seed * 1103515245 + 12345;
     return v3_random_seed >> 16;
 }
 
-void MOS6581::update_osc3()
+C64_HOT(MOS6581_update_osc3) void MOS6581::update_osc3()
 {
     // Simplified for RP2350 - just update counter
     uint8_t v3_ctrl = regs[0x12];
@@ -279,7 +273,7 @@ void MOS6581::update_osc3()
     }
 }
 
-uint8_t MOS6581::read_osc3()
+C64_HOT(MOS6581_read_osc3) uint8_t MOS6581::read_osc3()
 {
     update_osc3();
 
@@ -303,7 +297,7 @@ uint8_t MOS6581::read_osc3()
     }
 }
 
-uint8_t MOS6581::read_env3() const
+C64_HOT(MOS6581_read_env3) uint8_t MOS6581::read_env3() const
 {
     return (uint8_t)(fake_v3_eg_level >> 16);
 }
@@ -469,8 +463,22 @@ void DigitalRenderer::Resume()
     // Nothing to do
 }
 
+// PicoBoy Color Plus: with the sound off (option, fixed for the whole game)
+// the samples are thrown away (audio_pwm_push), so they are not computed
+// either. The C64 never sees the renderer: OSC3/ENV3 come from MOS6581's own
+// fake voice 3, register writes still reach the renderer.
+static bool render_on = true;
+
+extern "C" void c64_sid_enable(bool on)
+{
+    render_on = on;
+}
+
 C64_HOT(DigitalRenderer_EmulateLine) void DigitalRenderer::EmulateLine()
 {
+    if (!render_on)
+        return;
+
     // Record registers for sample playback
     sample_mode_vol[sample_in_ptr] = mode_vol;
     sample_res_filt[sample_in_ptr] = res_filt;
@@ -656,7 +664,7 @@ C64_HOT(DigitalRenderer_calc_single_sample) int16_t DigitalRenderer::calc_single
                 }
                 break;
             case WAVE_TRISAW:
-                output = the_sid->TriSawTable[v->count >> 12];
+                output = the_sid->TriSawTable[v->count >> 12] * 0x101u;
                 if (is6581) {
                     v->count &= 0x7fffff | (output << 8);
                 }
@@ -667,14 +675,14 @@ C64_HOT(DigitalRenderer_calc_single_sample) int16_t DigitalRenderer::calc_single
                     if (v->ring) {
                         ctrl ^= ~(v->mod_by->count) & 0x800000;
                     }
-                    output = the_sid->TriRectTable[ctrl >> 12];
+                    output = the_sid->TriRectTable[ctrl >> 12] * 0x101u;
                 } else {
                     output = 0;
                 }
                 break;
             case WAVE_SAWRECT:
                 if (v->test || (v->count >> 12) >= v->pw) {
-                    output = the_sid->SawRectTable[v->count >> 12];
+                    output = the_sid->SawRectTable[v->count >> 12] * 0x101u;
                 } else {
                     output = 0;
                 }
@@ -684,7 +692,7 @@ C64_HOT(DigitalRenderer_calc_single_sample) int16_t DigitalRenderer::calc_single
                 break;
             case WAVE_TRISAWRECT:
                 if (v->test || (v->count >> 12) >= v->pw) {
-                    output = the_sid->TriSawRectTable[v->count >> 12];
+                    output = the_sid->TriSawRectTable[v->count >> 12] * 0x101u;
                 } else {
                     output = 0;
                 }
