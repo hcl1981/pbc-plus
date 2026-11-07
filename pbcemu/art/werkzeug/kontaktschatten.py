@@ -8,6 +8,7 @@ from PIL import Image, ImageDraw, ImageFilter
 W, H = 200, 128
 BOX_W, BOX_H = 188, 108
 UNTEN = 9                     # Platz für den Schatten unter dem Gerät
+GROESSE = {'ard': 0.82}       # kleiner als die anderen (das Arduboy ist scheckkartengroß)
 
 def ellipse(cx, cy, rx, ry=7):
     sh = Image.new('L', (W * 4, H * 4), 0)
@@ -36,8 +37,8 @@ def kontakt(alpha):
     sh = np.array(sh).astype(float) / 255
     return np.clip(sh * 1.6, 0, 1) * 0.5
 
-def setzen(o):
-    s = min(BOX_W / o.width, BOX_H / o.height, 1.0)
+def setzen(o, f=1.0):
+    s = min(BOX_W / o.width, BOX_H / o.height, 1.0) * f
     if s < 1:
         o = o.convert('RGBa').resize((round(o.width * s), round(o.height * s)), Image.LANCZOS).convert('RGBA')
     x, y = (W - o.width) // 2, (H - (o.height + UNTEN)) // 2
@@ -52,5 +53,5 @@ if __name__ == '__main__':
         # fertiges Objekt ohne Schatten (teile_*.png) direkt setzen, sonst Schatten herausrechnen
         o = Image.open(pfad).convert('RGBA') if os.path.basename(pfad).startswith('teile_') else objekt(pfad)
         name = os.path.basename(pfad).replace('teile_', '')
-        setzen(o).save(os.path.join(aus, name)); print(name, end=' ')
+        setzen(o, GROESSE.get(name[:-4], 1.0)).save(os.path.join(aus, name)); print(name, end=' ')
     print()

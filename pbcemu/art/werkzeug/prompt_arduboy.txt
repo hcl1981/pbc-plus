@@ -1,0 +1,15 @@
+Create one illustration of an Arduboy, the tiny credit-card sized handheld game console, for an icon set.
+
+The two attached images show the exact style the icon set uses (ZX Spectrum and earlier consoles): copy that style precisely – modern flat vector illustration with subtle shading, like a premium app icon set, NO black outlines, clean shapes, soft gradients.
+
+Requirements:
+- Front view, slightly from above (about 20 degrees), the handheld standing upright and facing the viewer straight on, in landscape orientation (wider than tall, proportions of a credit card). Light from the upper left.
+- The handheld: very slim, a thin brushed-aluminium silver rim with rounded corners, the front a flat black face. Its thickness only visible as a thin silver edge along the bottom.
+- In the upper middle of the face a small black OLED screen (about twice as wide as tall) showing a few crisp white pixel graphics: two short vertical bats left and right, a small square ball and a dotted line in the middle (a simple tennis game).
+- Lower left: four separate small round dark-grey buttons arranged as a cross (up, down, left, right), not a joined D-pad.
+- Lower right: two slightly larger round dark-grey buttons placed diagonally (the left one lower than the right one).
+- Between the button groups, below the screen, a few small speaker slits. A tiny blue LED dot near the upper right corner.
+- No cable, no stand, nothing else in the image.
+- Background: one single solid flat pure magenta colour (#FF00FF) everywhere, no gradient, no vignette, no floor, no shadow at all (the shadow is added later).
+- The handheld centered, generous empty magenta space around it, nothing touching the image border.
+- No text, no labels, no logos, no brand names anywhere; all buttons blank.

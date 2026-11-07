@@ -394,15 +394,15 @@ static void device_screen(int sel, int next, int t, int dir)
 
     /* page dots, the current one stretched */
     int cur = t < 128 ? sel : next;
-    int dots_w = (PAGES - 1) * 12 + 18;
+    int dots_w = (PAGES - 1) * 10 + 18;
     x = (GFX_W - dots_w) / 2;
     for (int i = 0; i < PAGES; i++) {
         if (i == cur) {
             gfx_rrect(x, 248, 18, 6, 3, accent, 255);
-            x += 24;
+            x += 22;
         } else {
             gfx_circle(x + 3, 251, 3, FAINT, 255);
-            x += 12;
+            x += 10;
         }
     }
     static const char *const keys[] = { "B", "*" };

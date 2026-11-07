@@ -14,7 +14,8 @@ Liegt in `pbcemu/art/werkzeug/`; die fertigen Bilder (200 × 128, RGBA) sind die
 - `gemini_bild.py` – ein API-Aufruf; Key aus `~/.config/gemini.env` (`GEMINI_API_KEY=…`).
   `reihe.py`, `geraete.json`, `prompt_vorlage.txt` – Prompts für NES, PC Engine, Mega Drive,
   C64, Master System (Controller leicht vor der rechten Ecke, wie beim Atari 7800);
-  `prompt_msx_v5.txt` (Joystick daneben wie beim ZX Spectrum), `prompt_cv.txt`, `prompt_cpc.txt`.
+  `prompt_msx_v5.txt` (Joystick daneben wie beim ZX Spectrum), `prompt_cv.txt`, `prompt_cpc.txt`,
+  `prompt_arduboy.txt` (Ergebnis: `../arduboy.jpeg`, Name `ard`).
   Stilvorlagen: `../zx.jpeg` und `../sheet.jpeg`; die Referenzbilder `ref_*.png`, die
   `reihe.py` außerdem mitschickt, liegen nicht bei.
 - Kein API-Key im Repo: `gemini_bild.py` liest ihn nur aus `~/.config/gemini.env`.

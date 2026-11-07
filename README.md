@@ -24,9 +24,10 @@ cd spout && ./build.sh      # oder ein einzelnes Projekt
 | [`micropolis`](micropolis/) | Micropolis — der quelloffene Kern von SimCity 1. | `micropolis.uf2` |
 | [`tyrian`](tyrian/) | OpenTyrian. Firmware plus 8,9 MB Spieldaten in einer Datei. | `tyrian-komplett.uf2` |
 | [`picoboygb`](picoboygb/) | Game-Boy-Emulator. ROMs kommen per USB-Stick-Modus aufs Gerät. | `picoboygb.uf2` |
-| [`pbcemu`](pbcemu/) | **PBCemu**: alle Emulatoren unten (Atari 2600, ZX Spectrum, ColecoVision, C64, NES, SG-1000, MSX, Amstrad CPC, Master System, Atari 7800, PC Engine, Mega Drive, Game Gear, Game Boy Color) in einer Firmware, mit Gerätewahl samt Gerätebildern und Spieleliste; zehn Systeme auch zu zweit über USB-C ([`docs/LINKSPIEL.md`](docs/LINKSPIEL.md)). | `pbcemu.uf2` |
+| [`pbcemu`](pbcemu/) | **PBCemu**: alle Emulatoren unten (Atari 2600, ZX Spectrum, ColecoVision, C64, NES, SG-1000, MSX, Amstrad CPC, Master System, Atari 7800, PC Engine, Mega Drive, Game Gear, Game Boy Color, Arduboy) in einer Firmware, mit Gerätewahl samt Gerätebildern und Spieleliste; zehn Systeme auch zu zweit über USB-C ([`docs/LINKSPIEL.md`](docs/LINKSPIEL.md)). | `pbcemu.uf2` |
 | [`a2600`](a2600/) | Atari 2600, Atari 7800 und GCE Vectrex (eigene Kerne), nur in PBCemu. | — |
 | [`cpc`](cpc/) | Amstrad CPC 6128 (eigener Kern, ROMs von Amstrad mit deren Erlaubnis), Disketten, Kassetten und Snapshots, nur in PBCemu. | — |
+| [`arduboy`](arduboy/) | Arduboy (eigener ATmega32U4-Kern, das Spiel beim Start in ARM-Code übersetzt), Spiele als `.hex`, Spielstände als `.sav`, nur in PBCemu. | — |
 | [`zx`](zx/) | ZX Spectrum 48K/128K (eigener Kern, ROMs von Amstrad mit deren Erlaubnis), Bänder und Snapshots, nur in PBCemu. | — |
 | [`msx`](msx/) | MSX1 (eigener Kern, C-BIOS) und MSX2 mit Disketten (eigener V9938; C-BIOS für Module und Bootdisketten, für BASIC/MSX-DOS die Original-ROMs vom Laufwerk), nur in PBCemu. | — |
 | [`sms`](sms/) | Sega Master System, Game Gear und SG-1000 (SMS Plus aus pico-smsplus), in PBCemu auch ColecoVision. Game Gear 1,5-fach vergrößert. | `sms.uf2` |

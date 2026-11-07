@@ -18,6 +18,7 @@
 #define PBC_APP_A26 0
 #define PBC_APP_ZX  0
 #define PBC_APP_CPC 0
+#define PBC_APP_ARD 0
 #endif
 
 /* Same as the emulators map them (their input.c). */
@@ -64,6 +65,8 @@ static const control_t c_a78[] = {
 static const control_t c_vec[] = {
     { "Joystick", "Joystick" }, { "Button 4", "B" }, { "Button 3", "A" }, { "Button 2", "Center + B" },
     { "Button 1", "Center + A" }, { NULL } };
+static const control_t c_ard[] = {
+    { "D-pad", "Joystick" }, { "A", "A" }, { "B", "B" }, { NULL } };
 static const control_t c_none[] = { { NULL } };
 
 /* Display modes, in the order the emulators number them (their video.c);
@@ -83,6 +86,7 @@ static const char *const m_a78[] = { "Fit width", NULL };
 static const char *const m_zx[]  = { "Fit width", "Crop 1:1", NULL };
 static const char *const m_cpc[] = { "Fit width", "Crop 1:1", NULL };
 static const char *const m_vec[] = { "Full screen", NULL };
+static const char *const m_ard[] = { "Fit width", "Sharp", NULL };
 
 /* The list itself is in common/pbc_devices.h: the emulators' loading
  * screen takes name, colour and icon from it by the same index. */
@@ -122,7 +126,7 @@ uint32_t app_offset(int app)
         [APP_MD] = PBC_APP_MD, [APP_SMS] = PBC_APP_SMS, [APP_NES] = PBC_APP_NES,
         [APP_PCE] = PBC_APP_PCE, [APP_GBC] = PBC_APP_GBC, [APP_C64] = PBC_APP_C64,
         [APP_MSX] = PBC_APP_MSX, [APP_A26] = PBC_APP_A26, [APP_ZX] = PBC_APP_ZX,
-        [APP_CPC] = PBC_APP_CPC,
+        [APP_CPC] = PBC_APP_CPC, [APP_ARD] = PBC_APP_ARD,
     };
     return app >= 0 && app < APP_COUNT ? offsets[app] : 0;
 }

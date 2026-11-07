@@ -2,8 +2,8 @@
 
 Ein Starter mit Gerätewahl und Spieleliste vor allen Emulatoren dieses Repos:
 Atari 2600, ZX Spectrum, ColecoVision, Commodore 64, Vectrex, NES, SG-1000, MSX,
-Amstrad CPC, Master System, Atari 7800, PC Engine, Mega Drive, Game Gear und
-Game Boy (Color). Fertig als **`dist/pbcemu.uf2`**,
+Amstrad CPC, Master System, Atari 7800, PC Engine, Mega Drive, Game Gear,
+Game Boy (Color) und Arduboy. Fertig als **`dist/pbcemu.uf2`**,
 eine Datei für alles. Zwei Geräte am USB-C-Kabel spielen Atari 2600, C64,
 NES, SG-1000, MSX, ZX Spectrum, Amstrad CPC, Master System, PC Engine und Mega
 Drive zu zweit
@@ -99,6 +99,7 @@ Anzeigemodi (der erste ist jeweils die Vorgabe):
 | Mega Drive | Fit width, Crop 1:1 |
 | Game Gear | Scale 1.5x (240×216), Original (160×144) |
 | Game Boy Color | Scale 1.5x (240×216), Original (160×144) |
+| Arduboy | Fit width (240×120), Sharp (192×96) |
 
 Alle Modi behalten das Seitenverhältnis (keine verzerrten Vollbild-Modi).
 Einstellen lässt sich das nur hier im Starter, nicht während eines Spiels.
@@ -123,6 +124,7 @@ nach Endung:
 | Mega Drive | `.md` `.gen` `.smd` `.bin` (bis 5 MB, mit Super Street Fighter II) |
 | Game Gear | `.gg` |
 | Game Boy Color | `.gbc` `.gb` |
+| Arduboy | `.hex` (nicht für das Arduboy FX), siehe `../arduboy` |
 
 Startet das Gerät von selbst neu (Spannungseinbruch o. Ä.), sagt der Starter
 das beim nächsten Start mit dem Grund, statt kommentarlos in den USB-Modus zu

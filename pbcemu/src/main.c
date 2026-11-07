@@ -189,6 +189,7 @@ static void fs_write_readme(void)
            "  Mega Drive       .md .gen .smd .bin\r\n"
            "  Game Gear        .gg\r\n"
            "  Game Boy (Color) .gb .gbc\r\n"
+           "  Arduboy          .hex   (Arduboy FX games not supported)\r\n"
            "\r\n"
            "Commodore 64: the free MEGA65 OpenROMs are built in. If you own\r\n"
            "the Commodore ROMs, copy kernal.rom and basic.rom (optionally\r\n"

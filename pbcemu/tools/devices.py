@@ -707,6 +707,42 @@ def favorites():
     return p.done()
 
 
+def arduboy():
+    """The Arduboy: a credit-card sized handheld, black face in an aluminium
+    rim, the small OLED (white pixels: a bat and a ball) in the middle, four
+    round direction buttons left, A and B right."""
+    p = Pic()
+    p.shadow(100, 112, 64, 6)
+    rim, face = '#b9bec6', '#16171b'
+    x0, y0, x1, y1 = 40, 22, 160, 104
+    p.rrect(x0, y0 + 3, x1, y1 + 3, 7, shade(rim, -0.45))                 # thickness
+    p.rrect(x0, y0, x1, y1, 7, rim)
+    p.rrect(x0 + 1.5, y0 + 1, x1 - 1.5, y0 + 3, 1.5, shade(rim, 0.4))      # lit edge
+    p.rrect(x0 + 3, y0 + 3, x1 - 3, y1 - 3, 5, face)
+    # the OLED: black glass, white pixels
+    sx0, sy0, sx1, sy1 = 74, 30, 126, 58
+    p.rrect(sx0 - 3, sy0 - 3, sx1 + 3, sy1 + 3, 2, '#08090b')
+    p.rrect(sx0, sy0, sx1, sy1, 0.5, '#000000')
+    p.poly([(sx0, sy0), (sx0 + 14, sy0), (sx0 + 5, sy1), (sx0, sy1)], '#0d0f13')   # reflection
+    lit = (236, 244, 255)
+    p.rrect(sx0 + 4, sy0 + 9, sx0 + 6, sy0 + 19, 0.3, lit)                 # bat
+    p.rrect(sx1 - 6, sy0 + 5, sx1 - 4, sy0 + 15, 0.3, lit)                 # bat
+    p.rrect(sx0 + 28, sy0 + 15, sx0 + 30, sy0 + 17, 0.3, lit)              # ball
+    for k in range(7):                                                     # net
+        p.rrect(sx0 + 25.5, sy0 + 1 + k * 4, sx0 + 26.5, sy0 + 3 + k * 4, 0.2, shade(lit, -0.4))
+    # four direction buttons in a cross, A and B
+    btn = '#2c2e35'
+    cx, cy, d = 60, 78, 8.5
+    for bx, by in ((cx, cy - d), (cx, cy + d), (cx - d, cy), (cx + d, cy)):
+        p.button(bx, by, 4.2, btn)
+    p.button(132, 82, 5.2, btn)                                            # B
+    p.button(145, 72, 5.2, btn)                                            # A
+    for k in range(4):                                                     # speaker slits
+        p.rrect(92 + k * 5, 90, 94 + k * 5, 97, 1, '#0c0d10')
+    p.ellipse(x1 - 13, y0 + 8, x1 - 10, y0 + 11, '#3a7cff')                # RGB LED
+    return p.done()
+
+
 DEVICES = {
     'nes': nes,
     'sms': master_system,
@@ -723,6 +759,7 @@ DEVICES = {
     'cv': colecovision,
     'a78': atari7800,
     'vec': vectrex,
+    'ard': arduboy,
     'usb': usb_drive,
     'fav': favorites,
 }

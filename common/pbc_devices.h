@@ -25,6 +25,7 @@
     X("Mega Drive",     "Sega  \xfa  1988",      ".md.gen.smd.bin", APP_MD,   0xe0407a, pic_md,  icon_md,  c_md,   m_md)  \
     X("Game Gear",      "Sega  \xfa  1990",      ".gg",             APP_SMS,  0x2cc6d8, pic_gg,  icon_gg,  c_gg,   m_gg)  \
     X("Game Boy Color", "Nintendo  \xfa  1998",  ".gbc.gb",         APP_GBC,  0xa56cf5, pic_gbc, icon_gbc, c_gbc,  m_gbc) \
+    X("Arduboy",        "Arduboy  \xfa  2016",   ".hex",            APP_ARD,  0xb8c0cc, pic_ard, icon_ard, c_ard,  m_ard) \
     X("Add Games",      "USB drive",             "",                APP_NONE, 0x4ea1ff, pic_usb, icon_usb, c_none, NULL)
 
 #endif

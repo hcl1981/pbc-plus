@@ -46,7 +46,7 @@
  * and messages with (common/pbc_loading.c) instead of a copy of their own.
  * The launcher fills the first PBC_LAUNCHER_SIZE bytes of flash. */
 #define PBC_SHARED_MAGIC    0x544E4F46u     /* "FONT" */
-#define PBC_LAUNCHER_SIZE   0x45000u        /* = LAUNCHER_SIZE, pbcemu/build.sh */
+#define PBC_LAUNCHER_SIZE   0x46000u        /* = LAUNCHER_SIZE, pbcemu/build.sh */
 typedef struct {
     uint32_t magic;
     const struct pbc_font_s *font_head, *font_body, *font_small;
