@@ -41,6 +41,8 @@
 
 #define LINK_GREEN 0x3ccf7a
 #define FAV_GOLD   0xe2b13c
+#define DANGER     0xf0625d             /* "Delete game" */
+#define DANGER_DIM 0xa8524f
 #define LOW_YELLOW 0xf0c040
 #define LOW_RED    0xe5484d
 
@@ -417,11 +419,12 @@ static void device_screen(int sel, int next, int t, int dir)
 /* Rows of the options card; which ones appear depends on where it opens. */
 enum { ROW_SOUND, ROW_VOLUME, ROW_DISPLAY, ROW_STATS, ROW_PORT, ROW_PROGRAM, ROW_KEY, ROW_DRIVE, ROW_FAV, ROW_BRIGHT,
        ROW_LAYOUT, ROW_JOYKIND, ROW_SWAP, ROW_PALETTE, ROW_DIFF_L, ROW_DIFF_R, ROW_BW, ROW_SCAN,
-       ROW_CABLE, ROW_MACHINE, ROW_SEND };
+       ROW_CABLE, ROW_MACHINE, ROW_SEND, ROW_DELETE };
 
 static bool send_game_files(void (*under)(void *), void *arg, int device, const char *game,
                             const char *title, uint32_t accent, bool told);
 static void background_under(void *arg);
+static bool delete_game(void (*under)(void *), void *arg, int device, const char *game, uint32_t accent);
 
 /* A game's own options byte (c64/settings.h, settings_key_raw), handed to
  * its emulator in the launch record (pbc_launch.h, `key`): what it means
@@ -442,7 +445,7 @@ typedef struct {
     bool drive_rom;                 /* ... possible: 1541.rom is on the drive */
     bool fav;                       /* the game is a favourite */
     bool zx48;                      /* ZX tape game: starts as a 48K (kept in `drive`) */
-    int  rows[14], nrows;
+    int  rows[16], nrows;
 } opt_t;
 
 #define C64_FILES_MAX 64
@@ -575,7 +578,7 @@ static void options_screen(void (*under)(void *), void *arg, const char *title,
     static const char *const names[] = { "Sound", "Volume", "Display", "Show FPS", "Joystick", "Program",
                                          "", "True drive", "Favorite", "Brightness", "", "Joystick", "",
                                          "Palette", "Left difficulty", "Right difficulty", "TV type",
-                                         "Scanlines", "Link cable", "Machine", "Send to partner" };
+                                         "Scanlines", "Link cable", "Machine", "Send to partner", "Delete game" };
     static const char *const key_names[] = { C64_KEYS(C64_KEY_NAME) };
     if (vis < o->nrows) {               /* where in the rows: a thin bar on the right */
         int track = vis * rh - 4, th = track * vis / o->nrows;
@@ -588,7 +591,8 @@ static void options_screen(void (*under)(void *), void *arg, const char *title,
             gfx_rrect(22, y, GFX_W - 44, rh - 4, 9, accent, 55);
         y += c - 14;                    /* the items below are placed for a 32 pixel row */
         bool off = kind == ROW_DRIVE && !o->drive_rom;   /* nothing to switch */
-        gfx_text(&font_body, 34, y + 5, names[kind], off ? FAINT : i == row ? TEXT : DIM, 255);
+        uint32_t ink = off ? FAINT : kind == ROW_DELETE ? (i == row ? DANGER : DANGER_DIM) : i == row ? TEXT : DIM;
+        gfx_text(&font_body, 34, y + 5, names[kind], ink, 255);
         int xr = GFX_W - 34;
         char v[32];
         switch (kind) {
@@ -650,14 +654,15 @@ static void options_screen(void (*under)(void *), void *arg, const char *title,
             break;
         }
     }
-    gfx_text_centered(&font_small, GFX_W / 2, y0 + h - 24, "\xae \xaf  change      B  done", DIM, 255);
+    gfx_text_centered(&font_small, GFX_W / 2, y0 + h - 24,
+                      o->rows[row] == ROW_DELETE ? "B  delete ...      A  done" : "\xae \xaf  change      B  done", DIM, 255);
     gfx_present();
 }
 
 /* Sound, volume, the device's display mode and the performance overlay
  * (for a C64 game also its port and program). Saved when closed: the only
  * place where any of it changes, never during a game. */
-static void options(void (*under)(void *), void *arg, int device, const char *game, uint32_t accent)
+static bool options(void (*under)(void *), void *arg, int device, const char *game, uint32_t accent)
 {
     opt_t o = { .device = device };
     bool game_opts = game && device >= 0 && devices[device].app != APP_NONE;
@@ -727,6 +732,8 @@ static void options(void (*under)(void *), void *arg, int device, const char *ga
         o.rows[o.nrows++] = ROW_SCAN;
     if (device >= 0 && devices[device].app != APP_NONE)
         o.rows[o.nrows++] = ROW_STATS;
+    if (game_opts && strcmp(game, PBC_VECTREX_BUILTIN) != 0)
+        o.rows[o.nrows++] = ROW_DELETE;     /* last: to make room for other games */
     if (c64) {
         settings_load();
         o.game = game;
@@ -759,7 +766,7 @@ static void options(void (*under)(void *), void *arg, int device, const char *ga
         strcpy(title, "Settings");
 
     int row = 0;
-    bool send = false;
+    bool send = false, del = false;
     ui_wait_release();
     for (;;) {
         options_screen(under, arg, title, &o, row, accent);
@@ -825,6 +832,8 @@ static void options(void (*under)(void *), void *arg, int device, const char *ga
         }
         if ((e & IN_B) && o.rows[row] == ROW_SEND)
             send = true;
+        if ((e & IN_B) && o.rows[row] == ROW_DELETE)
+            del = true;
         if (e & (IN_A | IN_B | IN_CENTER))
             break;
         if (lobby_incoming(NULL) || lobby_incoming_send(NULL))  /* the partner started a game */
@@ -860,6 +869,7 @@ static void options(void (*under)(void *), void *arg, int device, const char *ga
     ui_wait_release();
     if (send && send_game_files(background_under, NULL, device, game, title, accent, true))
         ui_message("Link play", "Your partner has", "the game now.", NULL);
+    return del && delete_game(under, arg, device, game, accent);
 }
 
 /* ---- link play ------------------------------------------------------------------------ */
@@ -1008,6 +1018,106 @@ static void size_text(uint32_t n, char *out, size_t size)
         snprintf(out, size, "%lu.%lu MB", (unsigned long)(n >> 20), (unsigned long)((n & 0xFFFFF) * 10 >> 20));
     else
         snprintf(out, size, "%lu KB", (unsigned long)((n + 1023) / 1024));
+}
+
+/* ---- deleting a game ------------------------------------------------------------------ */
+
+/* "Sonic.md" and "Sonic.sav": the same name before the extension */
+static bool same_base(const char *a, const char *b)
+{
+    const char *da = strrchr(a, '.'), *db = strrchr(b, '.');
+    size_t na = da ? (size_t)(da - a) : strlen(a), nb = db ? (size_t)(db - b) : strlen(b);
+    return na == nb && strncasecmp(a, b, na) == 0;
+}
+
+static bool ext_of(const char *name, const char *ext)
+{
+    const char *d = strrchr(name, '.');
+    return d && strcasecmp(d, ext) == 0;
+}
+
+/* Another game on the drive with the same name before the extension
+ * ("Tetris.gb" beside "Tetris.nes") shares its save file and cheats. */
+static bool base_shared(const char *game)
+{
+    static DIR dir;
+    static FILINFO fi;
+    bool shared = false;
+    if (f_opendir(&dir, "/") != FR_OK)
+        return true;                    /* not sure: keep them */
+    while (!shared && f_readdir(&dir, &fi) == FR_OK && fi.fname[0])
+        shared = !(fi.fattrib & AM_DIR) && strcmp(fi.fname, game) != 0 && same_base(fi.fname, game) &&
+                 !ext_of(fi.fname, ".sav") && !ext_of(fi.fname, ".cht");
+    f_closedir(&dir);
+    return shared;
+}
+
+/* "/Sonic.sav" for "Sonic.md" */
+static void side_path(const char *game, const char *ext, char *out, size_t size)
+{
+    snprintf(out, size, "/%s", game);
+    char *dot = strrchr(out, '.');
+    if (dot && dot > out + 1)
+        *dot = 0;
+    strncat(out, ext, size - strlen(out) - 1);
+}
+
+/* Asks first, then deletes the game, its save and cheats (unless another
+ * game shares them), its own options and its favourite star. True when
+ * it is gone. */
+static bool delete_game(void (*under)(void *), void *arg, int device, const char *game, uint32_t accent)
+{
+    char title[GAME_NAME_MAX], tags[GAME_NAME_MAX], path[GAME_NAME_MAX + 8], sav[GAME_NAME_MAX + 8];
+    games_title(game, title, tags, sizeof title);
+    side_path(game, ".sav", sav, sizeof sav);
+    static FILINFO fi;
+    bool shared = base_shared(game), with_save = !shared && f_stat(sav, &fi) == FR_OK;
+
+    static const char *const rows[] = { "Keep it", "Delete" };
+    int sel = 0;                        /* the safe one first */
+    ui_wait_release();
+    for (;;) {
+        link_card(under, arg, title, with_save ? "Delete the game and its save?" : "Delete the game from the drive?",
+                  rows, 2, sel, "B  choose      A  back", sel ? DANGER : accent);
+        uint32_t e = edges();
+        if (e & (IN_UP | IN_DOWN | IN_LEFT | IN_RIGHT))
+            sel = !sel;
+        if ((e & IN_A) || ((e & (IN_B | IN_CENTER)) && !sel)) {
+            ui_wait_release();
+            return false;
+        }
+        if (e & (IN_B | IN_CENTER))
+            break;
+    }
+
+    snprintf(path, sizeof path, "/%s", game);
+    if (f_unlink(path) != FR_OK) {
+        ui_wait_release();
+        ui_message("Delete game", "The game could not", "be deleted.", NULL);
+        return false;
+    }
+    if (!shared) {
+        f_unlink(sav);
+        side_path(game, ".cht", path, sizeof path);     /* NES Game Genie codes */
+        f_unlink(path);
+    }
+    settings_forget(game);
+    settings_save();
+    if (favs_has(device, game)) {
+        favs_set(device, game, false);
+        favs_save();
+    }
+    games_count(counts);                /* the carousel's numbers */
+
+    FATFS *fs;
+    DWORD clusters = 0;
+    char free_text[16], line[40];
+    size_text(f_getfree("", &clusters, &fs) == FR_OK ? (uint32_t)clusters * fs->csize * FF_MAX_SS : 0,
+              free_text, sizeof free_text);
+    snprintf(line, sizeof line, "%s free on the drive.", free_text);
+    ui_wait_release();
+    ui_message("Deleted", title, line, NULL);
+    return true;
 }
 
 static void secs_text(uint32_t s, char *out, size_t size)
@@ -1434,9 +1544,13 @@ static bool game_list(int *device_io, char game[GAME_NAME_MAX], int which)
             l.cur_since = time_us_64();
         int dv = fav ? l.devs[l.cur] : device;
         if (e & IN_CENTER) {
-            options(list_screen, &l, dv, l.names[l.cur], devices[dv].accent);
+            bool gone = options(list_screen, &l, dv, l.names[l.cur], devices[dv].accent);
             if (which == LIST_FAV) {    /* it may have left the favourites */
                 l.n = games_favorites(&l.names, &l.devs);
+                if (l.cur >= l.n)
+                    l.cur = l.n ? l.n - 1 : 0;
+            } else if (gone) {          /* deleted: the list without it */
+                l.n = games_list(device, &l.names);
                 if (l.cur >= l.n)
                     l.cur = l.n ? l.n - 1 : 0;
             }

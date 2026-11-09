@@ -58,4 +58,7 @@ void settings_set_true_drive(const char *game, bool on);
  * (flash_safe_execute parks it), as the C64 video core is. */
 void settings_save(void);
 
+/* Drops a game's entry (its file was deleted); settings_save() writes it. */
+void settings_forget(const char *game);
+
 #endif /* PBC_SETTINGS_H */

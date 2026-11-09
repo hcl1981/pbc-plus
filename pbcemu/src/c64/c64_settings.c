@@ -218,6 +218,23 @@ void settings_set_file(const char *game, const char *file)
     }
 }
 
+void settings_forget(const char *game)
+{
+    if (!find(game))
+        return;
+    stored_t *s = writable();
+    if (!s)
+        return;
+    uint32_t h = fnv1a(game);
+    for (int i = 0; i < s->count; i++)
+        if (s->games[i].hash == h) {
+            memmove(&s->games[i], &s->games[i + 1], sizeof(game_t) * (s->count - i - 1));
+            s->count--;
+            memset(&s->games[s->count], 0, sizeof s->games[0]);
+            break;
+        }
+}
+
 static void write_sector(void *p)
 {
     flash_range_erase(SETTINGS_OFFSET, FLASH_SECTOR_SIZE);
