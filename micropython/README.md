@@ -27,7 +27,7 @@ Größen. Bilder werden als PNG geladen (`png_decode.c`, `idat_stream.c`), also
 ohne vorherige Umwandlung in ein Sonderformat.
 
 **`pbc_hw`** — Tasten (abfragen, „war gedrückt", Rückrufe bei Tastendruck),
-Beschleunigungssensor (roh und in g), Akkuspannung, RGB-LED und Tonausgabe.
+Beschleunigungssensor (roh und in g), Batteriespannung, RGB-LED und Tonausgabe.
 
 **`pbc.py`** — die Python-Schicht darüber. Neben den Zeichenbefehlen gibt es
 `Canvas` (ein `framebuf.FrameBuffer` mit Zusatzfunktionen), `Sprite` samt
