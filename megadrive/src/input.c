@@ -52,11 +52,17 @@ void input_set_layout(int layout)
 
 genesis_input_t input_poll_genesis(void)
 {
-    static uint64_t center_since;
+    static uint64_t center_since, ab_since;
     static bool     combo_latched;   /* a combo was used during this CENTER press */
+    static bool     c_held;          /* CENTER is the game's button for this press */
     genesis_input_t g = { 0xFF };
     uint32_t r = input_raw();
     uint64_t now = time_us_64();
+
+    if (!(r & (IN_A | IN_B)))
+        ab_since = 0;
+    else if (ab_since == 0)
+        ab_since = now;
 
     if (r & IN_UP)    g.pad &= ~(1u << 0);
     if (r & IN_DOWN)  g.pad &= ~(1u << 1);
@@ -64,17 +70,31 @@ genesis_input_t input_poll_genesis(void)
     if (r & IN_RIGHT) g.pad &= ~(1u << 3);
 
     if (r & IN_CENTER) {
-        if (center_since == 0)
+        if (center_since == 0) {
             center_since = now;
-        if (r & (IN_A | IN_B)) {
+            /* a button already held when CENTER came: that is fire while
+             * jumping, not the START combo (which begins with CENTER) */
+            if (ab_since && now - ab_since >= C_GRACE_US)
+                c_held = true;
+        }
+        if (c_held && (r & (IN_A | IN_B))) {
+            /* e.g. jump held, then fire: all three are the game's buttons.
+             * Before, this was taken for the START combo: the game paused
+             * and the held button was let go. */
+            g.pad &= ~(1u << on_c);
+            if (r & IN_B) g.pad &= ~(1u << on_b);
+            if (r & IN_A) g.pad &= ~(1u << on_a);
+        } else if (r & (IN_A | IN_B)) {
             combo_latched = true;
             if (r & IN_B) g.pad &= ~(1u << 7);   /* START  */
         } else if (!combo_latched && now - center_since >= C_GRACE_US) {
+            c_held = false;                      /* CENTER alone again: B makes START */
             g.pad &= ~(1u << on_c);              /* C */
         }
     } else {
         center_since = 0;
         combo_latched = false;
+        c_held = false;
         if (r & IN_B) g.pad &= ~(1u << on_b);   /* A */
         if (r & IN_A) g.pad &= ~(1u << on_a);   /* B */
     }

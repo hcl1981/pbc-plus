@@ -5,23 +5,25 @@ Flashen: BOOTSEL gedrückt halten, USB anstecken, die gewünschte
          .uf2 auf das erscheinende Laufwerk kopieren.
 
 Es passt immer nur EINE Firmware aufs Gerät. pbcemu.uf2 enthält
-alle Emulatoren (C64, NES, Master System, PC Engine, Mega Drive,
-Game Gear, Game Boy Color) mit Gerätewahl und Spieleliste.
+alle Emulatoren (Atari 2600 und 7800, ZX Spectrum, ColecoVision,
+C64, Vectrex, NES, SG-1000, MSX, Amstrad CPC, Master System,
+PC Engine, Mega Drive, Game Gear, Game Boy Color, Arduboy) mit
+Gerätewahl und Spieleliste.
 
 DATEI                                     GRÖSSE  SHA256 (Anfang)
-c64.uf2                                      496K  7ebb0dee699bea4c
-gbc.uf2                                      172K  2d8ea41c89626b63
+c64.uf2                                      496K  06fb078491b3fd22
+gbc.uf2                                      172K  4ab5bf227fae6374
 i2collection.uf2                             352K  06caddf8420545ef
-jumpnbump.uf2                                1.1M  d8f26ad7455a2dac
-megadrive.uf2                                844K  d311d7bbe6a04858
-micropolis.uf2                               2.0M  d817994650e66e23
-micropython-PBC_PLUS.uf2                     748K  8e1ff46a30498a4e
-nes.uf2                                      352K  0242f4cc103023d5
+jumpnbump.uf2                                1,1M  d8f26ad7455a2dac
+megadrive.uf2                                852K  36c185cdec21915d
+micropolis.uf2                               2,0M  d817994650e66e23
+micropython-PBC_PLUS.uf2                     748K  573b0ff013a9befd
+nes.uf2                                      352K  9e9d7acdd70046b7
 noiz2sa.uf2                                  120K  597e5833290d22a1
-pbcemu.uf2                                   3.9M  b64edcb81a3d51c3
-pce.uf2                                      228K  621fa99e52cd430a
+pbcemu.uf2                                   4,0M  8cf01fc3e379c32e
+pce.uf2                                      228K  1b22e47bb33ab1c9
 picoboygb.uf2                                128K  93672907ee58848e
-sms.uf2                                      224K  89ed75297164cee0
+sms.uf2                                      224K  35f971fed603c14b
 spout.uf2                                    120K  71881f01a486539b
 stransball2.uf2                              740K  3b9b4dc1f52a9561
 tyrian-komplett.uf2                           19M  00dc75202432fbdc

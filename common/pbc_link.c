@@ -1,4 +1,5 @@
 /* pbc_link.c -- see pbc_link.h */
+#include <stdio.h>
 #include <string.h>
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
@@ -6,6 +7,7 @@
 #include "pbc_launch.h"
 #include "pbc_loading.h"
 #include "pbc_lockstep.h"
+#include "pbc_version.h"
 #include "pbc_link.h"
 #include "audio_pwm.h"
 #include "display.h"
@@ -55,6 +57,20 @@ void pbc_link_start(uint32_t config)
         int r = ls_connect(config);
         if (r > 0)
             break;
+        if (r == -2) {
+            /* the protocol decides who is behind; the player gets to see
+             * the versions of PBCemu, which is what there is to update */
+            bool theirs_older = ls_partner_protocol() < LS_PROTOCOL;
+            int fw = ls_partner_firmware();
+            char there[12], why[40];
+            if (fw)
+                snprintf(there, sizeof there, "%d.%d", fw >> 4, fw & 15);
+            else
+                snprintf(there, sizeof there, "older");
+            snprintf(why, sizeof why, "PBCemu " PBCEMU_VERSION " here, %s there", there);
+            ls_end();
+            stop_with(theirs_older ? "Update the other device" : "Update this device", why);
+        }
         if (r < 0) {
             ls_end();
             stop_with("Game or settings differ", "on the two devices");

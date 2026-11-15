@@ -782,7 +782,7 @@ int main(void)
     audio_enabled = sn76489_enabled = volume > 0;
 
     ROM_DATA = (unsigned char *)rom_store_data();
-    ssf2_init();                    /* Super Street Fighter II: bank switching */
+    bool banked = ssf2_init();      /* Super Street Fighter II: bank switching */
 
     static const menu_control_t controls[] = {
         { "D-pad",   "Joystick" },
@@ -809,7 +809,10 @@ int main(void)
     /* the ROM decides everything else (region from its header); sound and
      * picture settings do not change the emulation */
     pbc_link_start(pbc_link_hash(PBC_LINK_HASH_START ^ 16, rom_store_data(), rom_store_size()));
-    if (!sram_init(rom))                /* the volume stays mounted for the .sav */
+    /* The mapper turns the flash windows the drive is read through onto
+     * the ROM: no save file with it (Super Street Fighter II has none; an
+     * expanded hack that declares one would have wrecked the drive). */
+    if (banked || !sram_init(rom))      /* the volume stays mounted for the .sav */
         fs_unmount();
     pbc_display_fill(0, 0, PBC_LCD_W, PBC_LCD_H, PBC_BLACK);
     multicore_launch_core1(core1_main);

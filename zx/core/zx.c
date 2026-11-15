@@ -42,7 +42,7 @@ static int tape_t;
 /* sound */
 static int32_t mix[AUDIO_MAX_N];
 static int frame_n, made;
-static uint16_t beep_t[2048];
+static uint32_t beep_t[2048];       /* T-states: a frame has 69888 or 70908, more than 16 bits */
 static uint8_t beep_v[2048];
 static int beep_n;
 static uint8_t beep_level, beep_start;
@@ -108,7 +108,7 @@ static ZX_RAM void beep(uint8_t level)
     beep_level = level;
     if (beep_n < (int)(sizeof beep_t / sizeof beep_t[0])) {
         int t = now();
-        beep_t[beep_n] = (uint16_t)(t < 0 ? 0 : t > 0xffff ? 0xffff : t);
+        beep_t[beep_n] = (uint32_t)(t < 0 ? 0 : t);
         beep_v[beep_n++] = level;
     }
 }

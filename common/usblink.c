@@ -180,6 +180,9 @@ void usblink_set_speed(uint32_t half_bit_ns) {
     uint32_t hz = clock_get_hz(clk_sys);
     half_bit_cycles = (uint32_t)(((uint64_t)hz * half_bit_ns) / 1000000000u);
     if (!half_bit_cycles) half_bit_cycles = 1;
+    /* also after a change of the system clock: both times are in its cycles */
+    turnaround_cycles = (uint32_t)(((uint64_t)hz * USBLINK_TURNAROUND_NS) / 1000000000u);
+    if (!turnaround_cycles) turnaround_cycles = 1;
     half_bit_ns_current = half_bit_ns;
 }
 
@@ -539,6 +542,22 @@ int USBLINK_TIME_CRITICAL(usblink_slave_exchange_cb)(void *rx, int rxmax, void *
     return received;
 
 fail_frame_drain:
+    /* The master is still clocking the rest of its frame out. Returning now,
+     * a caller that polls again at once took the next clock-high for a new
+     * attention and drove DATA against the master. Wait until the clock has
+     * been low for longer than a bit takes (or 20 ms at most). */
+    {
+        uint32_t t0 = time_us_32(), low_since = t0;
+        for (;;) {
+            uint32_t now = time_us_32();
+            if (now - t0 > 20000u)
+                break;
+            if (clk_in())
+                low_since = now;
+            else if (now - low_since > 2u * BIT_WAIT_US)
+                break;
+        }
+    }
 fail_frame:
     usblink_stat_badframe++;
     data_release();

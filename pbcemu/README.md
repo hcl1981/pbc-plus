@@ -77,7 +77,7 @@ getestet, auch nicht der Sprung vom Starter in die Emulatoren.
 | Buttons (B A Mitte) | nur bei Mega-Drive-Spielen: welche Mega-Drive-Taste auf B, A und Mitte liegt, alle sechs Verteilungen von A, B, C (Vorgabe A B C). Je Spiel gemerkt, im Übergabe-Datensatz an den Emulator; die Tastenübersicht vor dem Start zeigt sie, im Link-Spiel hat jeder seine eigene |
 | Mitte + B | bei C64-, CPC- und ZX-Spielen: welche Taste dort liegt (Vorgabe SPACE, RETURN bzw. ENTER; bei CPC und ZX nicht im Link-Spiel). Der Starter gibt die CPC-Taste im Übergabe-Datensatz mit. Mitte + A öffnet im Spiel die Diskettenauswahl; ihre oberste Zeile stellt die Taste auch während des Spiels um, siehe `../c64/README.md` |
 | True drive | nur bei C64-Spielen: echte 1541-Emulation für Spiele mit eigenem Schnelllader; braucht `1541.rom` auf dem Laufwerk, siehe `../c64/README.md` |
-| Delete game | letzte Zeile, nur bei Spielen (nicht beim eingebauten Mine Storm): **B** fragt nach („Keep it“ vorgewählt) und löscht dann das Spiel vom Laufwerk, dazu seinen Spielstand (`.sav`) und NES-Cheats (`.cht`), seine Einstellungen und seinen Favoriten-Stern. Spielstand und Cheats bleiben, wenn ein anderes Spiel denselben Namen vor der Endung hat (`Tetris.gb` neben `Tetris.nes`). Danach zeigt der Starter den freien Platz. So schafft man ohne PC Platz für neue Spiele; die Emulatoren kopieren ein Spiel beim Start in ihren ROM-Bereich, Lücken im Laufwerk stören nicht |
+| Delete game | letzte Zeile, nur bei Spielen (nicht beim eingebauten Mine Storm): **B** fragt nach („Keep it“ vorgewählt) und löscht dann das Spiel vom Laufwerk, dazu seinen Spielstand (`.sav`) und NES-Cheats (`.cht`), seine Einstellungen und seinen Favoriten-Stern. Spielstand und Cheats bleiben, wenn ein anderes Spiel denselben Namen vor der Endung hat (`Tetris.gb` neben `Tetris.nes`); das gilt für Spielstände unter dem früheren Namen `Tetris.sav`, der eigene `Tetris.gb.sav` wird immer mit gelöscht. Danach zeigt der Starter den freien Platz. So schafft man ohne PC Platz für neue Spiele; die Emulatoren kopieren ein Spiel beim Start in ihren ROM-Bereich, Lücken im Laufwerk stören nicht |
 
 Passen nicht alle Zeilen auf die Karte (ein C64-Spiel hat zehn), blättert sie:
 sechs Zeilen auf einmal, rechts ein schmaler Balken. Bei C64-Spielen stehen
@@ -159,7 +159,7 @@ eigenständige Firmwares (`dist/nes.uf2` usw.).
 
 | Adresse | Inhalt |
 |---|---|
-| `0x000000` | Starter (268 KB vorgesehen, ca. 261 KB belegt: Schriften und Gerätebilder) |
+| `0x000000` | Starter (276 KB vorgesehen, ca. 263 KB belegt: Schriften und Gerätebilder) |
 | `0x044000` … | Mega Drive, Master System/Game Gear/SG-1000, NES, PC Engine, Game Boy Color, C64, MSX, Atari 2600, ZX Spectrum, Amstrad CPC — dicht gepackt, in 512-Byte-Schritten (die Vektortabelle muss so ausgerichtet sein; mit 4-KB-Schritten gingen rund 14 KB verloren), zusammen ca. 1,7 MB, bis `0x200000` |
 | `0x200000` | ROM des laufenden Spiels (5 MB) |
 | `0x700000` | FatFs = USB-Laufwerk `PBC-ROMS`, ca. 9 MB (Einzel-Firmwares: ab `0x600000`) |
@@ -255,6 +255,20 @@ python3 tools/make_assets.py .     # nach Änderungen an Bildern oder Schrift
 nächste freie Adresse, schreibt die Adressen nach `build/gen/pbc_apps.h`, baut
 den Starter damit und verpackt alles mit `tools/pack_uf2.py`. Reicht der
 Platz bis 2 MB nicht, bricht es mit einer Meldung ab.
+
+## Versionen
+
+PBCemu hat eine Versionsnummer der Form `x.y` (`common/pbc_version.h`). Sie
+steht im Starter auf der Karte „Settings“ rechts neben der Überschrift. Mit
+jedem Release zählt die zweite Stelle hoch, bei einem großen Schritt die erste.
+Firmware vor 1.0 hat keine Nummer.
+
+Das Link-Spiel hat daneben eine eigene Protokollversion (`LS_PROTOCOL` in
+`common/pbc_lockstep.h`). Sie wird nur erhöht, wenn eine Änderung nicht mehr
+mit älterer Firmware zusammenspielt. Treffen zwei Geräte mit verschiedenem
+Protokoll aufeinander, sagt das neuere, welches Gerät zu aktualisieren ist,
+und nennt beide PBCemu-Versionen („PBCemu 1.0 here, older there“). Firmware
+vor 1.0 kennt den Hinweis nicht und wartet nur vergeblich auf den Partner.
 
 ## Aufbau
 

@@ -18,6 +18,7 @@ void favs_save(void);               /* only writes when something changed */
 int  favs_count(void);
 int  favs_device(int i);            /* -1: a system this build does not have */
 const char *favs_name(int i);
+void favs_remove(int i);            /* entry i, for games that left the drive */
 bool favs_has(int device, const char *name);
 /* false: the list is full */
 bool favs_set(int device, const char *name, bool on);

@@ -91,6 +91,15 @@ static int find(int device, const char *name)
     return -1;
 }
 
+void favs_remove(int i)
+{
+    if (i < 0 || i >= (int)s.count)
+        return;
+    memmove(&s.fav[i], &s.fav[i + 1], (s.count - (unsigned)i - 1) * sizeof s.fav[0]);
+    s.count--;
+    memset(&s.fav[s.count], 0, sizeof s.fav[0]);
+}
+
 bool favs_has(int device, const char *name)
 {
     return find(device, name) >= 0;

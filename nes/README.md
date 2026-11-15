@@ -64,7 +64,7 @@ A und B.
 
 Module mit Batterie (Bit im iNES-Kopf: Zelda, Final Fantasy, StarTropics …)
 behalten die 8 KB RAM bei `$6000` in **`<Spielname>.sav`** neben der ROM, am PC
-sichtbar und kopierbar. Geladen wird beim Start, geschrieben während des
+sichtbar und kopierbar. Die Datei heißt wie das Spiel samt Endung plus `.sav` (`Tetris.gb.sav`), damit gleichnamige Spiele anderer Systeme einander den Spielstand nicht überschreiben; ein Spielstand unter dem früheren Namen (`Tetris.sav`, auch von anderen Emulatoren) wird weiter gelesen, solange es die neue Datei nicht gibt (`common/pbc_save.h`). Geladen wird beim Start, geschrieben während des
 Spiels, denn verlassen wird es mit RESET: Viermal pro Sekunde eine Prüfsumme
 des RAM; hat es sich eine Sekunde lang nicht mehr geändert (oder ändert es sich
 seit 20 s), wird die Datei geschrieben. **Nach dem Speichern im Spiel also kurz

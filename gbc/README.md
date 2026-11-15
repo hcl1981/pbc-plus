@@ -168,7 +168,7 @@ damit rund ein Viertel schneller; auf dem Gerät **noch nicht gemessen**.
 
 Spiele mit Batterie-RAM (Pokémon, Zelda …) speichern in eine Datei
 **`<Spielname>.sav`** neben der ROM auf dem USB-Laufwerk – am PC sichtbar und
-kopierbar.
+kopierbar. Die Datei heißt wie das Spiel samt Endung plus `.sav` (`Tetris.gb.sav`), damit gleichnamige Spiele anderer Systeme einander den Spielstand nicht überschreiben; ein Spielstand unter dem früheren Namen (`Tetris.sav`, auch von anderen Emulatoren) wird weiter gelesen, solange es die neue Datei nicht gibt (`common/pbc_save.h`).
 
 Ein Spiel wird mit RESET verlassen, deshalb wird während des Spiels
 geschrieben: sobald sich das Cartridge-RAM eine Sekunde lang nicht mehr

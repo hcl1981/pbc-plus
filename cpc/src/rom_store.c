@@ -7,6 +7,7 @@
 #include "hardware/sync.h"
 #include "pico/multicore.h"
 #include "hardware/regs/addressmap.h"
+#include "hardware/structs/qmi.h"
 #include "ff.h"
 #include "rom_store.h"
 
@@ -121,12 +122,23 @@ bool rom_store_matches(const char *name)
  * the game (rom_store_live) also parks core 1 for each piece. */
 bool rom_store_live;
 
+/* The SDK's flash functions re-enter XIP through the bootrom's setup,
+ * which also resets the flash clock (QMI timing) to the bootrom's. Put
+ * back the one main.c set for the overclock; from RAM, as the timing
+ * changes under XIP (as megadrive/src/flash_fs.c does). */
+static void __no_inline_not_in_flash_func(restore_timing)(uint32_t timing)
+{
+    qmi_hw->m[0].timing = timing;
+}
+
 static void flash_erase(uint32_t off, uint32_t len)
 {
     if (rom_store_live)
         multicore_lockout_start_blocking();
     uint32_t irq = save_and_disable_interrupts();
+    uint32_t timing = qmi_hw->m[0].timing;
     flash_range_erase(off, len);
+    restore_timing(timing);
     restore_interrupts(irq);
     if (rom_store_live)
         multicore_lockout_end_blocking();
@@ -137,7 +149,9 @@ static void flash_program(uint32_t off, const uint8_t *src, uint32_t len)
     if (rom_store_live)
         multicore_lockout_start_blocking();
     uint32_t irq = save_and_disable_interrupts();
+    uint32_t timing = qmi_hw->m[0].timing;
     flash_range_program(off, src, len);
+    restore_timing(timing);
     restore_interrupts(irq);
     if (rom_store_live)
         multicore_lockout_end_blocking();

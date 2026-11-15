@@ -326,6 +326,7 @@ static uint16_t dmg_lut[64];
 static int dmg_palette;
 
 #include "sgb.h"
+#include "pbc_save.h"
 
 /* CGB colour as fixed by the core (bits 10-14 red, 5-9 green, 0-4 blue)
  * -> panel word. */
@@ -419,14 +420,11 @@ void __not_in_flash_func(lcd_draw_line)(struct gb_s *g, const uint8_t *pixels, c
  * has not changed for a second (or has been changing for 20 s). Unchanged
  * flash sectors are skipped (flash_fs.c), core 1 is parked for each written
  * one -- the game stalls for about 50 ms per 4 KB sector that did change. */
-static char save_path[ROM_NAME_MAX + 8];
+static char save_path[ROM_NAME_MAX + 8], save_path_old[ROM_NAME_MAX + 8];
 
 static void save_path_for(const char *game)
 {
-    snprintf(save_path, sizeof save_path, "/%s", game);
-    char *dot = strrchr(save_path, '.');
-    if (dot) *dot = 0;
-    strcat(save_path, ".sav");
+    pbc_save_names(game, save_path, sizeof save_path, save_path_old, sizeof save_path_old);
 }
 
 static void save_load(void)
@@ -434,7 +432,7 @@ static void save_load(void)
     static FIL f;
     UINT got;
     memset(cart_ram, 0xFF, sizeof cart_ram);
-    if (!save_size || f_open(&f, save_path, FA_READ) != FR_OK)
+    if (!save_size || (f_open(&f, save_path, FA_READ) != FR_OK && f_open(&f, save_path_old, FA_READ) != FR_OK))
         return;
     if (f_size(&f) >= save_size)
         f_read(&f, cart_ram, save_size, &got);
@@ -444,13 +442,19 @@ static void save_load(void)
 static void save_write(void)
 {
     static FIL f;
-    UINT put;
+    UINT put = 0;
     save_dirty = false;
-    if (f_open(&f, save_path, FA_WRITE | FA_OPEN_ALWAYS) != FR_OK)
-        return;
-    f_write(&f, cart_ram, save_size, &put);
-    f_truncate(&f);
-    f_close(&f);
+    if (f_open(&f, save_path, FA_WRITE | FA_OPEN_ALWAYS) == FR_OK) {
+        f_write(&f, cart_ram, save_size, &put);
+        f_truncate(&f);
+        f_close(&f);
+    }
+    if (put != save_size) {             /* drive full: say so once; the next change tries again */
+        static bool said;
+        if (!said)
+            video_set_status("SAVE FAILED: DRIVE FULL?");
+        said = true;
+    }
 }
 
 static void save_poll(void)

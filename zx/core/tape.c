@@ -82,7 +82,8 @@ static uint32_t block_end(uint32_t o)
 #undef NEED
         n += 1;
     }
-    return n <= t.size - o ? o + n : 0;
+    /* n == 0: a length that wrapped around (broken file) -- the caller would not move on */
+    return n && n <= t.size - o ? o + n : 0;
 }
 
 bool tape_insert(const uint8_t *data, uint32_t size, bool tzx)

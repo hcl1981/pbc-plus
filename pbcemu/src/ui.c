@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include "pbc_version.h"
 #include "pico/stdlib.h"
 #include "gfx.h"
 #include "input.h"
@@ -24,6 +25,7 @@
 #include "board.h"
 #include "pbc_lobby.h"
 #include "pbc_xfer.h"
+#include "usblink.h"
 #include "ui.h"
 #include "c64/settings.h"
 #include "c64/d64_dir.h"
@@ -200,6 +202,7 @@ static void dark_wait(void)
     gfx_finish();                       /* the SPI clock changes with it */
     sound_off();                        /* GP14's PWM slice is the speaker's */
     set_sys_clock_khz(60000, true);
+    usblink_set_speed(usblink_get_speed());     /* its bit times are in clock cycles */
     pwm_config c = pwm_get_default_config();
     pwm_config_set_wrap(&c, 255 * 255);
     for (int k = 0; k < 3; k++) {
@@ -226,6 +229,7 @@ static void dark_wait(void)
         gpio_put(pins[k], 0);
     }
     set_sys_clock_khz(150000, true);
+    usblink_set_speed(usblink_get_speed());
     /* set_sys_clock_khz put clk_peri on the USB PLL (48 MHz); back on clk_sys
      * as at boot, with the SPI divider worked out again -- before, the
      * display ran at a third of its speed after waking up */
@@ -443,9 +447,12 @@ typedef struct {
     bool nes;                       /* RAW_SWAP: NES (A/B) or Sega (1/2) */
     bool drive;                     /* processor-level 1541 */
     bool drive_rom;                 /* ... possible: 1541.rom is on the drive */
+    int port0, key0, file0;         /* as stored: only changes are written */
+    bool drive0;
     bool fav;                       /* the game is a favourite */
     bool zx48;                      /* ZX tape game: starts as a 48K (kept in `drive`) */
     int  rows[16], nrows;
+    bool about;                         /* show the version beside the title */
 } opt_t;
 
 #define C64_FILES_MAX 64
@@ -574,6 +581,10 @@ static void options_screen(void (*under)(void *), void *arg, const char *title,
     char t[GAME_NAME_MAX + 4];
     gfx_text_fit(&font_head, title, GFX_W - 60, t);
     gfx_text(&font_head, 30, y0 + 14, t, TEXT, 255);
+    if (o->about) {                     /* the launcher's own settings: which PBCemu this is */
+        const char *v = "PBCemu " PBCEMU_VERSION;
+        gfx_text(&font_small, GFX_W - 32 - gfx_text_w(&font_small, v), y0 + 20, v, FAINT, 255);
+    }
 
     static const char *const names[] = { "Sound", "Volume", "Display", "Show FPS", "Joystick", "Program",
                                          "", "True drive", "Favorite", "Brightness", "", "Joystick", "",
@@ -741,6 +752,9 @@ static bool options(void (*under)(void *), void *arg, int device, const char *ga
         o.key = settings_key(game);
         o.drive_rom = c64_drive_rom();
         o.drive = settings_true_drive(game) && o.drive_rom;
+        o.port0 = o.port;
+        o.key0 = o.key;
+        o.drive0 = o.drive;
         o.files = malloc(C64_FILES_MAX * sizeof *o.files);
         o.nfiles = 1;
         if (o.files) {
@@ -754,6 +768,7 @@ static bool options(void (*under)(void *), void *arg, int device, const char *ga
                 for (int i = 1; chosen[0] && i < o.nfiles; i++)
                     if (strcmp(o.files[i], chosen) == 0)
                         o.file = i;
+                o.file0 = o.file;
             }
         }
     }
@@ -763,7 +778,7 @@ static bool options(void (*under)(void *), void *arg, int device, const char *ga
     else if (device >= 0)
         snprintf(title, sizeof title, "%s", devices[device].name);
     else
-        strcpy(title, "Settings");
+        strcpy(title, "Settings"), o.about = true;
 
     int row = 0;
     bool send = false, del = false;
@@ -841,18 +856,25 @@ static bool options(void (*under)(void *), void *arg, int device, const char *ga
     }
     prefs_save();
     if (game_opts && o.fav != favs_has(device, game)) {
-        if (favs_set(device, game, o.fav))
+        /* full: first make room by dropping games that left the drive */
+        if (favs_set(device, game, o.fav) || (games_favorites_prune() && favs_set(device, game, o.fav)))
             favs_save();
         else
             ui_message("Favorites", "The list is full:", "at most 40 games.", NULL);
     }
     if (c64) {
-        settings_set_port(game, o.port);
-        settings_set_file(game, o.file ? o.files[o.file] : "");
-        settings_set_key(game, o.key);
-        if (o.drive_rom)                /* without the ROM the choice stays as it was */
+        /* only what was changed: an entry for every game merely looked at
+         * would fill the table and push other games' entries out */
+        bool changed = false;
+        if (o.port != o.port0) { settings_set_port(game, o.port); changed = true; }
+        if (o.file != o.file0) { settings_set_file(game, o.file ? o.files[o.file] : ""); changed = true; }
+        if (o.key != o.key0) { settings_set_key(game, o.key); changed = true; }
+        if (o.drive_rom && o.drive != o.drive0) {   /* without the ROM the choice stays as it was */
             settings_set_true_drive(game, o.drive);
-        settings_save();
+            changed = true;
+        }
+        if (changed)
+            settings_save();
         free(o.files);
     }
     bool zx_tape = false;
@@ -1068,10 +1090,16 @@ static void side_path(const char *game, const char *ext, char *out, size_t size)
 static bool delete_game(void (*under)(void *), void *arg, int device, const char *game, uint32_t accent)
 {
     char title[GAME_NAME_MAX], tags[GAME_NAME_MAX], path[GAME_NAME_MAX + 8], sav[GAME_NAME_MAX + 8];
+    char own_sav[GAME_NAME_MAX + 8];
     games_title(game, title, tags, sizeof title);
+    /* the game's own save ("/Sonic.md.sav", common/pbc_save.h) and the one
+     * under the older name ("/Sonic.sav"), which a game of the same name
+     * on another system may share */
+    snprintf(own_sav, sizeof own_sav, "/%s.sav", game);
     side_path(game, ".sav", sav, sizeof sav);
     static FILINFO fi;
-    bool shared = base_shared(game), with_save = !shared && f_stat(sav, &fi) == FR_OK;
+    bool shared = base_shared(game);
+    bool with_save = f_stat(own_sav, &fi) == FR_OK || (!shared && f_stat(sav, &fi) == FR_OK);
 
     static const char *const rows[] = { "Keep it", "Delete" };
     int sel = 0;                        /* the safe one first */
@@ -1096,6 +1124,7 @@ static bool delete_game(void (*under)(void *), void *arg, int device, const char
         ui_message("Delete game", "The game could not", "be deleted.", NULL);
         return false;
     }
+    f_unlink(own_sav);
     if (!shared) {
         f_unlink(sav);
         side_path(game, ".cht", path, sizeof path);     /* NES Game Genie codes */
@@ -1165,6 +1194,15 @@ static bool xfer_tick(void *user, uint32_t done)
     if (input_menu_edges() & IN_A)
         u->cancel = true;
     uint64_t now = time_us_64();
+    /* a transfer keeps the display awake (edges() is not called here): one
+     * that woke a dark device would otherwise run on a black screen, and a
+     * long one would end in the dark with the next press swallowed */
+    last_press = now;
+    if (idle) {
+        idle = 0;
+        fading = true;
+    }
+    backlight_tick(now);
     if (now - u->drawn > 300000) {
         u->drawn = now;
         xfer_draw(u, done);

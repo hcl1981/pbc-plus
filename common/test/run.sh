@@ -15,7 +15,7 @@ twice() {   # source, then its public symbols
     done
 }
 
-twice pbc_lockstep.c ls_begin ls_end ls_connect ls_frame ls_out_of_sync
+twice pbc_lockstep.c ls_begin ls_end ls_connect ls_frame ls_out_of_sync ls_partner_protocol ls_partner_firmware
 gcc -O2 -Wall -pthread -I"$HIER/.." "$HIER/lockstep_test.c" \
     "$OUT/a_pbc_lockstep.o" "$OUT/b_pbc_lockstep.o" -o "$OUT/lockstep"
 "$OUT/lockstep"

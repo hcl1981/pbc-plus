@@ -10,6 +10,7 @@
 #include <string.h>
 #include "usblink.h"
 #include "pbc_lockstep.h"
+#include "pbc_version.h"
 
 #ifdef LS_HOST
 uint32_t ls_host_us(void);
@@ -34,8 +35,30 @@ typedef struct {
     uint32_t seq;
     uint32_t hash;                  /* HELLO: the configuration */
     uint16_t input, input_prev;
-    uint8_t  type, pad[3];
+    uint8_t  type, mark[3];         /* MARK: 'L', the protocol, the firmware */
 } packet_t;
+
+/* The launcher's lobby knocks with packets of the same length, and its
+ * HELLO has the same type byte at the same place: without a mark of its
+ * own, a partner still in the launcher looked like one with other settings.
+ * (The lobby has a device number where the 'L' is, and that is small.)
+ * After the 'L' come LS_PROTOCOL and the version of PBCemu. */
+#define MARK { 'L', LS_PROTOCOL, PBCEMU_VERSION_BYTE }
+
+/* The protocol version a packet of this length was sent with, -1 if it is
+ * not one of this protocol. Version 0 had no mark: its HELLO has nothing but
+ * the type and the configuration, where the lobby has its magic number. */
+static inline int IN_RAM(version_of)(const packet_t *p)
+{
+    if (p->mark[0] == 'L' && p->mark[1])
+        return p->mark[1];
+    return p->type == PK_HELLO && !p->seq && !p->input && !p->input_prev &&
+           !p->mark[0] && !p->mark[1] && !p->mark[2] ? 0 : -1;
+}
+static inline bool IN_RAM(marked)(const packet_t *p)
+{
+    return version_of(p) == LS_PROTOCOL;
+}
 
 static struct {
     bool     master, started;
@@ -44,6 +67,8 @@ static struct {
     uint16_t input, input_prev;
     /* slave: what the callback got. It only ever runs inside slave_poll(). */
     bool     got, hello_seen;
+    int      other;                 /* the partner's protocol + 1 if it is not ours */
+    int      firmware;              /* and its PBCEMU_VERSION_BYTE, 0: before 1.0 */
     uint16_t remote;
     uint32_t hello_hash;
     bool     out_of_sync;
@@ -74,6 +99,8 @@ void ls_end(void)
 }
 
 bool ls_out_of_sync(void) { return ls.out_of_sync; }
+int ls_partner_protocol(void) { return ls.other ? ls.other - 1 : LS_PROTOCOL; }
+int ls_partner_firmware(void) { return ls.other ? ls.firmware : PBCEMU_VERSION_BYTE; }
 
 /* ---- master ---------------------------------------------------------------- */
 
@@ -93,12 +120,12 @@ static int master_exchange(const packet_t *tx, packet_t *rx, uint32_t wait_us)
 
 static bool master_frame(uint16_t *remote)
 {
-    packet_t tx = { .seq = ls.seq, .hash = ls.hash, .input = ls.input, .type = PK_FRAME };
+    packet_t tx = { .seq = ls.seq, .hash = ls.hash, .input = ls.input, .type = PK_FRAME, .mark = MARK };
     packet_t rx;
     uint32_t t0 = NOW_US(), limit = ls.seq ? LOST_US : FIRST_FRAME_US;
     for (;;) {
         int n = master_exchange(&tx, &rx, ATTENTION_US);
-        if (n == (int)sizeof rx && rx.type == PK_FRAME) {
+        if (n == (int)sizeof rx && marked(&rx) && rx.type == PK_FRAME) {
             if (rx.seq == ls.seq) {
                 if (rx.hash != ls.hash)
                     ls.out_of_sync = true;
@@ -124,8 +151,11 @@ static int IN_RAM(slave_reply)(int rxlen, void *user)
     const packet_t *rx = p[0];
     packet_t *tx = p[1];
     memset(tx, 0, sizeof *tx);
-    if (rxlen != (int)sizeof *rx)
+    if (rxlen == (int)sizeof *rx && !marked(rx) && version_of(rx) >= 0)
+        ls.other = version_of(rx) + 1, ls.firmware = rx->mark[2];
+    if (rxlen != (int)sizeof *rx || !marked(rx))
         return (int)sizeof *tx;
+    tx->mark[0] = 'L'; tx->mark[1] = LS_PROTOCOL; tx->mark[2] = PBCEMU_VERSION_BYTE;
     if (rx->type == PK_HELLO) {
         ls.hello_hash = rx->hash;
         ls.hello_seen = true;
@@ -173,12 +203,23 @@ int ls_connect(uint32_t config)
 {
     ls.config = config;
     if (ls.master) {
-        packet_t tx = { .hash = config, .type = PK_HELLO }, rx;
-        if (master_exchange(&tx, &rx, CONNECT_US) != (int)sizeof rx || rx.type != PK_HELLO)
+        packet_t tx = { .hash = config, .type = PK_HELLO, .mark = MARK }, rx;
+        if (master_exchange(&tx, &rx, CONNECT_US) != (int)sizeof rx)
+            return 0;
+        if (!marked(&rx)) {
+            if (version_of(&rx) < 0)
+                return 0;
+            ls.other = version_of(&rx) + 1;
+            ls.firmware = rx.mark[2];
+            return -2;
+        }
+        if (rx.type != PK_HELLO)
             return 0;
         return rx.hash == config ? 1 : -1;
     }
     slave_poll();
+    if (ls.other)
+        return -2;
     if (!ls.hello_seen)
         return 0;
     return ls.hello_hash == config ? 1 : -1;

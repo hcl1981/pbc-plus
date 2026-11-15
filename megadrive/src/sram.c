@@ -7,6 +7,7 @@
 #include "pbc_link.h"
 #include "rom_store.h"
 #include "sram.h"
+#include "pbc_save.h"
 
 #define SRAM_MAX 0x2000             /* 8 KB: what nearly every game has, or less */
 
@@ -93,13 +94,10 @@ bool sram_init(const char *game)
     /* link play: both devices start alike, and nothing is kept */
     saving = !pbc_link_active();
     if (saving) {
-        snprintf(path, sizeof path, "/%s", game);
-        char *dot = strrchr(path, '.');
-        if (dot)
-            *dot = 0;
-        strcat(path, ".sav");
+        static char old_path[ROM_NAME_MAX + 8];
+        pbc_save_names(game, path, sizeof path, old_path, sizeof old_path);
         UINT got;
-        if (f_open(file, path, FA_READ) == FR_OK) {
+        if (f_open(file, path, FA_READ) == FR_OK || f_open(file, old_path, FA_READ) == FR_OK) {
             f_read(file, ram, size, &got);
             f_close(file);
         }

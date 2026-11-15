@@ -33,6 +33,10 @@ void pbc_cable_begin(pbc_cable_answer_fn fn)
 {
     answer = fn;
     rnd_state ^= (uint32_t)time_us_64();
+    /* not from 0 after every start: a partner that kept running remembers
+     * the number of the last request it answered, and took the restarted
+     * game's request of the same number for a repeat */
+    my_seq = (uint16_t)rnd();
     usblink_init();
     on = true;
 }

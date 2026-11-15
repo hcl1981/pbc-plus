@@ -47,6 +47,7 @@
 #include "settings.h"
 #include "quicknes.h"
 #include "pbc_link.h"
+#include "pbc_save.h"
 
 /* ---- build-time configuration (see CMakeLists.txt) ---------------------- */
 #ifndef CPU_MHZ
@@ -258,11 +259,9 @@ static void save_load(const char *game)
     save_ram = pbc_link_active() ? NULL : qnes_get_battery_ram(&save_size);
     if (!save_ram)
         return;
-    snprintf(save_path, sizeof save_path, "/%s", game);
-    char *dot = strrchr(save_path, '.');
-    if (dot) *dot = 0;
-    strcat(save_path, ".sav");
-    if (f_open(&f, save_path, FA_READ) == FR_OK) {
+    static char old_path[ROM_NAME_MAX + 8];
+    pbc_save_names(game, save_path, sizeof save_path, old_path, sizeof old_path);
+    if (f_open(&f, save_path, FA_READ) == FR_OK || f_open(&f, old_path, FA_READ) == FR_OK) {
         if (f_size(&f) >= (FSIZE_t)save_size)
             f_read(&f, save_ram, (UINT)save_size, &got);
         f_close(&f);
@@ -281,10 +280,12 @@ static void save_write(void)
         f_close(&f);
     }
     if (put != (UINT)save_size) {
-        /* drive full (or broken): say so once, keep playing */
-        f_unlink(save_path);
-        save_ram = NULL;
-        video_set_status("NO ROOM FOR THE SAVE FILE");
+        /* drive full (or broken): say so, keep playing. Nothing is deleted
+         * (the old save may be all there is); the next change tries again. */
+        static bool said;
+        if (!said)
+            video_set_status("NO ROOM FOR THE SAVE FILE");
+        said = true;
     }
 }
 

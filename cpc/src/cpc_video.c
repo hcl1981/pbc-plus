@@ -118,6 +118,8 @@ static void __not_in_flash_func(overlay)(uint16_t *dst, int row)
     int n = status_len;
     if (!n)
         return;
+    if (n > PBC_LCD_W / 8)              /* 31 characters would start 4 pixels left of the line buffer */
+        n = PBC_LCD_W / 8;
     int x0 = (PBC_LCD_W - n * 8) / 2;
     for (int c = 0; c < n; c++) {
         unsigned ch = (unsigned char)status_text[c];

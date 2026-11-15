@@ -181,6 +181,16 @@ static bool sys_store(const char *name, const uint8_t *rom, uint32_t size, uint3
         msx2_patch_disk_rom(buf);
     for (uint32_t done = 0; done < size; done += FLASH_SECTOR_SIZE) {
         if (memcmp(buf + done, SYS_ROM(off + done), FLASH_SECTOR_SIZE) != 0) {
+            /* The other emulators may keep games of up to 5 MB in the ROM
+             * region: this write then goes into the last megabyte of the
+             * game on record, which would still pass for unchanged (name,
+             * size and start match). Forget the record first. */
+            const uint32_t *rec = (const uint32_t *)(XIP_BASE + ROM_INFO_OFFSET);
+            if (rec[0] != 0xffffffffu && rec[1] > ROM_STORE_MAX) {
+                uint32_t irq0 = save_and_disable_interrupts();
+                flash_range_erase(ROM_INFO_OFFSET, FLASH_SECTOR_SIZE);
+                restore_interrupts(irq0);
+            }
             uint32_t irq = save_and_disable_interrupts();
             flash_range_erase(SYS_OFF + off + done, FLASH_SECTOR_SIZE);
             flash_range_program(SYS_OFF + off + done, buf + done, FLASH_SECTOR_SIZE);

@@ -65,7 +65,9 @@ bei PicoBoyGB.
 
 Mitte wird erst nach 40 ms als C gemeldet. So wird aus „Mitte, kurz danach B“
 sicher START und kein versehentliches C. Solange Mitte gehalten wird, sind A und
-B für die Kombinationen reserviert: **C gleichzeitig mit A oder B geht nicht.**
+B für die Kombinationen reserviert: **erst Mitte (C), dann A oder B dazu geht nicht.**
+Umgekehrt geht es: Wer A oder B schon hält (springen) und dann Mitte drückt
+(schießen), bekommt beide Tasten zusammen mit C.
 
 In PBCemu lässt sich die Verteilung je Spiel ändern: In den Einstellungen des
 Spiels (Mitte in der Spieleliste) legt die Zeile **B A Mitte** fest, welche
@@ -339,7 +341,7 @@ immer vollständig.
 ## Spielstände
 
 Spiele mit Batterie-SRAM (Phantasy Star II–IV, Shining Force, Sonic 3 …)
-speichern in **`<Spielname>.sav`** neben der ROM auf dem USB-Laufwerk, wie
+speichern in **`<Spielname>.sav`** (Name samt Endung, also `Spiel.md.sav`; der frühere Name `Spiel.sav` wird weiter gelesen) neben der ROM auf dem USB-Laufwerk, wie
 beim Game Boy Color (`src/sram.c`). Ob es SRAM gibt, steht im Kopf der
 Cartridge (`RA` bei `$1B0`, Art bei `$1B2`, Anfang und Ende bei `$1B4`/`$1B8`,
 meist `$200001`–`$203FFF`, also 8 KB in den ungeraden Bytes). Die Datei

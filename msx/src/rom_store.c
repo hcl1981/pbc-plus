@@ -200,7 +200,7 @@ const char *rom_store_program(const char *name, uint8_t *scratch, rom_progress_f
 
     /* A MegaROM that is not 2^n pages of 8 KB long gets its last pages
      * mirrored behind it, as the mapper's address lines would show them. */
-    uint32_t len = size >> 13, pages = 1;
+    uint32_t len = (size + 0x1fff) >> 13, pages = 1;    /* a part page counts: it must not be erased */
     while (pages < len)
         pages <<= 1;
     for (uint32_t p = len; p < pages; p++) {

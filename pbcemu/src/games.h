@@ -15,6 +15,7 @@ int  games_list(int device, char (**names)[GAME_NAME_MAX]);
 /* The favourites still on the drive, in the same array as games_list();
  * (*devs)[i] is the device of game i. */
 int  games_favorites(char (**names)[GAME_NAME_MAX], int **devs);
+int  games_favorites_prune(void);   /* drops favourites whose game left the drive */
 
 /* "Sonic (USA, Europe).md" -> title "Sonic", tags "(USA, Europe)" */
 void games_title(const char *file, char *title, char *tags, int size);

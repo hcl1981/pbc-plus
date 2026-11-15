@@ -6,7 +6,9 @@
 #include "hardware/flash.h"
 #include "pico/flash.h"
 #include "hardware/sync.h"
+#include "pico/multicore.h"
 #include "hardware/regs/addressmap.h"
+#include "hardware/structs/qmi.h"
 #include "settings.h"
 #include "pbc_launch.h"
 
@@ -218,11 +220,22 @@ void settings_set_file(const char *game, const char *file)
     }
 }
 
+/* The SDK's flash functions re-enter XIP through the bootrom's setup,
+ * which also resets the flash clock (QMI timing) to the bootrom's. Put
+ * back the one main.c set for the overclock; from RAM, as the timing
+ * changes under XIP (as megadrive/src/flash_fs.c does). */
+static void __no_inline_not_in_flash_func(restore_timing)(uint32_t timing)
+{
+    qmi_hw->m[0].timing = timing;
+}
+
 static void write_sector(void *p)
 {
+    uint32_t timing = qmi_hw->m[0].timing;
     flash_range_erase(SETTINGS_OFFSET, FLASH_SECTOR_SIZE);
     flash_range_program(SETTINGS_OFFSET, (const uint8_t *)p,
                         (sizeof(stored_t) + FLASH_PAGE_SIZE - 1) & ~(FLASH_PAGE_SIZE - 1));
+    restore_timing(timing);
 }
 
 void settings_save(void)
@@ -234,8 +247,17 @@ void settings_save(void)
     s->volume = (uint8_t)g_settings.volume;
     s->check = header_check(s);
 
-    if (memcmp(flash_copy(), s, sizeof *s) != 0)
-        flash_safe_execute(write_sector, s, 100);   /* parks core 1 if it runs (game menu) */
+    if (memcmp(flash_copy(), s, sizeof *s) != 0) {
+        /* parks core 1 if it runs (game menu). Before core 1 is started
+         * (the standalone firmware's own menu) the SDK refuses, as it
+         * cannot park it: then only interrupts are in the way. */
+        if (flash_safe_execute(write_sector, s, 100) != PICO_OK &&
+            !multicore_lockout_victim_is_initialized(1)) {
+            uint32_t irq = save_and_disable_interrupts();
+            write_sector(s);
+            restore_interrupts(irq);
+        }
+    }
     free(work);
     work = NULL;
 }

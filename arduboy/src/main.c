@@ -39,6 +39,7 @@
 #include "settings.h"
 #include "ard_video.h"
 #include "arduboy.h"
+#include "pbc_save.h"
 
 #if !PBC_MULTI
 #error "PBC Arduboy exists only as part of the combined firmware (pbcemu/build.sh)"
@@ -59,7 +60,7 @@
 
 static FATFS g_fs;
 static char game[PBC_LAUNCH_NAME_MAX];
-static char save_path[PBC_LAUNCH_NAME_MAX + 8];
+static char save_path[PBC_LAUNCH_NAME_MAX + 8], save_path_old[PBC_LAUNCH_NAME_MAX + 8];
 
 /* ---- clocks (as in zx) ------------------------------------------------------ */
 
@@ -116,7 +117,7 @@ static void save_load(void)
 {
     static FIL f;
     UINT got = 0;
-    if (f_open(&f, save_path, FA_READ) == FR_OK) {
+    if (f_open(&f, save_path, FA_READ) == FR_OK || f_open(&f, save_path_old, FA_READ) == FR_OK) {
         f_read(&f, ard_eeprom(), ARD_EEPROM, &got);
         f_close(&f);
     }
@@ -323,11 +324,7 @@ int main(void)
         if (buf)
             ard_jit_init(buf, size);
     }
-    snprintf(save_path, sizeof save_path, "/%s", game);
-    char *dot = strrchr(save_path, '.');
-    if (dot)
-        *dot = 0;
-    strcat(save_path, ".sav");
+    pbc_save_names(game, save_path, sizeof save_path, save_path_old, sizeof save_path_old);
     save_load();                        /* the volume stays mounted for saving */
 
     overclock();

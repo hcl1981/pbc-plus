@@ -109,8 +109,10 @@ pbc_head "dist/ beschriften"
     echo "         .uf2 auf das erscheinende Laufwerk kopieren."
     echo
     echo "Es passt immer nur EINE Firmware aufs Gerät. pbcemu.uf2 enthält"
-    echo "alle Emulatoren (C64, NES, Master System, PC Engine, Mega Drive,"
-    echo "Game Gear, Game Boy Color) mit Gerätewahl und Spieleliste."
+    echo "alle Emulatoren (Atari 2600 und 7800, ZX Spectrum, ColecoVision,"
+    echo "C64, Vectrex, NES, SG-1000, MSX, Amstrad CPC, Master System,"
+    echo "PC Engine, Mega Drive, Game Gear, Game Boy Color, Arduboy) mit"
+    echo "Gerätewahl und Spieleliste."
     echo
     printf '%-38s %10s  %s\n' "DATEI" "GRÖSSE" "SHA256 (Anfang)"
     for f in "${ROOT}"/dist/*.uf2; do [ -e "$f" ] || continue

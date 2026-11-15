@@ -152,7 +152,10 @@ static int slave_reply(int rxlen, void *user)
             lb.sin.hash = rx->hash;
         }
         lb.sin_ms = now;
-        tx->type = R_SEND_GO;
+        /* go only once this side's menu has taken the announcement and is
+         * about to receive: the sender gives up 3 s after a go, and a card
+         * that does not look for announcements keeps it waiting longer */
+        tx->type = lb.sin_taken ? R_SEND_GO : R_WAIT;
     } else if (rx->type == T_GO && lb.in_valid &&
                lb.in_id == rx->id && lb.in_nonce == rx->nonce) {
         lb.in_go = true;

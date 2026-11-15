@@ -278,8 +278,12 @@ static const char *disk_change(const char *name)
     rom_store_live = true;
     const char *err = rom_store_program(pick, scratch, disk_progress);
     rom_store_live = false;
-    if (err)
+    if (err) {
+        /* the flash under the old disk is erased or half written: no disk
+         * in the drive rather than one whose tracks are gone */
+        cpc_insert_disk(NULL, 0);
         return err;
+    }
     if (!cpc_insert_disk(rom_store_data(), rom_store_size()))
         return "Not a CPC disk";
     snprintf(shown, sizeof shown, "%s", pick);

@@ -48,6 +48,7 @@
 #include "settings.h"
 #include "shared.h"           /* SMS Plus */
 #include "pbc_link.h"
+#include "pbc_save.h"
 
 /* ---- build-time configuration (see CMakeLists.txt) ---------------------- */
 #ifndef CPU_MHZ
@@ -262,12 +263,10 @@ static uint32_t sram_sum(uint32_t len, bool zeros)
 static void save_load(const char *game)
 {
     static FIL f;
-    snprintf(save_path, sizeof save_path, "/%s", game);
-    char *dot = strrchr(save_path, '.');
-    if (dot) *dot = 0;
-    strcat(save_path, ".sav");
+    static char old_path[ROM_NAME_MAX + 8];
+    pbc_save_names(game, save_path, sizeof save_path, old_path, sizeof old_path);
     save_on = true;
-    if (f_open(&f, save_path, FA_READ) != FR_OK)
+    if (f_open(&f, save_path, FA_READ) != FR_OK && f_open(&f, old_path, FA_READ) != FR_OK)
         return;
     UINT got = 0;
     uint32_t n = f_size(&f) < SRAMSIZEBYTES ? f_size(&f) : SRAMSIZEBYTES;
@@ -282,13 +281,14 @@ static void save_write(void)
     static FIL f;
     UINT put = 0;
     save_dirty = false;
-    written_sum = save_sum;
     if (f_open(&f, save_path, FA_WRITE | FA_OPEN_ALWAYS) == FR_OK) {
         f_write(&f, sms.sram, save_len, &put);
         f_truncate(&f);
         f_close(&f);
     }
-    if (put != save_len) {
+    if (put == save_len) {
+        written_sum = save_sum;         /* only then: a failed write is tried again */
+    } else {
         sms_video_set_status("SAVE FAILED: DRIVE FULL?");
         status_until = time_us_64() + 4000000;
     }

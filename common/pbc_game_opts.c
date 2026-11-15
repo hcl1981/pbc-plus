@@ -5,6 +5,7 @@
 #include "pico/flash.h"
 #include "hardware/flash.h"
 #include "hardware/regs/addressmap.h"
+#include "hardware/structs/qmi.h"
 #include "pbc_game_opts.h"
 
 /* The launcher's table, exactly as pbcemu/src/c64/c64_settings.c (and
@@ -50,11 +51,22 @@ static uint32_t header_check(const opts_t *s)
            * 2654435761u;
 }
 
+/* The SDK's flash functions re-enter XIP through the bootrom's setup,
+ * which also resets the flash clock (QMI timing) to the bootrom's. Put
+ * back the one main.c set for the overclock; from RAM, as the timing
+ * changes under XIP (as megadrive/src/flash_fs.c does). */
+static void __no_inline_not_in_flash_func(restore_timing)(uint32_t timing)
+{
+    qmi_hw->m[0].timing = timing;
+}
+
 static void write_sector(void *page)
 {
+    uint32_t timing = qmi_hw->m[0].timing;
     flash_range_erase(OPTS_OFFSET, FLASH_SECTOR_SIZE);
     flash_range_program(OPTS_OFFSET, (const uint8_t *)page,
                         (sizeof(opts_t) + FLASH_PAGE_SIZE - 1) & ~(FLASH_PAGE_SIZE - 1));
+    restore_timing(timing);
 }
 
 bool pbc_game_opts_set_key(const char *game, uint8_t key)

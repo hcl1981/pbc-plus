@@ -61,7 +61,7 @@ und 2.
 
 Master-System- und Game-Gear-Module mit Batterie (z. B. Phantasy Star,
 Golden Axe Warrior, Shining Force Gaiden) blenden bis zu 32 KB RAM über
-8000h–BFFFh ein. Es landet als **`<Spielname>.sav`** neben der ROM auf dem
+8000h–BFFFh ein. Es landet als **`<Spielname>.sav`** (Name samt Endung, also `Spiel.sms.sav`; der frühere Name `Spiel.sav` wird weiter gelesen, siehe `../gbc/README.md`) neben der ROM auf dem
 Laufwerk, am PC sichtbar und kopierbar: 16 KB, 32 KB sobald ein Spiel die
 obere Hälfte benutzt. Geladen wird beim Start. Gespeichert wird während des
 Spiels, denn verlassen wird es mit RESET: Zweimal pro Sekunde prüft eine

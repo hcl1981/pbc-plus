@@ -39,7 +39,7 @@ Spiele für das **Arduboy FX** brauchen dessen externen Flash-Baustein und
 laufen nicht.
 
 Das EEPROM (1 KB, dort speichern die Spiele Highscores und Einstellungen)
-liegt als `<Spiel>.sav` neben dem Spiel. Der Emulator schreibt es eine
+liegt als `<Spiel>.hex.sav` neben dem Spiel (der frühere Name `<Spiel>.sav` wird weiter gelesen). Der Emulator schreibt es eine
 Sekunde nach der letzten Änderung.
 
 ## Tasten

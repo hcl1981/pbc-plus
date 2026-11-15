@@ -148,8 +148,11 @@ static void __attribute__((noreturn)) launch(uint32_t offset)
 static bool fs_format(void)
 {
     static BYTE work[FF_MAX_SS];
-    /* FM_SFD: no partition table, one FAT volume filling the region. */
-    MKFS_PARM opt = { FM_FAT | FM_SFD, 0, 0, 0, 0 };
+    /* FM_SFD: no partition table, one FAT volume filling the region. 2048
+     * root entries (16 clusters) instead of FatFs's 512: a game with a long
+     * name takes four or five, and small games (Atari 2600, Vectrex) come
+     * by the hundred -- the drive was "full" at about 120 of them. */
+    MKFS_PARM opt = { FM_FAT | FM_SFD, 0, 0, 2048, 0 };
     if (f_mkfs("", &opt, work, sizeof work) != FR_OK)
         return false;
     if (fs_mount()) {

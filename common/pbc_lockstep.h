@@ -21,12 +21,24 @@
 extern "C" {
 #endif
 
+/* The version of the protocol, in every packet. Count it up with every
+ * change that an older firmware cannot play with: the two devices then say
+ * which of them to update instead of failing in some other way.
+ *   0: before the versions (no mark in the packets)   1: the mark (PBCemu 1.0) */
+#define LS_PROTOCOL 1
+
 void ls_begin(bool master);
 void ls_end(void);
 
 /* One try to meet the partner; call until it is not 0.
- *   1: connected, -1: the partner's `config` differs, 0: nobody yet */
+ *   1: connected, -1: the partner's `config` differs, 0: nobody yet,
+ *  -2: the partner's firmware speaks another version of this protocol,
+ *      see ls_partner_protocol() */
 int ls_connect(uint32_t config);
+/* After -2: the partner's LS_PROTOCOL, and its version of PBCemu as
+ * PBCEMU_VERSION_BYTE (common/pbc_version.h), 0 for one before 1.0. */
+int ls_partner_protocol(void);
+int ls_partner_firmware(void);
 
 /* Swaps the inputs of the next frame; returns when both have them. `ram`
  * is hashed a slice per frame and compared with the partner's. False: no

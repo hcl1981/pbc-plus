@@ -84,8 +84,8 @@ void games_count(int *counts)
             continue;
         int kind = K_UNKNOWN;
         for (int d = 0; d < device_count; d++)
-            if (belongs(&devices[d], fi.fname, &kind))
-                counts[d]++;
+            if (belongs(&devices[d], fi.fname, &kind) && counts[d] < GAMES_MAX)
+                counts[d]++;            /* as many as games_list() gives */
     }
     f_closedir(&dir);
     for (int d = 0; d < device_count; d++)
@@ -145,6 +145,28 @@ int games_favorites(char (**out)[GAME_NAME_MAX], int **devs)
         strcpy(names[n++], favs_name(i));
     }
     return n;
+}
+
+/* Favourites whose game is no longer on the drive do not show, but took a
+ * place in the list of 40: drop them. Entries of systems this build lacks
+ * stay. The number dropped. */
+int games_favorites_prune(void)
+{
+    static FILINFO fi;
+    int dropped = 0;
+    for (int i = favs_count() - 1; i >= 0; i--) {
+        int d = favs_device(i), kind = K_UNKNOWN;
+        if (d < 0)
+            continue;
+        char path[GAME_NAME_MAX + 2];
+        snprintf(path, sizeof path, "/%s", favs_name(i));
+        bool builtin = strcmp(favs_name(i), PBC_VECTREX_BUILTIN) == 0 && builtin_listed(d);
+        if ((builtin || f_stat(path, &fi) == FR_OK) && belongs(&devices[d], favs_name(i), &kind))
+            continue;
+        favs_remove(i);
+        dropped++;
+    }
+    return dropped;
 }
 
 void games_title(const char *file, char *title, char *tags, int size)
