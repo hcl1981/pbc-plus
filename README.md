@@ -21,6 +21,7 @@ cd spout && ./build.sh      # oder ein einzelnes Projekt
 | [`noiz2sa`](noiz2sa/) | Abstrakter Kugelhagel-Schütze von Kenta Cho. Ausweichen, Sterne sammeln, Wertung steigern. | `noiz2sa.uf2` |
 | [`spout`](spout/) | Höhlenflug. Der Sandstrahl treibt an **und** zerstört den Fels. | `spout.uf2` |
 | [`stransball2`](stransball2/) | Super Transball 2. Kugel mit dem Traktorstrahl greifen und aus dem Level fliegen. | `stransball2.uf2` |
+| [`rushtown`](rushtown/) | **Rushtown**, eine Eigenentwicklung: eine Inselstadt von oben, zu Fuß oder im Auto, mit Verkehr, Aufträgen und Polizei. | `rushtown.uf2` |
 | [`micropolis`](micropolis/) | Micropolis — der quelloffene Kern von SimCity 1. | `micropolis.uf2` |
 | [`tyrian`](tyrian/) | OpenTyrian. Firmware plus 8,9 MB Spieldaten in einer Datei. | `tyrian-komplett.uf2` |
 | [`picoboygb`](picoboygb/) | Game-Boy-Emulator. ROMs kommen per USB-Stick-Modus aufs Gerät. | `picoboygb.uf2` |

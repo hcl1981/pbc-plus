@@ -38,6 +38,7 @@ nur der Übersicht.
                                       usblink.* GPL-2.0-or-later wie Doom)
     picoboygb-arduino     MIT         picoboygb-arduino/LICENSE
     i2collection          MIT         i2collection/LICENSE
+    rushtown              MIT         rushtown/LICENSE
     micropython           MIT         micropython/LICENSE
 
     tools/, docs/         MIT         (Bauskripte und Dokumentation

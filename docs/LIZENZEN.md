@@ -27,6 +27,7 @@ sagt, welche das ist und woher sie kommt. Die Kurzfassung steht als
 | `cpc` | GPL-3.0 | `cpc/LICENSE` | eigener CPC-6128-Kern (Gate Array, CRTC, PPI, µPD765, Band, Snapshots); Z80 redcode/Z80 (LGPL-3.0+); AY und Bandlogik aus `zx`; die ROMs (OS, BASIC 1.1, AMSDOS) gehören Amstrad und Locomotive Software (`cpc/roms/LICENSE.roms`); Flash/USB aus `picoboygb` (MIT) |
 | `zx` | GPL-3.0 | `zx/LICENSE` | eigener ZX-Spectrum-Kern (ULA, 128K, Band, Snapshots); Z80 redcode/Z80 (LGPL-3.0+); AY aus `msx`; die ROMs des 48K/128K gehören Amstrad (`zx/roms/LICENSE.roms`); Flash/USB aus `picoboygb` (MIT) |
 | `i2collection` | MIT | `i2collection/LICENSE` | Eigenentwicklung |
+| `rushtown` | MIT | `rushtown/LICENSE` | Eigenentwicklung; Schrift 8×8 gemeinfrei |
 | `micropython` | MIT | Upstream | MicroPython, hier nur die Board-Portierung |
 
 ## Worauf zu achten ist

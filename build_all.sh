@@ -23,13 +23,14 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "${ROOT}/tools/pbc_build.sh"
 
-ALL=(noiz2sa spout stransball2 micropolis tyrian picoboygb megadrive nes c64 sms pce gbc pbcemu doom jumpnbump i2collection micropython)
+ALL=(noiz2sa spout stransball2 rushtown micropolis tyrian picoboygb megadrive nes c64 sms pce gbc pbcemu doom jumpnbump i2collection micropython)
 
 beschreibung() {
     case "$1" in
         noiz2sa)      echo "abstrakter Kugelhagel-Schütze (BSD)" ;;
         spout)        echo "Höhlenflug mit zerstörbarem Fels (MIT)" ;;
         stransball2)  echo "Super Transball 2, Thrust-artig (GPL-2.0)" ;;
+        rushtown)     echo "eine Stadt von oben: Autos, Aufträge, Polizei (MIT)" ;;
         micropolis)   echo "der quelloffene SimCity-1-Kern (GPL-3.0)" ;;
         tyrian)       echo "OpenTyrian, Firmware + Spieldaten (GPL-2.0)" ;;
         picoboygb)    echo "Game-Boy-Emulator, ROMs per USB (MIT)" ;;

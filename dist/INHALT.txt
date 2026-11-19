@@ -23,6 +23,7 @@ noiz2sa.uf2                                  120K  597e5833290d22a1
 pbcemu.uf2                                   4,0M  8cf01fc3e379c32e
 pce.uf2                                      228K  1b22e47bb33ab1c9
 picoboygb.uf2                                128K  93672907ee58848e
+rushtown.uf2                                 2,1M  ba82de1168f1f631
 sms.uf2                                      224K  35f971fed603c14b
 spout.uf2                                    120K  71881f01a486539b
 stransball2.uf2                              740K  3b9b4dc1f52a9561
