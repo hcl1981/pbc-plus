@@ -27,7 +27,7 @@ rushtown.uf2                                 2,1M  ba82de1168f1f631
 sms.uf2                                      224K  35f971fed603c14b
 spout.uf2                                    120K  71881f01a486539b
 stransball2.uf2                              740K  3b9b4dc1f52a9561
-tyrian-komplett.uf2                           19M  00dc75202432fbdc
+tyrian-komplett.uf2                           19M  9d5cdb694d1605fe
 
 
 doom/ — Firmware, Werkzeuge und Anleitung fuer Doom

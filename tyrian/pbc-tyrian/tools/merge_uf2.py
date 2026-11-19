@@ -6,22 +6,28 @@ Aufruf:
     ./merge_uf2.py build/tyrian.uf2 ../build-out/tyrian-data.uf2 \\
                    -o ../build-out/tyrian-komplett.uf2
 
-Zur Numerierung -- das ist die Stelle, an der es leicht schiefgeht:
+Zur Familienkennung -- das ist die Stelle, an der es schiefging:
 
-Ein UF2-Block traegt neben seiner Zieladresse die Angabe "Block i von N", und
-das Bootrom erkennt daran das Ende der Uebertragung. Diese Zaehlung laeuft je
-FAMILIENKENNUNG getrennt, nicht ueber die Datei. Die vom SDK erzeugte
-Firmware-UF2 enthaelt zum Beispiel zwei Familien mit je eigener Zaehlung.
+Ein UF2-Block traegt neben seiner Zieladresse eine Familienkennung und die
+Angabe "Block i von N". Das Bootrom des RP2350 nimmt aus einer Datei nur EINE
+Familie an und startet neu, sobald deren letzter Block da ist. Die Firmware
+(rp2350-arm-s) und die Daten (Familie "data") hintereinander in einer Datei
+heisst deshalb: die Firmware wird geschrieben, das Geraet startet neu, die
+Daten kommen nie an. Aufgefallen ist das lange nicht, weil auf dem
+Entwicklungsgeraet die Daten schon von frueher im Flash lagen.
 
-Daraus folgt: solange keine Familie in zwei Eingabedateien vorkommt, ist
-schlichtes Aneinanderhaengen bereits richtig -- jede Zaehlung bleibt in sich
-stimmig. Wird trotzdem global durchnumeriert, sind beide Sequenzen kaputt, das
-Bootrom erkennt das Ende nicht und startet am Schluss nicht neu.
+Dieses Werkzeug gibt deshalb allen Bloecken die Kennung der Firmware und
+zaehlt sie durch: fuer das Bootrom ist das Ganze dann ein einziges Abbild,
+das eben auch ab 0x10100000 etwas hat. Ausgenommen bleibt der einzelne
+Zusatzblock, den das SDK der Firmware voranstellt (Familie "absolute",
+0x10FFFF00): er behaelt Kennung und Zaehlung.
 
-Dieses Werkzeug laesst die Numerierung deshalb in Ruhe, solange sie stimmig
-ist, und zaehlt nur dann neu, wenn dieselbe Familie aus mehreren Dateien kommt.
-Zusaetzlich prueft es, ob sich Adressbereiche ueberschneiden -- taeten sie das,
-wuerde die zweite Datei die erste stillschweigend teilweise ueberschreiben.
+Geprueft im Emulator PBConPC mit dem echten Boot-ROM (A4), auf leerem Flash:
+vorher lagen danach 0 von 2269 Datensektoren im Flash, jetzt alle.
+
+Zusaetzlich prueft das Werkzeug, ob sich Adressbereiche ueberschneiden --
+taeten sie das, wuerde die zweite Datei die erste stillschweigend teilweise
+ueberschreiben.
 
 GPLv2, wie OpenTyrian.
 """
@@ -36,6 +42,7 @@ HDR = "<IIIIIIII"          # magic0, magic1, flags, addr, payload, blockNo, numB
 MAGIC0 = 0x0A324655
 MAGIC1 = 0x9E5D5157
 MAGIC_END = 0x0AB16F30
+FAMILY_ABSOLUTE = 0xE48BFF57      # der Zusatzblock des SDK vor der Firmware
 
 
 def read_blocks(path):
@@ -78,9 +85,9 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("inputs", nargs="+", help="UF2-Dateien, Firmware zuerst")
     ap.add_argument("-o", "--out", required=True)
-    ap.add_argument("--one-family", action="store_true",
-                    help="alle Bloecke auf die Familienkennung der ersten Datei "
-                         "setzen (normalerweise nicht noetig, siehe unten)")
+    ap.add_argument("--keep-families", action="store_true",
+                    help="die Familienkennungen lassen, wie sie sind (dann nimmt "
+                         "das Bootrom nur den ersten Teil an, siehe oben)")
     args = ap.parse_args()
 
     parts = [(p, read_blocks(p)) for p in args.inputs]
@@ -107,41 +114,25 @@ def main():
 
     all_blocks = [blk for _p, blocks in parts for blk in blocks]
 
-    # Kommt eine Familie aus mehr als einer Datei? Nur dann muss neu gezaehlt
-    # werden -- sonst ist die vorhandene Zaehlung bereits stimmig.
-    files_per_family = defaultdict(set)
-    for path, blocks in parts:
-        for b in blocks:
-            files_per_family[b[3]].add(path)
+    # Die Kennung der Firmware: die haeufigste der ersten Datei, den
+    # Zusatzblock des SDK nicht mitgerechnet.
+    counts = defaultdict(int)
+    for b in parts[0][1]:
+        if b[3] != FAMILY_ABSOLUTE:
+            counts[b[3]] += 1
+    family = max(counts, key=counts.get)
+    main = sum(1 for b in all_blocks if b[3] != FAMILY_ABSOLUTE)
+    print(f"   alle Bloecke bekommen die Familie 0x{family:08X}, {main:,} am Stueck gezaehlt")
 
-    renumber = {fam for fam, files in files_per_family.items() if len(files) > 1}
-    for fam in sorted(renumber):
-        print(f"   Familie 0x{fam:08X} kommt aus mehreren Dateien -- neu gezaehlt")
-
-    # Familienkennungen bleiben, wie sie sind.
-    #
-    # Zuerst hatte ich hier alles auf eine Familie vereinheitlicht, aus Sorge,
-    # das Bootrom koenne mit mehreren in einer Datei nichts anfangen. Die Sorge
-    # war unbegruendet: die vom SDK erzeugte Firmware-UF2 enthaelt SELBST schon
-    # zwei (das Abbild und den Zusatzblock am Flash-Ende) und wird anstandslos
-    # geladen. --one-family bleibt fuer den Fall, dass sich das als falsch
-    # erweist.
-    family = all_blocks[0][3]
-
-    counts = {fam: sum(1 for b in all_blocks if b[3] == fam) for fam in renumber}
-    seen = defaultdict(int)
-
+    seen = 0
     with open(args.out, "wb") as f:
         for flags, addr, payload, fam, data, no, num in all_blocks:
-            if fam in renumber:
-                out_no, out_num = seen[fam], counts[fam]
-                seen[fam] += 1
+            if fam == FAMILY_ABSOLUTE or args.keep_families:
+                out_no, out_num, out_fam = no, num, fam     # unveraendert uebernehmen
             else:
-                out_no, out_num = no, num   # unveraendert uebernehmen
-
-            f.write(struct.pack(HDR, MAGIC0, MAGIC1, flags, addr, payload,
-                                out_no, out_num,
-                                family if args.one_family else fam))
+                out_no, out_num, out_fam = seen, main, family
+                seen += 1
+            f.write(struct.pack(HDR, MAGIC0, MAGIC1, flags, addr, payload, out_no, out_num, out_fam))
             f.write(data)
             f.write(struct.pack("<I", MAGIC_END))
 

@@ -39,22 +39,23 @@ Die Aufteilung im Flash:
 0x10FFFF00  SDK-Zusatzblock 256 B   ← muss frei bleiben, siehe unten
 ```
 
-**Zur Numerierung, das ist die heikle Stelle:** Jeder UF2-Block trägt außer
-seiner Zieladresse die Angabe „Block i von N", und das Bootrom erkennt daran
-das Ende der Übertragung — davon hängt ab, ob das Gerät danach von selbst
-neu startet. Diese Zählung läuft **je Familienkennung getrennt**, nicht über
-die Datei: die vom SDK erzeugte Firmware-UF2 enthält bereits zwei Familien mit
-je eigener Zählung.
+**Zur Familienkennung, das ist die heikle Stelle:** Jeder UF2-Block trägt
+außer seiner Zieladresse eine Familienkennung und die Angabe „Block i von N".
+Das Bootrom des RP2350 nimmt aus einer Datei nur **eine** Familie an und
+startet neu, sobald deren letzter Block da ist. Firmware (`rp2350-arm-s`) und
+Daten (Familie „data") hintereinander in einer Datei heißt deshalb: Die
+Firmware wird geschrieben, das Gerät startet neu, die Daten kommen nie an.
+So war `tyrian-komplett.uf2` bis Version 1.0 gebaut; aufgefallen ist es erst
+einem Nutzer, weil auf dem Entwicklungsgerät die Daten schon im Flash lagen.
 
-Solange also keine Familie in zwei Eingabedateien vorkommt, ist schlichtes
-Aneinanderhängen bereits richtig. Wer stattdessen global durchnumeriert,
-zerstört beide Sequenzen — die Datei wird trotzdem geschrieben, aber das
-Bootrom erkennt das Ende nicht mehr und startet nicht neu. `merge_uf2.py`
-lässt die Numerierung deshalb in Ruhe und zählt nur dann neu, wenn dieselbe
-Familie aus mehreren Dateien kommt.
+`merge_uf2.py` gibt deshalb allen Blöcken die Kennung der Firmware und zählt
+sie durch. Für das Bootrom ist das Ganze dann ein einziges Abbild. Nur der
+einzelne Zusatzblock, den das SDK der Firmware voranstellt, behält Kennung
+und Zählung.
 
-Prüfen lässt sich das Ergebnis mit `picotool info` — es muss die Datei als
-`rp2350-arm-s` mit gültigem Abbild erkennen, genau wie die Firmware allein.
+Geprüft ist das im Emulator PBConPC mit dem echten Boot-ROM auf leerem Flash:
+Vorher lagen danach 0 von 2269 Datensektoren im Flash, jetzt alle, und das
+Spiel startet.
 
 Außerdem prüft das Werkzeug auf überschneidende Adressbereiche. Das ist hier
 keine theoretische Sorge: die Firmware-UF2 beschreibt nicht nur den
