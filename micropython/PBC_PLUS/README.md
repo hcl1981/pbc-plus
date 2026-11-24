@@ -16,7 +16,7 @@ and adds `Canvas`, `Sprite`, `load_image()`, a program menu and `help()`.
 | `mpconfigboard.h` | MicroPython board config (name, default SPI/I2C pins) |
 | `mpconfigboard.cmake` | CMake glue: platform = `rp2350-arm-s`, custom board header dir, manifest |
 | `pbc_plus.h` | pico-sdk board header: 16 MB flash, crystal config |
-| `manifest.py` | Frozen-module manifest (defaults only for now) |
+| `manifest.py` | Frozen-module manifest: port defaults, `pbc`, `turtle`, `png` and the board's own `_boot.py` (error screen for a damaged filesystem) |
 | `board.json` | Metadata for the MicroPython build system |
 | `pins.csv` | Pin assignment reference (informational) |
 | `README.md` | This file |

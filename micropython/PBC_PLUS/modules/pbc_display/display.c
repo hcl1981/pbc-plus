@@ -43,6 +43,9 @@ typedef struct _display_obj_t {
 const mp_obj_type_t display_type;
 static display_obj_t display_singleton = { { &display_type } };
 
+// 75 MHz SPI (clk_sys / 2); datasheet max is 62.5 MHz, checked on the device
+#define PBC_DISPLAY_SPI_HZ 75000000
+
 // Boot splash: white "+" on black, ~70% of screen width, balken
 // 1/3 of cross size. Replaces uninitialised LCD RAM noise as soon
 // as the panel comes up. The first user graphics call (fill, show,
@@ -76,11 +79,21 @@ static void draw_boot_splash(void) {
                       (uint32_t)bar_thickness * cross_size);
 }
 
+// Called once at power-on, before the MicroPython runtime starts
+// (MICROPY_BOARD_EARLY_INIT in mpconfigboard.h). Without it the panel
+// stays dark until some program runs `import pbc`: a freshly flashed
+// device without main.py looks dead. Costs about 0.6 s of start-up
+// time (reset and wake-up delays of the ST7789).
+void pbc_display_boot(void) {
+    st7789_init(PBC_DISPLAY_SPI_HZ);
+    draw_boot_splash();
+}
+
 static mp_obj_t display_make_new(const mp_obj_type_t *type,
                                  size_t n_args, size_t n_kw,
                                  const mp_obj_t *args) {
     (void)type; (void)n_args; (void)n_kw; (void)args;
-    st7789_init(75000000);   // 75 MHz SPI (clk_sys / 2); datasheet max is 62.5 MHz, checked on the device
+    st7789_init(PBC_DISPLAY_SPI_HZ);   // no-op after pbc_display_boot()
     draw_boot_splash();
     return MP_OBJ_FROM_PTR(&display_singleton);
 }

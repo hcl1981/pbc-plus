@@ -24,4 +24,13 @@
 // the "default LED" -- our three status LEDs are on GP12/13/14.
 #undef PICO_DEFAULT_LED_PIN
 
+// Give the 12 MHz crystal more time to settle after power-on (64 ms
+// instead of 1 ms). One PBC+ started MicroPython after flashing but
+// stayed dead after a real power cycle; a crystal that is not yet
+// stable when the PLLs lock is the usual cause, and boards with slower
+// crystals set the same value.
+#ifndef PICO_XOSC_STARTUP_DELAY_MULTIPLIER
+#define PICO_XOSC_STARTUP_DELAY_MULTIPLIER 64
+#endif
+
 #endif // _BOARDS_PBC_PLUS_H

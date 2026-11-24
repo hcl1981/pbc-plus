@@ -16,24 +16,40 @@
 // Earth gravity, used to convert g→m/s².
 #define G_TO_MS2        9.80665f
 
+// Every transfer has a time limit. Without one, a sensor that holds
+// the bus (SCL or SDA stuck low) stops the firmware for good inside
+// `import pbc` -- before the launcher, and with USB no longer served.
+// A register access takes about 0.1 ms at 400 kHz.
+#define I2C_TIMEOUT_US  5000
+
 static bool accel_initialized   = false;
+static bool accel_probed        = false;   // accel_init() has run since the last (re)start
 static int  accel_range_g_int   = 2;
 
 static int reg_write_u8(uint8_t reg, uint8_t val) {
     uint8_t buf[2] = { reg, val };
-    return i2c_write_blocking(PBC_I2C_PORT, STK8BA58_I2C_ADDR, buf, 2, false);
+    return i2c_write_timeout_us(PBC_I2C_PORT, STK8BA58_I2C_ADDR, buf, 2, false, I2C_TIMEOUT_US);
 }
 
 static int reg_read(uint8_t reg, uint8_t *buf, size_t len) {
-    int r = i2c_write_blocking(PBC_I2C_PORT, STK8BA58_I2C_ADDR, &reg, 1, true);
+    int r = i2c_write_timeout_us(PBC_I2C_PORT, STK8BA58_I2C_ADDR, &reg, 1, true, I2C_TIMEOUT_US);
     if (r < 0) return r;
-    return i2c_read_blocking(PBC_I2C_PORT, STK8BA58_I2C_ADDR, buf, len, false);
+    return i2c_read_timeout_us(PBC_I2C_PORT, STK8BA58_I2C_ADDR, buf, len, false, I2C_TIMEOUT_US);
+}
+
+// A sensor that did not answer the probe is left alone until the next
+// accel_init() (every `import pbc` after a restart): the axis functions
+// then return 0 at once instead of waiting for the time limit on every
+// call.
+static bool accel_ready(void) {
+    return accel_initialized || (!accel_probed && accel_init());
 }
 
 bool accel_init(void) {
     if (accel_initialized) {
         return true;
     }
+    accel_probed = true;
 
     i2c_init(PBC_I2C_PORT, I2C_BAUDRATE);
     gpio_set_function(I2C_SDA_PIN, GPIO_FUNC_I2C);
@@ -75,15 +91,15 @@ static int16_t read_axis(uint8_t reg_lsb) {
 // flipped (checked on the device 2026-10-29: before, flat gave z = -1 g,
 // right edge up x = -1 g, joystick side down y = +1 g).
 float accel_x_g(void) {
-    if (!accel_initialized && !accel_init()) return 0.0f;
+    if (!accel_ready()) return 0.0f;
     return  (float)read_axis(REG_XLSB + 2) * (float)accel_range_g_int / 512.0f;
 }
 float accel_y_g(void) {
-    if (!accel_initialized && !accel_init()) return 0.0f;
+    if (!accel_ready()) return 0.0f;
     return -(float)read_axis(REG_XLSB)     * (float)accel_range_g_int / 512.0f;
 }
 float accel_z_g(void) {
-    if (!accel_initialized && !accel_init()) return 0.0f;
+    if (!accel_ready()) return 0.0f;
     return -(float)read_axis(REG_XLSB + 4) * (float)accel_range_g_int / 512.0f;
 }
 

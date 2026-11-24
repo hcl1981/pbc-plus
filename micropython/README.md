@@ -67,6 +67,17 @@ Konsole (REPL) — etwa mit `mpremote` oder Thonny.
 Eigene Programme lassen sich per `mpremote cp` auf das Gerät kopieren; `menu()`
 listet sie zum Starten auf.
 
+## Beim Einschalten
+
+Das Display zeigt sofort ein weißes Plus, noch bevor Python startet. Ein frisch
+geflashtes Gerät ohne `main.py` bleibt also nicht dunkel.
+
+Lässt sich das Dateisystem nicht lesen, formatiert die Firmware nur noch ein
+leeres Flash von selbst (neues Gerät). Sonst zeigt sie „File system error“ und
+wartet: Erst wenn A und B zusammen gedrückt werden, löscht sie alle Dateien und
+legt ein leeres Dateisystem an. Solange die Meldung steht, gibt es noch keine
+serielle Konsole. Der Code dazu steht in `PBC_PLUS/modules_python/_boot.py`.
+
 ## Lizenz
 
 MIT — sowohl MicroPython selbst als auch diese Board-Portierung. Siehe

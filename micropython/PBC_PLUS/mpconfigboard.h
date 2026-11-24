@@ -33,3 +33,8 @@
 //
 // (If/when WebREPL or other features are added later, they live in
 // frozen Python modules, not in this header.)
+
+// Switch the display on and show the boot splash at power-on, before
+// Python starts (see pbc_display_boot() in modules/pbc_display/display.c).
+void pbc_display_boot(void);
+#define MICROPY_BOARD_EARLY_INIT()              pbc_display_boot()
